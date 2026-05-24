@@ -1,14 +1,11 @@
 ## Interface: 20505
 ## Title: Cell
-## Version: r275.9-beta
-## Author: enderneko
+## Version: r277.7.3
+## Author: enderneko, Krysio
 ## X-Flavor: Vanilla
 ## SavedVariables: CellDB, CellDBBackup
+## LoadSavedVariablesFirst: 1
 ## SavedVariablesPerCharacter: CellCharacterDB
-
-## X-Curse-Project-ID: 409666
-## X-Wago-ID: qv63LLKb
-## X-WoWI-ID: 26244
 
 Locales\LoadLocales.xml
 

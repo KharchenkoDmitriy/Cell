@@ -624,43 +624,26 @@ local function EnterLeaveInstance()
     F.IterateAllUnitButtons(HideCasts, true)
 end
 
+local targetedSpellsDisabledNoticeShown
 function I.EnableTargetedSpells(enabled)
-    if enabled then
-        F.IterateAllUnitButtons(function(b)
-            b.indicators.targetedSpells:Show()
-        end, true)
+    -- Disabled internally due to Blizzard restrictions causing unstable
+    -- behavior/LUA errors in modern clients.
+    Reset()
+    useSecretPath = false
+    eventFrame:Hide()
+    eventFrame:UnregisterAllEvents()
 
-        eventFrame:RegisterEvent("UNIT_SPELLCAST_START")
-        eventFrame:RegisterEvent("UNIT_SPELLCAST_STOP")
-        eventFrame:RegisterEvent("UNIT_SPELLCAST_DELAYED")
-        eventFrame:RegisterEvent("UNIT_SPELLCAST_FAILED")
-        eventFrame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
-        eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
-        eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
-        eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_UPDATE")
+    Cell.UnregisterCallback("EnterInstance", "TargetedSpells_EnterInstance")
+    Cell.UnregisterCallback("LeaveInstance", "TargetedSpells_LeaveInstance")
 
-        eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-        eventFrame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
-        eventFrame:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
+    F.IterateAllUnitButtons(function(b)
+        HideCasts(b)
+        b.indicators.targetedSpells:Hide()
+    end, true)
 
-        eventFrame:RegisterEvent("ENCOUNTER_END")
-        eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-
-        Cell.RegisterCallback("EnterInstance", "TargetedSpells_EnterInstance", EnterLeaveInstance)
-        Cell.RegisterCallback("LeaveInstance", "TargetedSpells_LeaveInstance", EnterLeaveInstance)
-    else
-        Reset()
-        useSecretPath = false
-        eventFrame:Hide()
-        eventFrame:UnregisterAllEvents()
-
-        Cell.UnregisterCallback("EnterInstance", "TargetedSpells_EnterInstance")
-        Cell.UnregisterCallback("LeaveInstance", "TargetedSpells_LeaveInstance")
-
-        F.IterateAllUnitButtons(function(b)
-            HideCasts(b)
-            b.indicators.targetedSpells:Hide()
-        end, true)
+    if enabled and not targetedSpellsDisabledNoticeShown then
+        targetedSpellsDisabledNoticeShown = true
+        F.Print("Targeted Spells has been disabled internally due to Blizzard restrictions to prevent LUA errors.")
     end
 end
 

@@ -8,6 +8,8 @@ local F = Cell.funcs
 local P = Cell.pixelPerfectFuncs
 local LCG = LibStub("LibCustomGlow-1.0")
 
+
+
 -----------------------------------------
 -- Color
 -----------------------------------------
@@ -987,7 +989,11 @@ local function EditBox_AddConfirmButton(self, func, mode)
         end
 
         if func then func(value) end
-        self.value = value -- update value
+        if self.SetValue then
+            self:SetValue(value)
+        else
+            self.value = value -- fallback for non-statusbar objects
+        end
         self.confirmBtn:Hide()
         self:ClearFocus()
     end)
@@ -3073,10 +3079,15 @@ function Cell.CreateDropdown(parent, width, dropdownType, isMini, isHorizontal)
 
             -- font
             local f, s = font:GetFont()
-            if item.font then
+            if item.font and F.IsFontValid(item.font) then
                 b:GetFontString():SetFont(item.font, s, "")
-            else
+            elseif f and F.IsFontValid(f) then
                 b:GetFontString():SetFont(f, s, "")
+            else
+                local standardFont = ChatFontNormal:GetFont()
+                if standardFont and F.IsFontValid(standardFont) then
+                    b:GetFontString():SetFont(standardFont, s, "")
+                end
             end
 
             -- highlight

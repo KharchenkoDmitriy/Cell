@@ -1,226 +1,124 @@
-<div align="center">
+[English](https://github.com/enderneko/Cell/blob/master/README.md) | [简体中文](https://github.com/enderneko/Cell/blob/master/README_zhCN.md)
 
-# Cell - krysiolol Fork
+# Cell
 
-### Custom Experimental Fork of Cell Raid Frames for World of Warcraft
+This repository is a public fork maintained by `skyking-dev`.
+Upstream sync target: <https://github.com/jdtoppin/Cell>. The addon identity remains `Cell`.
 
-<img src="https://img.shields.io/github/v/release/krysiolol/Cell?style=for-the-badge" />
-<img src="https://img.shields.io/github/last-commit/krysiolol/Cell?style=for-the-badge" />
-<img src="https://img.shields.io/github/issues/krysiolol/Cell?style=for-the-badge" />
-<img src="https://img.shields.io/github/stars/krysiolol/Cell?style=for-the-badge" />
+[![version](https://img.shields.io/github/v/release/enderneko/Cell)](https://github.com/enderneko/Cell/releases)
+[![GitHub commit activity](https://img.shields.io/github/commit-activity/m/enderneko/Cell)](https://github.com/enderneko/Cell/commits/master)
+[![last commit](https://img.shields.io/github/last-commit/enderneko/Cell)](https://github.com/enderneko/Cell/commits/master)
+![wakatime](https://wakatime.com/badge/user/b2ffce60-8269-440f-81a0-7316f36a6085/project/82ff5b42-1fec-416d-9d8d-50b586ceea0c.svg)
 
-<br>
+[![Discord](https://img.shields.io/discord/1122747237546610760?label=Discord&color=5865F2)](https://discord.gg/9PSe3fKQGJ)
+[![KOOK](https://img.shields.io/badge/KOOK-87eb00)](https://kook.top/q4T7yp)
+[![Curseforge](https://img.shields.io/curseforge/dt/409666?label=CurseForge&color=F16436)](https://www.curseforge.com/wow/addons/cell)
+[![Wago](https://img.shields.io/badge/Wago-Cell-ad1319)](https://addons.wago.io/addons/cell)
 
-A heavily customized fork of the original **Cell** addon focused on:
-UI improvements, experimental features, compatibility fixes and quality-of-life enhancements.
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/enderneko)
 
-</div>
+Cell is a nice raid frame addon inspired by several great addons, such as __CompactRaid__, __Grid2__, __Aptechka__ and __VuhDo__.  
+With a more human-friendly interface, Cell can provide a better user experience, better than ever.  
+Hope you enjoy.
 
----
+&nbsp;
 
-# About This Fork
+## Installation
 
-This repository is maintained by `krysiolol`.
+Install Cell from a packaged release asset on GitHub Releases, CurseForge, or Wago.
 
-This project started as a fork of a fork of the original Cell addon, evolving into a custom branch with its own direction and experimental implementations.
+Do __not__ install the GitHub `Source code (zip)` or `Source code (tar.gz)` archives. Those source archives do not contain the embedded libraries declared in [`.pkgmeta`](./.pkgmeta), such as `LibCustomGlow-1.0`, `LibDeflate`, `LibSerialize`, `LibSharedMedia-3.0`, and others.
 
-The purpose of this fork is simple:
+If you extract an archive and see repo-only files like `.gitignore`, `.pkgmeta`, `.github`, or `.release`, you almost certainly downloaded a source archive instead of the installable addon package.
 
-- Improve the experience for high-end PvE players
-- Experiment with features not present upstream
-- Add custom QoL systems
-- Implement personal UI workflows
-- Test ideas without upstream limitations
-- Maintain compatibility with modern WoW environments
+Maintainers can validate an extracted package with:
 
-> This is NOT the official Cell repository.
+```bash
+./.release/validate_package.sh <path-to-extracted-addon>
+```
 
----
+&nbsp;
 
-# Original Project Credits
+## Features
 
-Huge credit to the original Cell developers and contributors.
+- __Layouts:__ auto switch layout by spec/role, supports party, raid, arena, and battleground.
+- __Customizable Appearance:__ textures, colors and alphas.
+- __Built-in Click-Castings:__ supports keyboard and multi-button mouse.
+- __Indicators:__ dozens of built-in indicators and unlimited custom indicators (icon, bar, rect, text, icons).
+- __Raid Debuffs:__ debuffs priority and glow.
+- __Useful Raid Tools:__ ready check, countdown, rebuff, death report, marks, battleres.
+- __Nice Options UI:__ I mean yes it's pretty darn good!
+- __Spotlight Frame:__ extra 15 unit buttons, can be set to Target, Focus, Unit, Tank, etc.
+- __Quick Assist:__ for Augmentation Evokers!
+- __Compatibility:__ [BigDebuffs](https://www.curseforge.com/wow/addons/bigdebuffs), [Class Colors](https://www.curseforge.com/wow/addons/classcolors), [OmniCD](https://www.curseforge.com/wow/addons/omnicd) and of course, [WAs](https://wago.io/weakauras).
 
-Original repository:
-- https://github.com/enderneko/Cell
+&nbsp;
 
-Skyking's Fork: 
-- https://github.com/jdtoppin/Cell
+## Code Snippets
 
-Without their work, this fork would not exist.
+__Try disabling all snippets if there are any issues.__
 
----
+Check <https://github.com/enderneko/Cell/tree/master/.snippets> for more snippets.
 
-# Features
+### Usage
 
-## Core Cell Features
+1. Cell Options -> About -> Code Snippets
+2. New -> Paste -> Save -> Tick the AutoRun box
+3. Reload
 
-- Automatic layouts by spec and role
-- Party, Raid, Arena and Battleground support
-- Built-in click casting
-- Custom indicators
-- Raid debuff tracking
-- Spotlight frames
-- Raid utilities
-- OmniCD integration
-- BigDebuffs compatibility
-- WeakAuras support
-- Fully customizable appearance
+&nbsp;
 
----
+## Not supported and probably won't be included in the future
 
-## Additional Fork Features
+- Custom border
+- Changing layout based on group size
+- Other click-casting addons
 
-This fork may include:
+&nbsp;
 
-- Experimental systems
-- Extra UI customization
-- Performance optimizations
-- Layout behavior tweaks
-- Additional compatibility fixes
-- Personal quality-of-life improvements
-- Unreleased or test features
-- Custom edits for advanced healing setups
+## Slash Commands
 
-Some changes may never be merged upstream.
+Use __/cell__ for more information.
 
----
+&nbsp;
 
+## Guides & Sharing
 
-# Installation
+- [ULTIMATE Cell Raid Frames AddOn Setup GUIDE for HEALERS (Reat TV)](https://www.youtube.com/watch?v=ntXko7htO2I)
+- [Healer UI & Addon Guide for Dragonflight Season 4 (yumytv)](https://www.youtube.com/watch?v=XcXvXxFipOE)
+- [Addon Spotlight: How to set up Cell + OmniCD for Augmentation Evoker (JFunkGaming)](https://www.youtube.com/watch?v=PMvtgJv-808)
+- [团队框架插件 Cell 配置流程分享 (钛锬)](https://bbs.nga.cn/read.php?tid=32921170)
 
-## Recommended Installation
+&nbsp;
 
-Download the latest release here:
+## Want to help improve Raid Debuffs?
 
-### Releases
-https://github.com/krysiolol/Cell/releases
+Use [Instance Spell Collector](https://www.curseforge.com/wow/addons/instance-spell-collector) to collect debuffs. Then create a PR or submit a ticket on GitHub.
 
----
+&nbsp;
 
-## Important
+## Localization
 
-Do NOT download:
-- `Source code (zip)`
-- `Source code (tar.gz)`
+If you want to help with the localization, please visit <https://legacy.curseforge.com/wow/addons/cell/localization>, instead of creating a PR.
 
-Those files do not include the embedded addon libraries required for WoW.
+&nbsp;
 
----
+## About Pull Requests
 
-# Compatibility
+- Before submitting any PRs related to new features or feature optimizations/changes, it's best to ask me first. Otherwise, there's a high chance they won't be accepted.
+- Features that are listed as "not supported" above will be rejected.
 
-Compatible with:
+If a PR is not accepted, it might not be because it's not good enough, it just doesn't align with my design philosophy.
+For rejected PRs, I suggest you implement them through code snippets.
+What I want to express is that I don't oppose any code snippets making changes to Cell, even if it's not what I envisioned.
+Regardless, I appreciate all the contributions you've made!
 
-- Retail WoW
-- Experimental environments
-- Custom UI setups
+&nbsp;
 
-Works especially well alongside:
+## Misc
 
-- WeakAuras
-- OmniCD
-- BigDebuffs
-- ElvUI
-- Details
-- Plater
+Discord: <https://discord.gg/9PSe3fKQGJ>
 
----
+简体中文介绍在这里: <https://github.com/enderneko/Cell/blob/master/README_zhCN.md>
 
-# Philosophy
-
-This fork follows a different philosophy from upstream Cell.
-
-The main focus is:
-
-- usability
-- customization
-- experimentation
-- healer-focused gameplay
-- advanced raid environments
-
-Because of this:
-
-- some features may be unstable
-- some updates may be breaking
-- behavior may differ from official Cell
-
----
-
-# Contributing
-
-Contributions are welcome.
-
-Bug reports, fixes, ideas and suggestions are appreciated.
-
-If reporting an issue, please include:
-- WoW version
-- Addon version
-- Lua errors
-- Reproduction steps
-
----
-
-# Known Differences From Upstream
-
-This fork may:
-- include unfinished code
-- behave differently
-- contain temporary implementations
-- receive rapid experimental updates
-- prioritize functionality over minimalism
-
----
-
-# Support
-
-## GitHub Issues
-https://github.com/krysiolol/Cell/issues
-
-## Repository
-https://github.com/krysiolol/Cell
-
----
-
-# Maintainer
-
-<div align="center">
-
-## krysiolol
-
-Custom UI creator, WoW player and addon tinkerer.
-
-</div>
-
----
-
-# Credits
-
-## Original Authors
-- enderneko
-- jdtoppin
-- Cell contributors
-
-## Fork Maintainer
-- krysiolol
-
-## Community
-Thanks to all addon developers, testers and players supporting the WoW UI community.
-
----
-
-# Disclaimer
-
-This project is unofficial and is not affiliated with Blizzard Entertainment.
-
-World of Warcraft is a trademark of Blizzard Entertainment.
-
-Use this addon at your own discretion.
-
----
-
-<div align="center">
-
-### Built for healers, tweakers and UI nerds.
-
-</div>
+NGA上的发布贴: <https://bbs.nga.cn/read.php?tid=23488341>

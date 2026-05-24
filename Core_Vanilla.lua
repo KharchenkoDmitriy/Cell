@@ -1,4 +1,4 @@
----@class Cell
+﻿---@class Cell
 local Cell = select(2, ...)
 _G.Cell = Cell
 
@@ -255,8 +255,10 @@ function eventFrame:ADDON_LOADED(arg1)
                 },
                 ["useCleuHealthUpdater"] = false,
                 ["translit"] = false,
+                ["localeOverride"] = "auto",
             }
         end
+        if CellDB["general"]["localeOverride"] == nil then CellDB["general"]["localeOverride"] = "auto" end
 
         -- nicknames ------------------------------------------------------------------------------
         if type(CellDB["nicknames"]) ~= "table" then
@@ -896,3 +898,4 @@ function SlashCmdList.CELL(msg, editbox)
         )
     end
 end
+

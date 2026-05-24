@@ -1290,11 +1290,15 @@ end
 local function ForEachAuraCache(button, filter, func)
     if filter == "HARMFUL" then
         for auraInstanceID, aura in next, button._debuffs_cache do
-            func(button, aura)
+            if F.IsValueNonSecret(auraInstanceID) then
+                func(button, aura)
+            end
         end
     elseif filter == "HELPFUL" then
         for auraInstanceID, aura in next, button._buffs_cache do
-            func(button, aura)
+            if F.IsValueNonSecret(auraInstanceID) then
+                func(button, aura)
+            end
         end
     end
 end
@@ -1365,7 +1369,17 @@ local function CanPlayerDispelAura(unit, auraInfo, debuffType)
     if Cell.isMidnight and _IsAuraFilteredOut and unit and auraInfo and auraInfo.auraInstanceID then
         local isFiltered = _IsAuraFilteredOut(unit, auraInfo.auraInstanceID, "HARMFUL|RAID_PLAYER_DISPELLABLE")
         if F.IsValueNonSecret(isFiltered) then
-            return not isFiltered
+            if not isFiltered then
+                return true
+            end
+            
+            -- Fallback for Blizzard API bugs:
+            -- Shaman Poison Cleansing Totem is not recognized by Blizzard's filter
+            if Cell.vars.playerClassID == 7 and debuffType == "Poison" then
+                return I.CanDispel("Poison")
+            end
+            
+            return false
         end
     end
 
@@ -1378,6 +1392,10 @@ end
 
 
 local function HandleDebuff(self, auraInfo)
+    if not auraInfo or not F.IsValueNonSecret(auraInfo.auraInstanceID) then
+        return
+    end
+
     local auraInstanceID = auraInfo.auraInstanceID
     local unit = self.states.displayedUnit
 
@@ -1386,24 +1404,18 @@ local function HandleDebuff(self, auraInfo)
     local count = auraInfo.applications
     local spellId = auraInfo.spellId
 
-    -- Dispel detection (pass-through):
-    -- aura.dispelName == nil → not dispellable (safe: secrets never equal nil)
-    -- not (aura.dispelName == nil) → dispellable (covers secret string and plain string)
+    -- Dispel detection
     local isDispellable = not (auraInfo.dispelName == nil)
     local debuffType
     if auraInfo._hasSecrets then
-        -- Secret aura: can't read dispelName as a Lua string for type matching.
         debuffType = ""
     else
         debuffType = auraInfo.dispelName or ""
     end
 
-    -- check Bleed (guards internally against secret values)
     debuffType = I.CheckDebuffType(debuffType, spellId)
 
-    -- Duration: secret auras use 0 placeholders for Lua logic
-    -- (display uses SetCooldownFromAura with C-level DurationObject APIs).
-    -- Non-secret auras still get real values for Lua arithmetic paths.
+    -- Duration handling for secret auras
     local start, duration
     if auraInfo._hasSecrets then
         start = 0
@@ -1413,22 +1425,14 @@ local function HandleDebuff(self, auraInfo)
         duration = auraInfo.duration
         start = expirationTime - duration
     end
-    local source = auraInfo.sourceUnit
 
     auraInfo.refreshing = false
 
-    if _dispelTraceEnabled then
-        -- print() is C-level and accepts secret values; avoid tostring() which crashes on secrets
-        print("|cff00ff00[Dispel]|r", "id=", auraInstanceID, "dispel=", debuffType,
-            "rawDispel=", auraInfo.dispelName, "secrets=", auraInfo._hasSecrets)
-    end
-
-    -- duration ~= nil is safe on secrets (secrets never equal nil)
     if Cell.isMidnight or (duration ~= nil) then
         UpdateAuraRefreshState(auraInfo)
         self._debuffs_cache[auraInstanceID] = auraInfo
 
-        -- Classification: use _hasSecrets to choose between Lua lookup vs server filter
+        -- Classification
         local isBig = false
         local isBlacklisted = false
         local isDispelBlacklisted = false
@@ -1447,7 +1451,6 @@ local function HandleDebuff(self, auraInfo)
         end
 
         if enabledIndicators["debuffs"] and not isBlacklisted then
-            -- all debuffs / only dispellableByMe
             local canShowDebuff = not indicatorBooleans["debuffs"]
             if not canShowDebuff then
                 canShowDebuff = GetCanPlayerDispelAura()
@@ -1464,28 +1467,25 @@ local function HandleDebuff(self, auraInfo)
         -- user created indicators
         I.UpdateCustomIndicators(self, auraInfo)
 
-        -- prepare raidDebuffs
+        -- raidDebuffs
         local order = I.GetDebuffOrder(name, spellId, count)
-        -- Tier 2: secret aura → server RAID filter
-        if not order and auraInfo._hasSecrets and enabledIndicators["raidDebuffs"]
-            and _IsAuraFilteredOut and unit then
-            local isFiltered = _IsAuraFilteredOut(unit,
-                auraInstanceID, "HARMFUL|RAID")
-            -- Not filtered (false) or secret result → show as raid debuff
+        if not order and auraInfo._hasSecrets and enabledIndicators["raidDebuffs"] and _IsAuraFilteredOut and unit then
+            local isFiltered = _IsAuraFilteredOut(unit, auraInstanceID, "HARMFUL|RAID")
             if not F.IsValueNonSecret(isFiltered) or isFiltered == false then
                 order = 100
             end
         end
-        -- Tier 3: encounter fallback for unidentified secret debuffs
-        if not order and auraInfo._hasSecrets and enabledIndicators["raidDebuffs"]
-            and IsEncounterInProgress and IsEncounterInProgress() then
-            order = 100
-        end
+        -- NOTE:
+        -- Do NOT auto-promote all secret debuffs to raidDebuffs just because an
+        -- encounter is active. In M+/raid this can incorrectly route normal debuffs
+        -- into the RaidDebuffs indicator position.
+        -- We only use the filtered-out check above as a fallback signal.
+
         if enabledIndicators["raidDebuffs"] and order then
             auraInfo.raidDebuffOrder = order
             tinsert(self._debuffs_raid, auraInstanceID)
 
-            if not indicatorBooleans["raidDebuffs"] then -- glow all
+            if not indicatorBooleans["raidDebuffs"] then
                 local glowType, glowOptions = I.GetDebuffGlow(name, spellId, count)
                 if glowType and glowType ~= "None" then
                     auraInfo.raidDebuffGlowType = glowType
@@ -1496,7 +1496,6 @@ local function HandleDebuff(self, auraInfo)
         end
 
         if enabledIndicators["dispels"] then
-            -- all dispels / only dispellableByMe
             local canShowDispel = not indicatorBooleans["dispels"]["dispellableByMe"]
             if not canShowDispel then
                 canShowDispel = GetCanPlayerDispelAura()
@@ -1511,8 +1510,6 @@ local function HandleDebuff(self, auraInfo)
                     end
                 end
             elseif canShowDispel and auraInfo._hasSecrets and isDispellable and unit then
-                -- Secret dispels have no Lua-readable type, so keep one aura around for
-                -- the curve-based fallback in UpdateDebuffs.
                 self._dispelAuraID = auraInstanceID
                 self._dispelUnit = unit
             end
@@ -1526,21 +1523,17 @@ local function HandleDebuff(self, auraInfo)
             else
                 self.indicators.crowdControls[self._debuffs.crowdControlsFound]:SetCooldown(start, duration, debuffType, icon, count, auraInfo.refreshing)
             end
-            -- remove from debuffs
             self._debuffs_big[auraInstanceID] = nil
             self._debuffs_normal[auraInstanceID] = nil
         end
 
-        -- Per-aura check: only compare spellId if non-secret
+        -- specific debuffs
         if not auraInfo._hasSecrets and spellId then
-            -- resurrections: å›¾è…¾å¤ç"Ÿ/å¤ç"Ÿ
             if spellId == 255234 or spellId == 225080 then
-                -- NOTE: this rez lasts longer than the debuff
                 self._debuffs.resurrectionFound = true
                 self.states.hasRezDebuff = true
             end
 
-            -- BG orbs
             if spellId == 121164 then
                 self.states.BGOrb = "blue"
             elseif spellId == 121175 then
@@ -1847,6 +1840,10 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
     -- user created indicators
     I.ShowCustomIndicators(self, "debuff")
 
+    if self.indicators.privateAuras and self.indicators.privateAuras.UpdateDispelOverlayVisibility then
+        self.indicators.privateAuras:UpdateDispelOverlayVisibility()
+    end
+
     wipe(self._debuffs_normal)
     wipe(self._debuffs_big)
     wipe(self._debuffs_dispel)
@@ -1887,6 +1884,10 @@ local function GetRecentSecretHelpfulCastKind(self)
 end
 
 local function HandleBuff(self, auraInfo)
+    if not auraInfo or not F.IsValueNonSecret(auraInfo.auraInstanceID) then
+        return
+    end
+
     local unit = self.states.displayedUnit
     local auraInstanceID = auraInfo.auraInstanceID
 
@@ -1896,10 +1897,7 @@ local function HandleBuff(self, auraInfo)
     local spellId = auraInfo.spellId
     local source = auraInfo.sourceUnit
 
-    -- Duration: secret auras on Midnight use 0 placeholders for Lua logic
-    -- (display uses SetCooldownFromAura with C-level DurationObject APIs).
-    -- Non-secret auras on Midnight still get real values for indicators that
-    -- need Lua arithmetic (e.g. tankActiveMitigation StatusBar).
+    -- Duration handling for secret auras
     local start, duration
     if auraInfo._hasSecrets then
         start = 0
@@ -1912,22 +1910,19 @@ local function HandleBuff(self, auraInfo)
 
     auraInfo.refreshing = false
 
-    -- duration ~= nil is safe on secrets (secrets never equal nil)
     if Cell.isMidnight or (duration ~= nil) then
         UpdateAuraRefreshState(auraInfo)
         self._buffs_cache[auraInstanceID] = auraInfo
 
-        -- defensiveCooldowns / externalCooldowns / allCooldowns
         local isDefensive = I.IsDefensiveCooldown(name, spellId)
         local isExternal = I.IsExternalCooldown(name, spellId, source, unit)
 
-        -- Secret auras: fall back to server-side aura filters
+        -- Secret aura fallback using server filters
         if not isDefensive and not isExternal and auraInfo._hasSecrets and _IsAuraFilteredOut then
             isExternal = not _IsAuraFilteredOut(unit, auraInstanceID, "HELPFUL|EXTERNAL_DEFENSIVE")
             if not isExternal then
                 isDefensive = not _IsAuraFilteredOut(unit, auraInstanceID, "HELPFUL|BIG_DEFENSIVE")
             end
-            -- Catch remaining raid-important secret buffs (e.g. Power Infusion)
             if not isDefensive and not isExternal then
                 local isRaidImportant = not _IsAuraFilteredOut(unit, auraInstanceID, "HELPFUL|RAID")
                 if isRaidImportant then
@@ -1941,14 +1936,12 @@ local function HandleBuff(self, auraInfo)
             end
         end
 
-        -- Check if this is the player's own cast (for color differentiation)
+        -- Player cast detection
         local isPlayerCast = false
         if isExternal or isDefensive then
             if not auraInfo._hasSecrets then
-                -- Non-secret: check sourceUnit directly
                 isPlayerCast = source == "player" or source == "pet"
             elseif _IsAuraFilteredOut then
-                -- Secret: use |PLAYER suffix on server filters
                 if isExternal then
                     isPlayerCast = not _IsAuraFilteredOut(unit, auraInstanceID, "HELPFUL|EXTERNAL_DEFENSIVE|PLAYER")
                 end
@@ -1961,10 +1954,9 @@ local function HandleBuff(self, auraInfo)
             end
         end
 
-        -- Border color: green for player's own casts, yellow for others
-        local borderR, borderG, borderB = 1, 0.85, 0  -- yellow (default)
+        local borderR, borderG, borderB = 1, 0.85, 0
         if isPlayerCast then
-            borderR, borderG, borderB = 0, 0.8, 0  -- green
+            borderR, borderG, borderB = 0, 0.8, 0
         end
 
         if enabledIndicators["defensiveCooldowns"] and isDefensive and self._buffs.defensiveFound < indicatorNums["defensiveCooldowns"] then
@@ -2006,13 +1998,11 @@ local function HandleBuff(self, auraInfo)
             frame.auraInstanceID = auraInstanceID
         end
 
-        -- tankActiveMitigation
         if enabledIndicators["tankActiveMitigation"] and I.IsTankActiveMitigation(spellId) then
             self.indicators.tankActiveMitigation:SetCooldown(start, duration)
             self._buffs.tankActiveMitigationFound = true
         end
 
-        -- drinking
         if enabledIndicators["statusText"] and I.IsDrinking(name) then
             if not self.indicators.statusText:GetStatus() then
                 self.indicators.statusText:SetStatus("DRINKING")
@@ -2021,10 +2011,8 @@ local function HandleBuff(self, auraInfo)
             self._buffs.drinkingFound = true
         end
 
-        -- user created indicators
         I.UpdateCustomIndicators(self, auraInfo)
 
-        -- Per-aura check: only compare spellId if non-secret
         if not auraInfo._hasSecrets and spellId then
             if spellId == 156621 then
                 self.states.BGFlag = "alliance"
@@ -4239,21 +4227,26 @@ Cell.RegisterCallback("LeaveInstance", "UnitButton_LeaveInstance", EnterLeaveIns
 local function UnitButton_OnAttributeChanged(self, name, value)
     if name == "unit" then
         if not value or value ~= self.states.unit then
-            -- NOTE: when unitId for this button changes
-            if self.__unitGuid then -- self.__unitGuid is deleted when hide
-                -- print("deleteUnitGuid:", self:GetName(), self.states.unit, self.__unitGuid)
-                if not self.isSpotlight then Cell.vars.guids[self.__unitGuid] = nil end
+            -- FIX: Safe cleanup with secret key protection
+            if self.__unitGuid then
+                if not self.isSpotlight and F.IsValueNonSecret(self.__unitGuid) then
+                    Cell.vars.guids[self.__unitGuid] = nil
+                end
                 self.__unitGuid = nil
             end
+
             if self.__unitName then
-                if not self.isSpotlight then Cell.vars.names[self.__unitName] = nil end
+                if not self.isSpotlight and F.IsValueNonSecret(self.__unitName) then
+                    Cell.vars.names[self.__unitName] = nil
+                end
                 self.__unitName = nil
             end
+
             self._recentSecretHelpfulCastKind = nil
             self._recentSecretHelpfulCastAt = nil
             self._recentSecretHelpfulCastSpellId = nil
             wipe(self.states)
-            -- Reset calculator predicted values to prevent stale data from previous unit
+
             if self.widgets and self.widgets.healthCalculator then
                 self.widgets.healthCalculator:ResetPredictedValues()
             end
@@ -4261,30 +4254,15 @@ local function UnitButton_OnAttributeChanged(self, name, value)
 
         -- private auras
         if self.states.unit ~= value then
-            -- print("unitChanged:", self:GetName(), value)
             self.indicators.privateAuras:UpdatePrivateAuraAnchor(value)
         end
 
         if type(value) == "string" then
             self.states.unit = value
             self.states.displayedUnit = value
-            if string.find(value, "^raid%d+$") then Cell.unitButtons.raid.units[value] = self end
-
-            -- range
-            -- if value ~= "focus" and not strfind(value, "target$") then
-            --     self:RegisterUnitEvent("UNIT_IN_RANGE_UPDATE", value)
-            -- end
-
-            -- for omnicd
-            if string.match(value, "raid%d") then
-                local i = string.match(value, "%d")
-                _G["CellRaidFrameMember"..i] = self
-                self.unit = value
+            if string.find(value, "^raid%d+$") then 
+                Cell.unitButtons.raid.units[value] = self 
             end
-
-            -- ResetAuraTables(self)
-        -- else
-        --     self:UnregisterEvent("UNIT_IN_RANGE_UPDATE")
         end
     end
 end
@@ -4323,25 +4301,30 @@ local function UnitButton_OnShow(self)
 end
 
 local function UnitButton_OnHide(self)
-    -- print(GetTime(), "OnHide", self:GetName())
     UnitButton_UnregisterEvents(self)
-
     ResetAuraTables(self)
 
-    -- NOTE: update Cell.vars.guids
-    -- print("hide", self.states.unit, self.__unitGuid, self.__unitName)
+    -- FIX: No intentar indexar con secret keys
     if self.__unitGuid then
-        if not self.isSpotlight then Cell.vars.guids[self.__unitGuid] = nil end
+        if not self.isSpotlight and F.IsValueNonSecret(self.__unitGuid) then
+            Cell.vars.guids[self.__unitGuid] = nil
+        end
         self.__unitGuid = nil
     end
+
     if self.__unitName then
-        if not self.isSpotlight then Cell.vars.names[self.__unitName] = nil end
+        if not self.isSpotlight and F.IsValueNonSecret(self.__unitName) then
+            Cell.vars.names[self.__unitName] = nil
+        end
         self.__unitName = nil
     end
+
     self.__displayedGuid = nil
     self._updateRequired = nil
+
     F.RemoveElementsExceptKeys(self.states, "unit", "displayedUnit")
-    -- Reset calculator predicted values so hidden button doesn't hold stale data
+
+    -- Reset calculator
     if self.widgets and self.widgets.healthCalculator then
         self.widgets.healthCalculator:ResetPredictedValues()
     end
@@ -4365,65 +4348,55 @@ end
 
 local UNKNOWN, UNKNOWNOBJECT = _G.UNKNOWN, _G.UNKNOWNOBJECT
 local function UnitButton_OnTick(self)
-    -- print(GetTime(), "OnTick", self._updateRequired, self:GetAttribute("refreshOnUpdate"), self:GetName())
     local e = (self.__tickCount or 0) + 1
-    if e >= 2 then -- every 0.5 second
+    if e >= 2 then
         e = 0
 
         if self.states.unit and self.states.displayedUnit then
             local displayedGuid = UnitGUID(self.states.displayedUnit)
-            -- UnitGUID and __displayedGuid may be secret strings; == comparison on secrets
-            -- is safe (secrets never equal non-secrets), but ~= crashes. Use == nil check
-            -- and F.IsValueNonSecret to guard the comparison.
+            
             local guidChanged = false
             if not F.IsValueNonSecret(displayedGuid) or not F.IsValueNonSecret(self.__displayedGuid) then
-                -- Secret GUID: assume changed (forces update, safe fallback)
                 guidChanged = true
             else
                 guidChanged = displayedGuid ~= self.__displayedGuid
             end
+
             if guidChanged then
-                -- NOTE: displayed unit entity changed
                 F.RemoveElementsExceptKeys(self.states, "unit", "displayedUnit")
                 self.__displayedGuid = displayedGuid
-                if displayedGuid ~= nil then --? clearing unit may come before hiding
+                if displayedGuid ~= nil then
                     self._updateRequired = 1
                     self._powerUpdateRequired = 1
                 end
             end
 
             local guid = UnitGUID(self.states.unit)
-            -- Same secret guard for unit GUID comparison
             local unitGuidChanged = false
+
             if not F.IsValueNonSecret(guid) or not F.IsValueNonSecret(self.__unitGuid) then
                 unitGuidChanged = guid ~= nil
             else
                 unitGuidChanged = guid and guid ~= self.__unitGuid
             end
+
             if unitGuidChanged then
-                -- print("guidChanged:", self:GetName(), self.states.unit, guid)
-                -- NOTE: unit entity changed
-                -- update Cell.vars.guids
                 self.__unitGuid = guid
-                -- On Midnight 12.0.0+, GUIDs for non-player units in instances are secret
-                -- Can't use a secret as a table key  -- only store non-secret GUIDs
-                if not self.isSpotlight then
-                    if F.IsValueNonSecret(guid) then
-                        Cell.vars.guids[guid] = self.states.unit
-                    end
+                
+                if not self.isSpotlight and F.IsValueNonSecret(guid) then
+                    Cell.vars.guids[guid] = self.states.unit
                 end
 
-                -- NOTE: only save players' names
                 if UnitIsPlayer(self.states.unit) then
-                    -- update Cell.vars.names
                     local name = GetUnitName(self.states.unit, true)
-                    if (name and self.__nameRetries and self.__nameRetries >= 4) or (name and name ~= UNKNOWN and name ~= UNKNOWNOBJECT) then
+                    if (name and self.__nameRetries and self.__nameRetries >= 4) or 
+                       (name and name ~= UNKNOWN and name ~= UNKNOWNOBJECT) then
                         self.__unitName = name
-                        if not self.isSpotlight then Cell.vars.names[name] = self.states.unit end
+                        if not self.isSpotlight and F.IsValueNonSecret(name) then 
+                            Cell.vars.names[name] = self.states.unit 
+                        end
                         self.__nameRetries = nil
                     else
-                        -- NOTE: update on next tick
-                        -- 国服可以起名为"未知目标"，干！就只多重试4次好了
                         self.__nameRetries = (self.__nameRetries or 0) + 1
                         self.__unitGuid = nil
                     end
@@ -4434,17 +4407,13 @@ local function UnitButton_OnTick(self)
 
     self.__tickCount = e
 
-    -- !TODO: use UNIT_DISTANCE_CHECK_UPDATE and UNIT_IN_RANGE_UPDATE events in 10.1.5
-    -- if self.states.displayedUnit == "target" or self.states.displayedUnit == "focus" then
-        UnitButton_UpdateInRange(self)
-    -- end
+    UnitButton_UpdateInRange(self)
 
     if self._updateRequired and self._indicatorsReady then
         self._updateRequired = nil
         UnitButton_UpdateAll(self)
     end
 
-    --! for Xtarget
     if self:GetAttribute("refreshOnUpdate") then
         UnitButton_UpdateAll(self)
     end

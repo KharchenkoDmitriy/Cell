@@ -156,85 +156,80 @@ end
 
 
 -- returns the number of characters in a UTF-8 string
+-- Safe utf8len for Midnight 12.0+ (protects against secret strings)
 local function utf8len (s)
-	-- argument checking
-	if type(s) ~= "string" then
-		error("bad argument #1 to 'utf8len' (string expected, got ".. type(s).. ")")
-	end
+    if type(s) ~= "string" then
+        error("bad argument #1 to 'utf8len' (string expected, got ".. type(s).. ")")
+    end
 
-	local pos = 1
-	local bytes = s:len()
-	local len = 0
+    -- Midnight 12.0+: secret string protection
+    if issecretvalue and issecretvalue(s) then
+        return 0  -- or 1, doesn't matter, we won't truncate secret names anyway
+    end
 
-	while pos <= bytes do
-		len = len + 1
-		pos = pos + utf8charbytes(s, pos)
-	end
+    local pos = 1
+    local bytes = s:len()
+    local len = 0
 
-	return len
+    while pos <= bytes do
+        len = len + 1
+        pos = pos + utf8charbytes(s, pos)
+    end
+
+    return len
 end
 
--- install in the string library
-if not string.utf8len then
-	string.utf8len = utf8len
-end
-
-
--- functions identically to string.sub except that i and j are UTF-8 characters
--- instead of bytes
+-- Safe utf8sub for Midnight 12.0+ 
 local function utf8sub (s, i, j)
-	-- argument defaults
-	j = j or -1
+    if type(s) ~= "string" then
+        error("bad argument #1 to 'utf8sub' (string expected, got ".. type(s).. ")")
+    end
 
-	-- argument checking
-	if type(s) ~= "string" then
-		error("bad argument #1 to 'utf8sub' (string expected, got ".. type(s).. ")")
-	end
-	if type(i) ~= "number" then
-		error("bad argument #2 to 'utf8sub' (number expected, got ".. type(i).. ")")
-	end
-	if type(j) ~= "number" then
-		error("bad argument #3 to 'utf8sub' (number expected, got ".. type(j).. ")")
-	end
+    -- Midnight 12.0+: secret string protection
+    if issecretvalue and issecretvalue(s) then
+        return s  -- return the original secret string as-is
+    end
 
-	local pos = 1
-	local bytes = s:len()
-	local len = 0
+    -- argument defaults
+    j = j or -1
 
-	-- only set l if i or j is negative
-	local l = (i >= 0 and j >= 0) or s:utf8len()
-	local startChar = (i >= 0) and i or l + i + 1
-	local endChar   = (j >= 0) and j or l + j + 1
+    if type(i) ~= "number" then
+        error("bad argument #2 to 'utf8sub' (number expected, got ".. type(i).. ")")
+    end
+    if type(j) ~= "number" then
+        error("bad argument #3 to 'utf8sub' (number expected, got ".. type(j).. ")")
+    end
 
-	-- can't have start before end!
-	if startChar > endChar then
-		return ""
-	end
+    local pos = 1
+    local bytes = s:len()
+    local len = 0
 
-	-- byte offsets to pass to string.sub
-	local startByte, endByte = 1, bytes
+    local l = (i >= 0 and j >= 0) or s:utf8len()
+    local startChar = (i >= 0) and i or l + i + 1
+    local endChar   = (j >= 0) and j or l + j + 1
 
-	while pos <= bytes do
-		len = len + 1
+    if startChar > endChar then
+        return ""
+    end
 
-		if len == startChar then
-			startByte = pos
-		end
+    local startByte, endByte = 1, bytes
 
-		pos = pos + utf8charbytes(s, pos)
+    while pos <= bytes do
+        len = len + 1
 
-		if len == endChar then
-			endByte = pos - 1
-			break
-		end
-	end
+        if len == startChar then
+            startByte = pos
+        end
 
-	return s:sub(startByte, endByte)
-end
+        pos = pos + utf8charbytes(s, pos)
 
--- install in the string library
-if not string.utf8sub then
-	string.utf8sub = utf8sub
+        if len == endChar then
+            endByte = pos - 1
+            break
+        end
+    end
+
+    return s:sub(startByte, endByte)
 end
 
 
@@ -247,6 +242,11 @@ local function utf8replace (s, mapping)
 	if type(mapping) ~= "table" then
 		error("bad argument #2 to 'utf8replace' (table expected, got ".. type(mapping).. ")")
 	end
+
+    -- Midnight 12.0+: secret string protection
+    if issecretvalue and issecretvalue(s) then
+        return s
+    end
 
 	local pos = 1
 	local bytes = s:len()
@@ -294,6 +294,11 @@ local function utf8reverse (s)
 	if type(s) ~= "string" then
 		error("bad argument #1 to 'utf8reverse' (string expected, got ".. type(s).. ")")
 	end
+
+    -- Midnight 12.0+: secret string protection
+    if issecretvalue and issecretvalue(s) then
+        return s
+    end
 
 	local bytes = s:len()
 	local pos = bytes

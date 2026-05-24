@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 local F = Cell.funcs
 local I = Cell.iFuncs
@@ -30,6 +30,17 @@ local requiredByEveryone = {}
 local available = {}
 local unaffected = {}
 
+-- Extra aura spellIDs used by Blizzard for some class buffs in specific contexts.
+-- Applied generically during spell-name bootstrap so all class buffs can opt-in.
+local buffSpellIdAliases = {
+    stamina = {79104, 79105}, -- Power Word: Fortitude (contextual aura IDs)
+    versatility = {20217}, -- Mark of the Wild legacy aura variant
+    mastery = {52109}, -- Skyfury legacy/variant entry
+    intellect = {23028, 61316}, -- Arcane Brilliance / Dalaran Brilliance variants
+    attackPower = {52437, 440364}, -- Battle Shout legacy/timeless scroll variants
+    movement = {381741, 381748, 381751}, -- Blessing of the Bronze variants
+}
+
 if Cell.isRetail then
     buffs = {
         stamina = {
@@ -37,7 +48,7 @@ if Cell.isRetail then
             icon = 135987,
             order = 1,
             provider = {
-                PRIEST = {id = 21562, level = 6}, -- Power Word: Fortitude - 真言术：韧
+                PRIEST = {id = 21562, level = 6}, -- Power Word: Fortitude - çœŸè¨€æœ¯ï¼šéŸ§
             }
         },
         versatility = {
@@ -45,7 +56,7 @@ if Cell.isRetail then
             icon = 136078,
             order = 2,
             provider = {
-                DRUID = {id = 1126, level = 9}, -- Mark of the Wild - 野性印记
+                DRUID = {id = 1126, level = 9}, -- Mark of the Wild - é‡Žæ€§å°è®°
             }
         },
         mastery = {
@@ -53,7 +64,7 @@ if Cell.isRetail then
             icon = 4630367,
             order = 3,
             provider = {
-                SHAMAN = {id = 462854, level = 16}, -- Skyfury - 天怒
+                SHAMAN = {id = 462854, level = 16}, -- Skyfury - å¤©æ€’
             }
         },
         intellect = {
@@ -61,7 +72,7 @@ if Cell.isRetail then
             icon = 135932,
             order = 4,
             provider = {
-                MAGE = {id = 1459, level = 8}, -- Arcane Brilliance - 奥术智慧
+                MAGE = {id = 1459, level = 8}, -- Arcane Brilliance - å¥¥æœ¯æ™ºæ…§
             }
         },
         attackPower = {
@@ -69,7 +80,7 @@ if Cell.isRetail then
             icon = 132333,
             order = 5,
             provider = {
-                WARRIOR = {id = 6673, level = 10}, -- Battle Shout - 战斗怒吼
+                WARRIOR = {id = 6673, level = 10}, -- Battle Shout - æˆ˜æ–—æ€’å¼
             }
         },
         movement = {
@@ -77,7 +88,7 @@ if Cell.isRetail then
             icon = 4622448,
             order = 6,
             provider = {
-                EVOKER = {id = 364342, level = 30}, -- Blessing of the Bronze - 青铜龙的祝福
+                EVOKER = {id = 364342, level = 30}, -- Blessing of the Bronze - é’é“œé¾™çš„ç¥ç¦
             }
         }
     }
@@ -313,17 +324,28 @@ do
             classBuffs[class] = classBuffs[class] or {}
             classBuffs[class][buffKey] = info.level
 
+            local ids = {}
             if type(info.id) == "table" then
                 for _, spellId in ipairs(info.id) do
+                    tinsert(ids, spellId)
+                end
+            else
+                tinsert(ids, info.id)
+            end
+            if buffSpellIdAliases[buffKey] then
+                for _, spellId in ipairs(buffSpellIdAliases[buffKey]) do
+                    tinsert(ids, spellId)
+                end
+            end
+
+            local seen = {}
+            for _, spellId in ipairs(ids) do
+                if not seen[spellId] then
+                    seen[spellId] = true
                     local name, icon = F.GetSpellInfo(spellId)
                     if name then
                         Insert(class, buffKey, name, icon)
                     end
-                end
-            else
-                local name, icon = F.GetSpellInfo(info.id)
-                if name then
-                    Insert(class, buffKey, name, icon)
                 end
             end
         end
@@ -348,6 +370,12 @@ end
 local enabled
 local myUnit = ""
 local hasBuffProvider
+
+-- Danders-like behavior: hide Evoker movement buff (Blessing of the Bronze)
+-- during combat to avoid noisy/unstable tracking.
+local function IsTemporarilyHiddenBuff(buff)
+    return buff == "movement" and InCombatLockdown()
+end
 
 local function Reset(which)
     if not which or which == "available" then
@@ -572,7 +600,7 @@ end
 
 local function UpdateButtons()
     for _, buff in pairs(buffOrder) do
-        if available[buff] then
+        if available[buff] and not IsTemporarilyHiddenBuff(buff) then
             local n = F.Getn(unaffected[buff])
             if n == 0 then
                 buttons[buff].count:SetText("")
@@ -588,6 +616,10 @@ local function UpdateButtons()
                     buttons[buff]:StopGlow()
                 end
             end
+        else
+            buttons[buff].count:SetText("")
+            buttons[buff]:SetAlpha(1)
+            buttons[buff]:StopGlow()
         end
     end
 end
@@ -618,7 +650,7 @@ local function RepointButtons()
         local last
         for _, k in pairs(buffOrder) do
             P.ClearPoints(buttons[k])
-            if available[k] then
+            if available[k] and not IsTemporarilyHiddenBuff(k) then
                 buttons[k]:Show()
                 if last then
                     P.Point(buttons[k], point, last, relativePoint, offsetX, offsetY)
@@ -684,6 +716,11 @@ local GetAuraDataBySpellName = C_UnitAuras.GetAuraDataBySpellName
 
 local function UnitBuffExists(unit, buff)
     local names = buffs[buff]["names"]
+    if not names or #names == 0 then
+        -- Fail-open: if spell names cannot be resolved for this buff key, avoid
+        -- permanent false-positive "missing buff" indicators.
+        return true
+    end
     local aura
     for _, name in next, names do
         aura = GetAuraDataBySpellName(unit, name, "HELPFUL")
@@ -739,6 +776,17 @@ local function CheckUnit(unit, updateBtn)
     -- print("CheckUnit", unit)
     if not hasBuffProvider then return end
 
+    -- Midnight 12.0.0+: during restricted(secret) contexts aura reads can be
+    -- unreliable for "provided by me" checks, causing false missing-buff icons.
+    -- Prefer hiding missing indicators temporarily instead of showing wrong data.
+    if Cell.isMidnight and F.IsSecretContextActive and F.IsSecretContextActive() then
+        if missingBuffsFromMe[unit] then wipe(missingBuffsFromMe[unit]) end
+        hasBuffFromMe[unit] = nil
+        I.HideMissingBuffs(unit)
+        buffTrackerFrame._hadSecretContext = true
+        return
+    end
+
     if missingBuffsFromMe[unit] then wipe(missingBuffsFromMe[unit]) end
     hasBuffFromMe[unit] = nil
 
@@ -748,7 +796,9 @@ local function CheckUnit(unit, updateBtn)
         local required = spec and requiredBuffs[spec]
 
         for buff, hasProvider in next, available do
-            if hasProvider then
+            if IsTemporarilyHiddenBuff(buff) then
+                unaffected[buff][unit] = nil
+            elseif hasProvider then
                 if required == buff or requiredByEveryone[buff] then
                     local exists, providedByMe = UnitBuffExists(unit, buff)
                     if exists then
@@ -837,11 +887,15 @@ function buffTrackerFrame:GROUP_ROSTER_UPDATE(immediate)
         buffTrackerFrame:RegisterEvent("UNIT_FLAGS")
         buffTrackerFrame:RegisterEvent("PLAYER_UNGHOST")
         buffTrackerFrame:RegisterEvent("UNIT_AURA")
+        buffTrackerFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+        buffTrackerFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     else
         buffTrackerFrame:UnregisterEvent("READY_CHECK")
         buffTrackerFrame:UnregisterEvent("UNIT_FLAGS")
         buffTrackerFrame:UnregisterEvent("PLAYER_UNGHOST")
         buffTrackerFrame:UnregisterEvent("UNIT_AURA")
+        buffTrackerFrame:UnregisterEvent("PLAYER_REGEN_DISABLED")
+        buffTrackerFrame:UnregisterEvent("PLAYER_REGEN_ENABLED")
 
         Reset()
         RepointButtons()
@@ -868,6 +922,14 @@ function buffTrackerFrame:PLAYER_UNGHOST()
 end
 
 function buffTrackerFrame:UNIT_AURA(unit)
+    -- Restricted context just ended: rebuild full snapshot once so stale
+    -- missing-buff indicators are cleared immediately.
+    if buffTrackerFrame._hadSecretContext and (not F.IsSecretContextActive or not F.IsSecretContextActive()) then
+        buffTrackerFrame._hadSecretContext = nil
+        IterateAllUnits()
+        return
+    end
+
     if IsInRaid() then
         if unit:find("^raid%d+$") then
             CheckUnit(unit, true)
@@ -880,9 +942,15 @@ function buffTrackerFrame:UNIT_AURA(unit)
 end
 
 function buffTrackerFrame:PLAYER_REGEN_ENABLED()
-    buffTrackerFrame:UnregisterEvent("PLAYER_REGEN_ENABLED")
     RepointButtons()
     ResizeButtons()
+    IterateAllUnits()
+end
+
+function buffTrackerFrame:PLAYER_REGEN_DISABLED()
+    RepointButtons()
+    ResizeButtons()
+    IterateAllUnits()
 end
 
 buffTrackerFrame:SetScript("OnEvent", function(self, event, ...)
@@ -952,3 +1020,4 @@ local function UpdatePixelPerfect()
     end
 end
 Cell.RegisterCallback("UpdatePixelPerfect", "BuffTracker_UpdatePixelPerfect", UpdatePixelPerfect)
+

@@ -413,7 +413,11 @@ end
 -- Icon_OnUpdate
 -------------------------------------------------
 local function Icon_OnUpdate(frame, elapsed)
-    frame._remain = frame._duration - (GetTime() - frame._start)
+    if F.IsValueNonSecret(frame._duration) and F.IsValueNonSecret(frame._start) then
+        frame._remain = F.GetRemain(frame._start, frame._duration)
+    else
+        frame._remain = 0
+    end
     if frame._remain < 0 then frame._remain = 0 end
 
     if frame._remain > frame._threshold then
@@ -455,7 +459,11 @@ local function Icon_OnUpdate(frame, elapsed)
 end
 
 local function Icon_OnUpdate_ElapsedTime(frame, elapsed)
-    frame._remain = frame._duration - (GetTime() - frame._start)
+    if F.IsValueNonSecret(frame._duration) and F.IsValueNonSecret(frame._start) then
+        frame._remain = F.GetRemain(frame._start, frame._duration)
+    else
+        frame._remain = 0
+    end
     if frame._remain < 0 then frame._remain = 0 end
 
     if frame._remain > frame._threshold then
@@ -481,7 +489,11 @@ local function Icon_OnUpdate_ElapsedTime(frame, elapsed)
     end
 
     -- format
-    frame._elapsedTime = GetTime() - frame._start
+    if F.IsValueNonSecret(frame._start) then
+        frame._elapsedTime = GetTime() - frame._start
+    else
+        frame._elapsedTime = 0
+    end
     if frame._elapsedTime > frame._duration then frame._elapsedTime = frame._duration end
 
     if frame._elapsedTime > 60 then
@@ -1471,7 +1483,7 @@ local function Text_OnUpdateColor(frame)
 end
 
 local function Text_OnUpdateDuration(frame, elapsed)
-    frame._remain = frame._duration - (GetTime() - frame._start)
+    frame._remain = F.GetRemain(frame._start, frame._duration)
     if frame._remain < 0 then frame._remain = 0 end
 
     frame._elapsed = frame._elapsed + elapsed
@@ -1502,7 +1514,7 @@ local function Text_OnUpdate(frame, elapsed)
     if frame._elapsed >= 0.1 then
         frame._elapsed = 0
 
-        frame._remain = frame._duration - (GetTime() - frame._start)
+        frame._remain = F.GetRemain(frame._start, frame._duration)
         -- update color
         Text_OnUpdateColor(frame)
     end
@@ -1622,7 +1634,7 @@ local function Rect_OnUpdateColor(frame)
 end
 
 local function Rect_OnUpdate(frame, elapsed)
-    frame._remain = frame._duration - (GetTime() - frame._start)
+    frame._remain = F.GetRemain(frame._start, frame._duration)
     if frame._remain < 0 then frame._remain = 0 end
 
     frame._elapsed = frame._elapsed + elapsed
@@ -1734,7 +1746,7 @@ local function Bar_SetFont(bar, font1, font2)
 end
 
 local function Bar_OnUpdate(bar, elapsed)
-    bar._remain = bar._duration - (GetTime() - bar._start)
+    bar._remain = F.GetRemain(bar._start, bar._duration)
     if bar._remain < 0 then bar._remain = 0 end
     bar:SetValue(bar._remain)
 
@@ -1822,10 +1834,20 @@ end
 
 local function Bar_SetMaxValue(bar, maxValue)
     if maxValue[1]then
-        bar.maxValue = maxValue[2]
+        if bar.SetMinMaxValues then
+            local minValue, _ = bar:GetMinMaxValues()
+            bar:SetMinMaxValues(minValue, maxValue[2])
+        else
+            bar.maxValue = maxValue[2]
+        end
         bar.allowSmaller = maxValue[3]
     else
-        bar.maxValue = nil
+        if bar.SetMinMaxValues then
+            local minValue, _ = bar:GetMinMaxValues()
+            bar:SetMinMaxValues(minValue, 0)
+        else
+            bar.maxValue = nil
+        end
         bar.allowSmaller = nil
     end
 end
@@ -1860,7 +1882,7 @@ end
 -- CreateAura_Bars
 -------------------------------------------------
 local function Bars_OnUpdate(bar, elapsed)
-    bar._remain = bar._duration - (GetTime() - bar._start)
+    bar._remain = F.GetRemain(bar._start, bar._duration)
     if bar._remain < 0 then bar._remain = 0 end
     bar:SetValue(bar._remain)
 
@@ -1975,7 +1997,7 @@ local function Color_OnUpdate(color, elapsed)
     if color._elapsed >= 0.1 then
         color._elapsed = 0
 
-        color._remain = color._duration - (GetTime() - color._start)
+        color._remain = F.GetRemain(color._start, color._duration)
         -- update color
         if color._remain <= color.colors[6][1] then
             if color.state ~= 3 then
@@ -2117,7 +2139,7 @@ local function Texture_OnUpdate(texture, elapsed)
     if texture._elapsed >= 0.1 then
         texture._elapsed = 0
 
-        texture._remain = texture._duration - (GetTime() - texture._start)
+        texture._remain = F.GetRemain(texture._start, texture._duration)
         if texture._remain < 0 then texture._remain = 0 end
         texture.tex:SetAlpha(texture._remain / texture._duration * 0.9 + 0.1)
     end
@@ -2179,7 +2201,7 @@ local function Glow_OnUpdate(glow, elapsed)
     if glow._elapsed >= 0.1 then
         glow._elapsed = 0
 
-        glow._remain = glow._duration - (GetTime() - glow._start)
+        glow._remain = F.GetRemain(glow._start, glow._duration)
         if glow._remain < 0 then glow._remain = 0 end
         glow:SetAlpha(glow._remain / glow._duration * 0.9 + 0.1)
     end
@@ -2231,7 +2253,7 @@ end
 -- CreateAura_QuickAssistBars
 -------------------------------------------------
 local function QuickAssistBars_OnUpdate(bar, elapsed)
-    bar._remain = bar._duration - (GetTime() - bar._start)
+    bar._remain = F.GetRemain(bar._start, bar._duration)
     if bar._remain < 0 then bar._remain = 0 end
     bar:SetValue(bar._remain)
 end
@@ -2358,7 +2380,7 @@ end
 -- CreateAura_Overlay
 -------------------------------------------------
 local function Overlay_OnUpdate(overlay, elapsed)
-    overlay._remain = overlay._duration - (GetTime() - overlay._start)
+    overlay._remain = F.GetRemain(overlay._start, overlay._duration)
     if overlay._remain < 0 then overlay._remain = 0 end
     overlay:_SetValue(overlay._remain)
 
@@ -2449,7 +2471,7 @@ end
 -- CreateAura_Block
 -------------------------------------------------
 local function Block_OnUpdate_Duration(frame, elapsed)
-    frame._remain = frame._duration - (GetTime() - frame._start)
+    frame._remain = F.GetRemain(frame._start, frame._duration)
     if frame._remain < 0 then frame._remain = 0 end
 
     frame._elapsed = frame._elapsed + elapsed
@@ -2543,7 +2565,7 @@ local function Block_SetCooldown_Duration(frame, start, duration, debuffType, te
 end
 
 local function Block_OnUpdate_Stack(frame, elapsed)
-    frame._remain = frame._duration - (GetTime() - frame._start)
+    frame._remain = F.GetRemain(frame._start, frame._duration)
     if frame._remain < 0 then frame._remain = 0 end
 
     if frame._remain > frame._threshold then
@@ -2685,7 +2707,7 @@ end
 -- CreateAura_Blocks
 -------------------------------------------------
 local function Blocks_OnUpdate(frame, elapsed)
-    frame._remain = frame._duration - (GetTime() - frame._start)
+    frame._remain = F.GetRemain(frame._start, frame._duration)
     if frame._remain < 0 then frame._remain = 0 end
 
     if frame._remain > frame._threshold then
@@ -2799,7 +2821,7 @@ local function Border_OnUpdate(border, elapsed)
     if border._elapsed >= 0.1 then
         border._elapsed = 0
 
-        border._remain = border._duration - (GetTime() - border._start)
+        border._remain = F.GetRemain(border._start, border._duration)
         if border._remain < 0 then border._remain = 0 end
         border:SetAlpha(border._remain / border._duration * 0.9 + 0.1)
     end

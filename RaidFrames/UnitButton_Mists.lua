@@ -1372,6 +1372,10 @@ local function UnitButton_UpdateDebuffs(self)
     -- user created indicators
     I.ShowCustomIndicators(self, "debuff")
 
+    if self.indicators.privateAuras and self.indicators.privateAuras.UpdateDispelOverlayVisibility then
+        self.indicators.privateAuras:UpdateDispelOverlayVisibility()
+    end
+
     if enabledIndicators["powerWordShield"] and not self._debuffs.weakenedSoulFound then
         self.indicators.powerWordShield:SetWeakenedSoulCooldown()
     end

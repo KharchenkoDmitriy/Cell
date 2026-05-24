@@ -1,13 +1,10 @@
 ## Interface: 50503
 ## Title: Cell
-## Version: r275.9-beta
-## Author: enderneko
+## Version: r277.7.3
+## Author: enderneko, Krysio
 ## X-Flavor: Mists
 ## SavedVariables: CellDB, CellDBBackup
-
-## X-Curse-Project-ID: 409666
-## X-Wago-ID: qv63LLKb
-## X-WoWI-ID: 26244
+## LoadSavedVariablesFirst: 1
 
 Locales\LoadLocales.xml
 

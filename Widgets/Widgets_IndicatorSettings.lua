@@ -6029,9 +6029,9 @@ local function CreateSetting_PrivateAuraOptions(parent)
     local widget
 
     if not settingWidgets["privateAuraOptions"] then
-        widget = Cell.CreateFrame("CellIndicatorSettings_PrivateAuraOptions", parent, 240, 145)
+        widget = Cell.CreateFrame("CellIndicatorSettings_PrivateAuraOptions", parent, 240, 430)
         settingWidgets["privateAuraOptions"] = widget
-        widget.options = {true, false, 1, false, 1}
+        widget.options = {true, false, 1, false, 1, false, true, 1, 6, 0, "0"}
 
         widget.cb1 = Cell.CreateCheckButton(widget, L["Show countdown swipe"])
         widget.cb1:SetPoint("TOPLEFT", 5, -8)
@@ -6044,8 +6044,67 @@ local function CreateSetting_PrivateAuraOptions(parent)
         widget.borderScale = Cell.CreateSlider(L["Border Scale"], widget, 0.5, 2, 110, 0.05)
         widget.borderScale:SetPoint("LEFT", widget.maxAuras, "RIGHT", 25, 0)
 
+        widget.line = widget:CreateTexture(nil, "ARTWORK")
+        widget.line:SetPoint("TOPLEFT", widget.maxAuras, "BOTTOMLEFT", 0, -10)
+        widget.line:SetPoint("TOPRIGHT", widget.borderScale, "BOTTOMRIGHT", 0, -10)
+        widget.line:SetHeight(1)
+        widget.line:SetColorTexture(1, 1, 1, 0.2)
+
+        -- Separate block for private dispel overlay settings (own framed panel + margins)
+        widget.dispelBlock = Cell.CreateFrame("CellIndicatorSettings_PrivateAuraDispelBlock", widget, 230, 285)
+        widget.dispelBlock:SetPoint("TOPLEFT", widget.line, "BOTTOMLEFT", 0, -14)
+        widget.dispelBlock:Show()
+
+        widget.dispelTitle = widget.dispelBlock:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        widget.dispelTitle:SetPoint("TOPLEFT", 8, -8)
+        widget.dispelTitle:SetText(L["Private Dispel Overlay"])
+        widget.dispelTitle:SetTextColor(0.4, 0.85, 1)
+
+        widget.cb4 = Cell.CreateCheckButton(widget.dispelBlock, L["Show private dispel overlay"])
+        widget.cb4:SetPoint("TOPLEFT", widget.dispelTitle, "BOTTOMLEFT", 0, -8)
+        widget.cb5 = Cell.CreateCheckButton(widget.dispelBlock, L["Only dispellable by me"])
+        widget.cb5:SetPoint("TOPLEFT", widget.cb4, "BOTTOMLEFT", 0, -7)
+        widget.alpha = Cell.CreateSlider(L["Overlay Alpha"], widget.dispelBlock, 0, 1, 110, 0.05)
+        widget.alpha:SetPoint("TOPLEFT", widget.cb5, "BOTTOMLEFT", 0, -20)
+        widget.level = Cell.CreateSlider(L["Overlay Frame Level"], widget.dispelBlock, 0, 25, 110, 1)
+        widget.level:SetPoint("TOPLEFT", widget.alpha, "BOTTOMLEFT", 0, -48)
+        widget.inset = Cell.CreateSlider(L["Overlay Inset"], widget.dispelBlock, -20, 20, 110, 1)
+        widget.inset:SetPoint("TOPLEFT", widget.level, "BOTTOMLEFT", 0, -48)
+        widget.gradientLabel = widget.dispelBlock:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        widget.gradientLabel:SetPoint("TOPLEFT", widget.inset, "BOTTOMLEFT", 0, -20)
+        widget.gradientLabel:SetText(L["Gradient"])
+        widget.gradient = Cell.CreateDropdown(widget.dispelBlock, 110)
+        widget.gradient:SetPoint("TOPLEFT", widget.gradientLabel, "BOTTOMLEFT", 0, -6)
+        widget.gradient:SetItems({
+            {
+                ["text"] = L["Top"],
+                ["value"] = "0",
+                ["onClick"] = function()
+                    widget.options[11] = "0"
+                    if widget.func then widget.func(widget.options) end
+                end,
+            },
+            {
+                ["text"] = L["BOTTOM"],
+                ["value"] = "1",
+                ["onClick"] = function()
+                    widget.options[11] = "1"
+                    if widget.func then widget.func(widget.options) end
+                end,
+            },
+            {
+                ["text"] = L["Left"],
+                ["value"] = "2",
+                ["onClick"] = function()
+                    widget.options[11] = "2"
+                    if widget.func then widget.func(widget.options) end
+                end,
+            },
+        })
+
         -- callback
         function widget:SetFunc(func)
+            widget.func = func
             widget.cb1.onClick = function(checked)
                 widget.cb2:SetEnabled(checked)
                 widget.options[1] = checked
@@ -6073,17 +6132,55 @@ local function CreateSetting_PrivateAuraOptions(parent)
                 widget.options[5] = value
                 func(widget.options)
             end
+            widget.cb4.onClick = function(checked)
+                widget.options[6] = checked
+                widget.cb5:SetEnabled(checked)
+                widget.alpha:SetEnabled(checked)
+                widget.level:SetEnabled(checked)
+                widget.inset:SetEnabled(checked)
+                widget.gradient:SetEnabled(checked)
+                func(widget.options)
+            end
+            widget.cb5.onClick = function(checked)
+                widget.options[7] = checked
+                func(widget.options)
+            end
+            widget.alpha.afterValueChangedFn = function(value)
+                widget.options[8] = value
+                func(widget.options)
+            end
+            widget.level.afterValueChangedFn = function(value)
+                widget.options[9] = value
+                func(widget.options)
+            end
+            widget.inset.afterValueChangedFn = function(value)
+                widget.options[10] = value
+                func(widget.options)
+            end
         end
 
         -- show db value
         function widget:SetDBValue(t)
-            widget.options = {t[1], t[2], t[3] or 1, t[4] or false, t[5] or 1}
+            widget.options = {t[1], t[2], t[3] or 1, t[4] or false, t[5] or 1, t[6] or false, t[7] ~= false, t[8] or 1, t[9] or 6, t[10] or 0, tostring(t[11] or "0")}
             widget.cb1:SetChecked(t[1])
             widget.cb2:SetChecked(t[2])
             widget.cb2:SetEnabled(t[1])
             widget.cb3:SetChecked(t[4] or false)
             widget.maxAuras:SetValue(t[3] or 1)
             widget.borderScale:SetValue(t[5] or 1)
+            widget.cb4:SetChecked(t[6] or false)
+            widget.cb5:SetChecked(t[7] ~= false)
+            widget.alpha:SetValue(t[8] or 1)
+            widget.level:SetValue(t[9] or 6)
+            widget.inset:SetValue(t[10] or 0)
+            widget.gradient:SetSelectedValue(tostring(t[11] or "0"))
+
+            local enabled = t[6] or false
+            widget.cb5:SetEnabled(enabled)
+            widget.alpha:SetEnabled(enabled)
+            widget.level:SetEnabled(enabled)
+            widget.inset:SetEnabled(enabled)
+            widget.gradient:SetEnabled(enabled)
         end
     else
         widget = settingWidgets["privateAuraOptions"]

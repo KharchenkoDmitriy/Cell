@@ -24,6 +24,12 @@ select(2, ...).L = setmetatable({
     ["showTimer"] = "Show timer",
     ["showBackground"] = "Show background",
     ["dispellableByMe"] = "Only show debuffs dispellable by me",
+    ["Private Dispel Overlay"] = "Private Dispel Overlay",
+    ["Show private dispel overlay"] = "Show private dispel overlay",
+    ["Only dispellable by me"] = "Only dispellable by me",
+    ["Overlay Alpha"] = "Overlay Alpha",
+    ["Overlay Frame Level"] = "Overlay Frame Level",
+    ["Overlay Inset"] = "Overlay Inset",
     ["showDispelTypeIcons"] = "Show dispel type icons",
     ["castByMe"] = "Only show buffs cast by me",
     ["buffByMe"] = "Only show buffs I can apply",
@@ -88,9 +94,88 @@ select(2, ...).L = setmetatable({
     ["SNIPPETS_TIPS"] = "[Double-Click] to rename. [Shift-Click] to delete. All checked snippets will be automatically invoked at the end of Cell initialization process (in ADDON_LOADED event).",
     ["BACKUP_TIPS"] = "Backups are not always reliable, especially when they are too old. It is recommended to backup often. When sharing profiles, backups are not included.",
     ["BACKUP_TIPS2"] = "Note for Classic players: Backups do not include Click-Castings and Layout Auto Switch of other characters",
-
     ["CHANGELOGS"] = [[
-        <h2>If there are any issues after an update, check through all code snippets first.</h2>
+
+
+        <h1>r277.7.3-krysio Dispel Filters, Shaman Poison &amp; Taint Fixes</h1>
+        <h2>Raid Frames / Dispels</h2>
+        <p>* Fixed false-positive dispel indicators displaying non-dispellable debuffs (e.g. Diseases on Priests) when "Only show debuffs dispellable by me" is enabled, by restoring the Blizzard API filter as the primary source of truth.</p>
+        <p>* Isolated Shaman Poison Cleansing Totem tracking: Poisons remain correctly recognized as dispellable using internal fallbacks, bypassing Blizzard API filtration limitations.</p>
+        <p>* Restored proper user filter ('Only show debuffs dispellable by me') enforcement on secret/private auras within the debuff handling pipeline.</p>
+        <p>* The “Left” gradient option has been added to the Private Dispel Overlay, and the bug that prevented the “Bottom” gradient from appearing has been fixed.</p>
+        <h2>Midnight Compatibility</h2>
+        <p>* Fixed taint-related LUA errors (attempt to compare secret values in PartyMemberFrame, TextStatusBar, and UnitFrame) when Blizzard imperatively updates hidden party and pet frames while the execution thread is tainted by Cell.</p>
+        <br/>
+
+        <h1>r277.7.2-krysio More Private Dispel Overlay Fixes</h1>
+        <h2>Private Dispel Overlay</h2>
+        <p>* Fixed again the Blizzard Private Dispel Overlay incorrectly appearing on secret normal dispellable debuffs (e.g. Raid Debuffs) instead of Cell's native dispel indicators.</p>
+        <br/>
+
+            <h1>r277.7.1-krysio LUA errors &amp; NameText Fixes</h1>
+        <h2>Midnight Compatibility</h2>
+        <p>* Fixed a LUA error (attempt to perform string conversion on a secret string value) in name/vehicle text SetPoint positioning when entering high-restriction combat environments.</p>
+        <h2>Private Dispel Overlay</h2>
+        <p>* Fixed a protected function taint (ADDON_ACTION_BLOCKED) when calling 'SetPropagateMouseMotion' / 'SetPropagateMouseClicks' / 'EnableMouse' on secure private aura anchors during combat or layout updates.</p>
+        <br/>
+
+            <h1>r277.7-krysio Private Dispel &amp; Overlay Fixes</h1>
+        <h2>Private Dispel Overlay fixes</h2>
+        <p>* Fixed a LUA error (bad self) when calling 'IsShown' on restricted private aura anchors during unit frame updates.</p>
+        <p>* Added priority filtering: Blizzard's Private Dispel Overlay is now automatically hidden if any normal (non-secret) dispellable debuffs are active, allowing Cell's own custom debuff/dispel indicators to take absolute priority.</p>
+        <p>* Optimized SetAlpha updates to prevent Blizzard's secure PrivateAuraContainer from getting stuck in combat.</p>
+        <br/>
+
+            <h1>r277.6.2-krysio Private Dispel Overlay Fix</h1>
+        <h2>Private Dispel Overlay</h2>
+        <p>* Fixed Blizzard dispel overlay displaying on standard (non-private) dispellable debuffs when the Private Dispel Overlay option is enabled.</p>
+        <br/>
+
+            <h1>r277.6.1-krysio Arena LGI Compatibility Fix</h1>
+        <h2>Midnight Compatibility</h2>
+        <p>* Fixed a LUA error in LibGroupInfo when entering arena matches or high-restriction combat environments where UnitGUID returns secret keys.</p>
+        <br/>
+
+            <h1>r277.6-krysio Private Dispel Overlay &amp; targetedSpells disabled</h1>
+        <h2>Private Dispel Overlay</h2>
+        <p>* NEW: Added a new Private Dispel Overlay option for customizable group/raid frame overlays on dispellable private auras.</p>
+        <p>* NEW: Added customization settings: Overlay Alpha, Overlay Frame Level, and Overlay Inset.</p>
+        <h2>Targeted Spells</h2>
+        <p>* Disabled Targeted Spells internally due to Blizzard API restrictions causing unstable behavior and LUA errors on modern clients.</p>
+        <br/>
+
+            <h1>r277.5-krysio Private Aura z-order stabilization</h1>
+        <h2>Private Auras</h2>
+        <p>* Fixed intermittent cases where private aura icons could render behind unit frames.</p>
+        <p>* Private aura holders/anchors now explicitly reapply frame strata and elevated frame levels during anchor refresh.</p>
+        <p>* Added deterministic per-slot index-based frame-level ordering for stable layering.</p>
+        <br/>
+        
+        <h1>r277.4-krysio New language addon selector</h1>
+        <h2>Language selector</h2>
+        <p>*NEW: A new language selector has been added, allowing you to choose any language already available for the add-on's menus.* </p>
+
+        <h1>r277.3-krysio Missing Buffs, Raid Debuffs, and TexCoord hotfixes</h1>
+        <h2>Buff Tracker / Missing Buffs</h2>
+        <p>* Improved class buff alias coverage and persistence handling for false Missing Buff states (including Bronze scenarios).</p>
+        <p>* Added combat hide/suspend behavior for Bronze movement buff tracking with automatic resync on combat transitions.</p>
+        <h2>Raid Frames / Debuffs</h2>
+        <p>* Fixed normal debuffs occasionally appearing in Raid Debuffs position during encounter phases.</p>
+        <h2>Indicator Rendering</h2>
+        <p>* Fixed TexCoord out-of-range errors when icon dimensions are zero/invalid/secret by using safe fallback texture coordinates.</p>
+        <br/>
+        <h1>r277.2-krysio Stability fixes for Midnight tracking and indicators</h1>
+        <h2>Buff Tracker &amp; Missing Buffs</h2>
+        <p>* Fixed persistent false Missing Buff alerts for Blessing of the Bronze after reapplying.</p>
+        <p>* Added broader class-buff aura alias coverage (Fortitude, Mark of the Wild, Skyfury, Arcane Brilliance, Battle Shout families) to reduce false negatives/positives.</p>
+        <p>* Added safe fail-open behavior when buff name resolution is unavailable, preventing stuck missing states.</p>
+        <p>* Added Danders-style combat behavior for Bronze movement buff tracking: hide/suspend in combat and resync on combat transitions.</p>
+        <h2>Raid Frames / Auras</h2>
+        <p>* Fixed an issue where normal debuffs could appear in Raid Debuffs position during encounters by removing over-broad secret-debuff fallback classification.</p>
+        <p>* Fixed secret-key table assignment errors on unit hide/attribute changes for pet/group unit mappings.</p>
+        <h2>Utilities &amp; QuickCast</h2>
+        <p>* Fixed SecondsToTime localization edge case that could trigger gsub pattern nil errors.</p>
+        <p>* Fixed QuickCast preview nil-name initialization path that could raise a nil call error.</p>
         <br/>
 
         <h1>r275.8-skyking-dev Compatibility reports, diagnostics, and curation tools</h1>
@@ -113,11 +198,11 @@ select(2, ...).L = setmetatable({
         <p>! Spells may need further in-game curation to filter out non-debuff abilities.</p>
         <br/>
 
-        <h1>r275-release — WoW 12.0.0 (Midnight) Compatibility</h1>
+        <h1>r275-release â€” WoW 12.0.0 (Midnight) Compatibility</h1>
         <h2>Secret Values (12.0.0+)</h2>
         <p>+ Added Cell.isMidnight detection flag and F.IsValueNonSecret(), F.IsAuraRestricted(), F.IsCooldownRestricted(), F.HasAnySecretValues() utility functions.</p>
-        <p>+ Added per-aura F.IsAuraNonSecret(), F.IsSpellAuraNonSecret(), F.IsValueNonSecret() helpers — non-secret (whitelisted) auras now get real countdown timers, source detection, and duration display; secret auras gracefully degrade.</p>
-        <p>* UnitButton: major dual-path refactor — Midnight uses UnitHealPredictionCalculator, C_CurveUtil.CreateCurve(), and StatusBar overlays for health/prediction/shields; pre-Midnight retains arithmetic-based paths.</p>
+        <p>+ Added per-aura F.IsAuraNonSecret(), F.IsSpellAuraNonSecret(), F.IsValueNonSecret() helpers â€” non-secret (whitelisted) auras now get real countdown timers, source detection, and duration display; secret auras gracefully degrade.</p>
+        <p>* UnitButton: major dual-path refactor â€” Midnight uses UnitHealPredictionCalculator, C_CurveUtil.CreateCurve(), and StatusBar overlays for health/prediction/shields; pre-Midnight retains arithmetic-based paths.</p>
         <p>* Appearance: IncomingHeal widget uses SetStatusBarTexture on Midnight (StatusBar) vs SetTexture pre-Midnight (Texture).</p>
         <p>* Indicator_Defaults: local DebuffTypeColor fallback for when the WoW global is removed.</p>
         <p>* Per-field F.IsValueNonSecret() guards before every arithmetic operation on temporal aura fields (expirationTime, duration, applications).</p>
@@ -125,7 +210,7 @@ select(2, ...).L = setmetatable({
         <p>- AoEHealing: disabled on Midnight (CLEU unavailable).</p>
         <p>* StatusIcon: soulstone/resurrection tracking switches to UNIT_AURA + UNIT_HEALTH on Midnight.</p>
         <p>* NPCFrame: boss6-8 health/aura tracking switches to unit events on Midnight.</p>
-        <p>* DeathReport: full refactor — Midnight uses UNIT_HEALTH + UnitIsDeadOrGhost() for death detection.</p>
+        <p>* DeathReport: full refactor â€” Midnight uses UNIT_HEALTH + UnitIsDeadOrGhost() for death detection.</p>
         <p>* UnitButton: removed CombatLogGetCurrentEventInfo dependency and CheckCLEURequired.</p>
         <p>- General: removed useCleuHealthUpdater checkbox (CLEU health updater obsolete).</p>
         <p>* Revise: r275 migration removes useCleuHealthUpdater from saved variables.</p>
@@ -133,16 +218,16 @@ select(2, ...).L = setmetatable({
         <p>+ Comm: IsCommRestricted() detects encounters/M+/PvP; all SendCommMessage calls guarded.</p>
         <p>+ Nicknames: all nickname sync sends guarded with F.IsCommRestricted().</p>
         <h2>Heal Prediction &amp; Health Bar Fixes</h2>
-        <p>* Created a dedicated healPredictionCalculator separate from the shared healthCalculator — fixes corrupted health/absorb reads.</p>
+        <p>* Created a dedicated healPredictionCalculator separate from the shared healthCalculator â€” fixes corrupted health/absorb reads.</p>
         <p>* Incoming heal bar is now a StatusBar (instead of Texture) anchored to the health fill texture edge.</p>
-        <p>* Fixed health bar loss color stuck on white/full-health — healthPercent now populated from calculator:GetCurrentHealthPercent().</p>
+        <p>* Fixed health bar loss color stuck on white/full-health â€” healthPercent now populated from calculator:GetCurrentHealthPercent().</p>
         <p>* Dispels now show correctly in combat.</p>
         <h2>Spell &amp; Default Updates</h2>
         <p>- Removed: Engulf, Renew, Power Word: Life, Void Shift, Shadow Covenant, Divine Star, Cloudburst Totem, Minor Cenarion Ward, Premonition of Solace.</p>
         <p>+ Added: Plea (200829, Disc Priest).</p>
         <p>+ Added missing healing spells to default indicator list (Evoker, Monk, Paladin, Priest).</p>
         <p>* Moved: Prayer of Mending from class-wide to Holy spec only.</p>
-        <p>* Fixed: Shaman Poison dispel node IDs (103609 → 103599).</p>
+        <p>* Fixed: Shaman Poison dispel node IDs (103609 â†’ 103599).</p>
         <h2>Defensive Nil Guards &amp; Fixes</h2>
         <p>* MainFrame: nil guards for currentLayoutTable and tooltipPoint.</p>
         <p>* HideBlizzard: guards for PartyMemberFramePool, CompactPartyFrame, PartyMemberBackground.</p>
@@ -152,7 +237,7 @@ select(2, ...).L = setmetatable({
         <p>* QuickCast: skip only secret auras in ForEachAura.</p>
         <p>* Appearance: ticker nil guard in preview OnHide.</p>
         <h2>Infrastructure</h2>
-        <p>* All 22 XML files updated from FrameXML/UI_shared.xsd → Blizzard_SharedXML/UI.xsd.</p>
+        <p>* All 22 XML files updated from FrameXML/UI_shared.xsd â†’ Blizzard_SharedXML/UI.xsd.</p>
         <p>* Core: version constants bumped to 275, GetBattlegroundInfo guard added.</p>
         <br/>
 
@@ -246,7 +331,7 @@ select(2, ...).L = setmetatable({
         <br/>
 
         <h1>r259-release (Aug 6, 2025, 16:27 GMT+8)</h1>
-        <p>* Updated TWW debuffs (thanks 钛锬 and 枫岚).</p>
+        <p>* Updated TWW debuffs (thanks é’›é”¬ and æž«å²š).</p>
         <p>* Updated MoP debuffs.</p>
         <br/>
 
@@ -334,7 +419,7 @@ select(2, ...).L = setmetatable({
 
         <h1>r247-release (Mar 4, 2025, 17:50 GMT+8)</h1>
         <p>! Due to changes in scaling behavior, you might need to readjust the size and position of Cell.</p>
-        <p>* Updated TWW season 2 debuffs (Thanks 钛锬).</p>
+        <p>* Updated TWW season 2 debuffs (Thanks é’›é”¬).</p>
         <p>* Fixed scaling issue.</p>
         <p>* Fixed positioning issue.</p>
         <p>* Fixed Glow indicator.</p>
@@ -370,7 +455,7 @@ select(2, ...).L = setmetatable({
         <p>* Updated Dispel Request text flipbook animation.</p>
         <p>* Refactored HealthText indicator.</p>
         <p>+ (Classic) Updated RaidDebuffs to include the Naxxramas raid (#294).</p>
-        <p>+ (TWW) Updated debuffs for season 2 (Thanks 钛锬).</p>
+        <p>+ (TWW) Updated debuffs for season 2 (Thanks é’›é”¬).</p>
         <p>+ (TWW) Updated Liberation of Undermine debuffs (Thanks Reat).</p>
         <p>+ (Classic) Updated RoleIcon indicator and PowerBarFilters.</p>
         <p>+ Implemented CombatIcon indicator.</p>
@@ -708,7 +793,7 @@ select(2, ...).L = setmetatable({
         <br/>
 
         <h1>r206-release (Dec 9, 2023, 00:50 GMT+8)</h1>
-        <p>+ (Retail) New utility: Quick Assist. Thanks 钛锬(NGA) for offensive spells and testing.</p>
+        <p>+ (Retail) New utility: Quick Assist. Thanks é’›é”¬(NGA) for offensive spells and testing.</p>
         <p>* Updated raid debuffs.</p>
         <p>* Updated Cell.GetUnitFrame.</p>
         <p>* (Retail) Updated dispel checker for Shaman.</p>
@@ -718,7 +803,7 @@ select(2, ...).L = setmetatable({
         <br/>
 
         <h1>r205-release (Nov 27, 2023, 12:27 GMT+8)</h1>
-        <p>* Updated raid debuffs, thanks to 钛锬(NGA) and Ulu2005(GitHub) for collecting and providing debuffs.</p>
+        <p>* Updated raid debuffs, thanks to é’›é”¬(NGA) and Ulu2005(GitHub) for collecting and providing debuffs.</p>
         <p>+ New custom indicator type: Glow.</p>
         <p>+ (Retail) Added "Track by name" option for custom buff indicator.</p>
         <p>+ Added "Hide Placeholder Frames" for Spotlights.</p>
@@ -770,7 +855,7 @@ select(2, ...).L = setmetatable({
         <h1>r197-release (Sep 20, 2023, 08:08 GMT+8)</h1>
         <p>* Added a "Show Solo" option for Marks Bar.</p>
         <p>* Added Ice Cold to Defensive CDs indicator.</p>
-        <p>* Updated ICC debuffs, thanks to 大胖宝.</p>
+        <p>* Updated ICC debuffs, thanks to å¤§èƒ–å®.</p>
         <p>* Updated zhTW.</p>
         <br/>
 
@@ -860,7 +945,7 @@ select(2, ...).L = setmetatable({
 
         <h1>r182-release (Jul 18, 2023, 05:07 GMT+8)</h1>
         <p>* Refactored Layouts.</p>
-        <p>* Updated debuffs for Dawn of the Infinite, thanks to 钛锬(NGA).</p>
+        <p>* Updated debuffs for Dawn of the Infinite, thanks to é’›é”¬(NGA).</p>
         <p>+ Implemented import &amp; export for Click-Castings.</p>
         <br/>
 
@@ -928,8 +1013,8 @@ select(2, ...).L = setmetatable({
         <br/>
 
         <h1>r170-release (May 26, 2023, 00:21 GMT+8)</h1>
-        <p>* Updated raid debuffs: Aberrus and M+. (Thanks to 钛锬)</p>
-        <p>* Updated raid debuffs: ToC. (Thanks to 橘子味橙汁)</p>
+        <p>* Updated raid debuffs: Aberrus and M+. (Thanks to é’›é”¬)</p>
+        <p>* Updated raid debuffs: ToC. (Thanks to æ©˜å­å‘³æ©™æ±)</p>
         <p>* Added support for NickTag. To display nicknames from Details!, set CELL_NICKTAG_ENABLED to true in Code Snippets.</p>
         <p>* Updated Missing Buffs indicator and brought it to Wrath.</p>
         <p>* Updated zhTW.</p>
@@ -1777,3 +1862,5 @@ select(2, ...).L = setmetatable({
         end
     end
 })
+
+

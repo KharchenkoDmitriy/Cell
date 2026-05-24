@@ -213,7 +213,7 @@ end)
 -- end
 
 local function UpdateBaseInfo(unit, guid)
-    if not guid then return end
+    if not guid or IsValueSecret(guid) then return end
 
     if not cache[guid] then cache[guid] = {} end
     if IS_WRATH then
@@ -245,7 +245,7 @@ local function BuildAndNotify(unit)
     Print("|cffff7777LGI:BuildAndNotify|r", unit)
 
     local guid = UnitGUID(unit)
-    if not guid then return end
+    if not guid or IsValueSecret(guid) then return end
 
     UpdateBaseInfo(unit, guid)
 
@@ -289,6 +289,7 @@ local function BuildAndNotify_Wrath(unit)
     Print("|cffff7777LGI:BuildAndNotify_Wrath|r", unit)
 
     local guid = UnitGUID(unit)
+    if not guid or IsValueSecret(guid) then return end
     UpdateBaseInfo(unit, guid)
 
     -- spec
@@ -454,6 +455,7 @@ frame:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 local function AddToQueue(unit, guid)
+    if not guid or IsValueSecret(guid) then return end
     if IS_WRATH or IS_MISTS then
         if not UnitIsConnected(unit) or not CheckInteractDistance(unit, 1) or not CanInspect(unit) then
             UpdateBaseInfo(unit, guid)
@@ -485,6 +487,7 @@ end
 -- INSPECT_READY: ready to query
 ---------------------------------------------------------------------
 function frame:INSPECT_READY(guid)
+    if not guid or IsValueSecret(guid) then return end
     if queueGUIDs[guid] then
         Print("|cffffff33LGI:INSPECT_READY|r", guid, queueGUIDs[guid].unit)
         lib.callbacks:Fire(QUEUE_EVENT, guid, queueGUIDs[guid].unit, "INSPECT_READY")
@@ -507,9 +510,11 @@ local function IterateAllUnits()
         for i = 1, GetNumGroupMembers() do
             local unit = "raid"..i
             local guid = UnitGUID(unit)
-            currentMembers[guid] = true
-            if not (UnitIsUnit(unit, "player") or (cache[guid] and cache[guid].inspected) or queueGUIDs[guid]) then
-                AddToQueue(unit, guid)
+            if guid and not IsValueSecret(guid) then
+                currentMembers[guid] = true
+                if not (UnitIsUnit(unit, "player") or (cache[guid] and cache[guid].inspected) or queueGUIDs[guid]) then
+                    AddToQueue(unit, guid)
+                end
             end
         end
         cache[PLAYER_GUID].unit = "raid"..UnitInRaid("player")
@@ -519,9 +524,11 @@ local function IterateAllUnits()
         for i = 1, GetNumGroupMembers()-1 do
             local unit = "party"..i
             local guid = UnitGUID(unit)
-            currentMembers[guid] = true
-            if not ((cache[guid] and cache[guid].inspected) or queueGUIDs[guid]) then
-                AddToQueue(unit, guid)
+            if guid and not IsValueSecret(guid) then
+                currentMembers[guid] = true
+                if not ((cache[guid] and cache[guid].inspected) or queueGUIDs[guid]) then
+                    AddToQueue(unit, guid)
+                end
             end
         end
 
@@ -582,6 +589,7 @@ function frame:PLAYER_SPECIALIZATION_CHANGED(unit)
         Query(unit)
     else
         local guid = UnitGUID(unit)
+        if not guid or IsValueSecret(guid) then return end
         if cache[guid] then
             cache[guid].inspected = nil
         end

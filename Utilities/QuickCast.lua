@@ -264,6 +264,7 @@ UpdatePreview = function()
 
         local name = Cell.vars.playerNameShort
         name = Cell.vars.nicknameCustoms[name] or Cell.vars.nicknames[name] or name
+        if not name then name = _G.UNKNOWN or "Player" end
         if string.len(name) == string.utf8len(name) then -- en
             previewButton.nameText:SetText(string.utf8sub(name, 1, 3))
         else

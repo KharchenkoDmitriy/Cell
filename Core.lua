@@ -1,4 +1,4 @@
----@class Cell
+﻿---@class Cell
 local Cell = select(2, ...)
 _G.Cell = Cell
 
@@ -181,7 +181,7 @@ function F.UpdateLayout(layoutGroupType)
 end
 
 local bgMaxPlayers = {
-    [2197] = 40, -- 科尔拉克的复仇
+    [2197] = 40, -- ç§‘å°”æ‹‰å…‹çš„å¤ä»‡
 }
 
 -- layout auto switch
@@ -328,8 +328,10 @@ function eventFrame:ADDON_LOADED(arg1)
                 },
                 ["useCleuHealthUpdater"] = false,
                 ["translit"] = false,
+                ["localeOverride"] = "auto",
             }
         end
+        if CellDB["general"]["localeOverride"] == nil then CellDB["general"]["localeOverride"] = "auto" end
         Cell.vars.alwaysUpdateAuras = CellDB["general"]["alwaysUpdateAuras"]
 
         -- nicknames ------------------------------------------------------------------------------
@@ -1221,3 +1223,4 @@ end
 function Cell_OnAddonCompartmentClick()
     F.ShowOptionsFrame()
 end
+

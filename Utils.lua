@@ -867,22 +867,25 @@ local MIN = _G.SPELL_DURATION_MIN
 
 local PATTERN_SEC
 local PATTERN_MIN
-if strfind(SEC, "1f") then
+if SEC and (strfind(SEC, "1f") or strfind(SEC, "1F")) then
     PATTERN_SEC = "%.0"
-elseif strfind(SEC, "2f") then
+elseif SEC and (strfind(SEC, "2f") or strfind(SEC, "2F")) then
     PATTERN_SEC = "%.00"
 end
-if strfind(MIN, "1f") then
+if MIN and (strfind(MIN, "1f") or strfind(MIN, "1F")) then
     PATTERN_MIN = "%.0"
-elseif strfind(MIN, "2f") then
+elseif MIN and (strfind(MIN, "2f") or strfind(MIN, "2F")) then
     PATTERN_MIN = "%.00"
 end
 
 function F.SecondsToTime(seconds)
+    if not seconds then return "0" end
     if seconds > 60 then
-        return gsub(format(MIN, seconds / 60), PATTERN_MIN, "")
+        local text = format(MIN or "%.1f min", seconds / 60)
+        return PATTERN_MIN and gsub(text, PATTERN_MIN, "") or text
     else
-        return gsub(format(SEC, seconds), PATTERN_SEC, "")
+        local text = format(SEC or "%.1f s", seconds)
+        return PATTERN_SEC and gsub(text, PATTERN_SEC, "") or text
     end
 end
 
@@ -1086,33 +1089,58 @@ function F.HandleUnitButton(type, unit, func, ...)
     return handled
 end
 
+-- Safe UpdateTextWidth for Midnight 12.0+ (secret values)
+-- Safe UpdateTextWidth for Midnight 12.0+ (final robust version)
 function F.UpdateTextWidth(fs, text, width, relativeTo)
-    if not text or not width then return end
+    if not fs then return end
 
-    -- Midnight: text may be a secret string (e.g. NPC names); cannot do Lua string
-    -- operations on secrets. SetText is C-level and handles secrets directly.
-    if not F.IsValueNonSecret(text) then
+    -- Midnight: secret string protection
+    if Cell.isMidnight and not F.IsValueNonSecret(text) then
+        fs:SetText(text or "")
+        return
+    end
+
+    if not text or text == "" then
+        fs:SetText("")
+        return
+    end
+
+    -- If width is nil or invalid, just set the full text
+    if not width or type(width) ~= "table" then
         fs:SetText(text)
         return
     end
 
-    if width == "unlimited" then
+    if width[1] == "unlimited" or width == "unlimited" then
         fs:SetText(text)
-    elseif width[1] == "percentage" then
+        return
+    end
+
+    if width[1] == "percentage" then
         local percent = width[2] or 0.75
-        local width = relativeTo:GetWidth() - 2
-        for i = string.utf8len(text), 0, -1 do
-            fs:SetText(string.utf8sub(text, 1, i))
-            if fs:GetWidth() / width <= percent then
-                break
+        local parentWidth = F.GetWidth(relativeTo)
+        if parentWidth == 0 then parentWidth = 100 end
+
+        local targetWidth = parentWidth * percent
+        fs:SetText(text)
+        
+        local fsWidth = F.GetWidth(fs)
+        if fsWidth > targetWidth then
+            -- Safe truncation with "..."
+            for i = #text - 1, 3, -1 do
+                local truncated = text:sub(1, i) .. "..."
+                fs:SetText(truncated)
+                if F.GetWidth(fs) <= targetWidth then
+                    break
+                end
             end
         end
+
     elseif width[1] == "length" then
-        if string.len(text) == string.utf8len(text) then -- en
-            fs:SetText(string.utf8sub(text, 1, width[2]))
-        else -- non-en
-            fs:SetText(string.utf8sub(text, 1, width[3]))
-        end
+        local maxLen = width[2] or 20
+        fs:SetText(text:sub(1, maxLen))
+    else
+        fs:SetText(text)
     end
 end
 
@@ -1682,7 +1710,17 @@ end
 function F.GetTexCoord(width, height)
     -- ULx,ULy, LLx,LLy, URx,URy, LRx,LRy
     local texCoord = {0.12, 0.12, 0.12, 0.88, 0.88, 0.12, 0.88, 0.88}
+    -- Guard invalid/secret sizes: keep default crop to avoid Inf/NaN tex coords.
+    if not width or not height then return texCoord end
+    if F.IsValueNonSecret and (not F.IsValueNonSecret(width) or not F.IsValueNonSecret(height)) then
+        return texCoord
+    end
+    if width <= 0 or height <= 0 then return texCoord end
+
     local aspectRatio = width / height
+    if aspectRatio ~= aspectRatio or aspectRatio == math.huge or aspectRatio == -math.huge then
+        return texCoord
+    end
 
     local xRatio = aspectRatio < 1 and aspectRatio or 1
     local yRatio = aspectRatio > 1 and 1 / aspectRatio or 1
@@ -2006,7 +2044,10 @@ function F.IsSpellReady(spellId)
         if duration == gcd then -- spell ready
             return true
         else
-            local cdLeft = start + duration - GetTime()
+            local cdLeft = 0
+            if F.IsValueNonSecret(start) and F.IsValueNonSecret(duration) then
+                cdLeft = start + duration - GetTime()
+            end
             return false, cdLeft
         end
     end
@@ -2676,6 +2717,40 @@ function F.IsValueNonSecret(val)
     if not Cell.isMidnight then return true end
     if not issecretvalue then return true end
     return not issecretvalue(val)
+end
+
+function F.GetRemain(start, duration)
+    if not start or not duration then return 0 end
+    if Cell.isMidnight then
+        if not F.IsValueNonSecret(start) or not F.IsValueNonSecret(duration) then
+            return 0
+        end
+    end
+    local remain = duration - (GetTime() - start)
+    return remain > 0 and remain or 0
+end
+
+function F.GetWidth(frame)
+    if not frame then return 0 end
+    local w = frame.GetWidth and frame:GetWidth() or 0
+    if not F.IsValueNonSecret(w) then return 0 end
+    return w or 0
+end
+
+function F.GetHeight(frame)
+    if not frame then return 0 end
+    local h = frame.GetHeight and frame:GetHeight() or 0
+    if not F.IsValueNonSecret(h) then return 0 end
+    return h or 0
+end
+
+function F.IsFontValid(font)
+    if type(font) ~= "string" or font == "" then return false end
+    if not _G.CellFontValidator then
+        _G.CellFontValidator = UIParent:CreateFontString(nil, "ARTWORK")
+    end
+    local success = pcall(function() _G.CellFontValidator:SetFont(font, 12, "") end)
+    return success
 end
 
 -------------------------------------------------

@@ -178,7 +178,11 @@ function I.CreateStatusIcon(parent)
     function resurrectionIcon:SetTimer(start, duration)
         resurrectionIcon:Hide() -- pause OnUpdate
         bar:SetMinMaxValues(0, duration + 13) -- NOTE: texture gap (texcoord 0,1,0,1)
-        bar:SetValue(GetTime()-start)
+        if F.IsValueNonSecret(start) and F.IsValueNonSecret(duration) then
+            bar:SetValue(GetTime()-start)
+        else
+            bar:SetValue(0)
+        end
         resurrectionIcon:Show()
     end
 
@@ -240,10 +244,16 @@ function I.UpdateStatusIcon_Resurrection(button, start, duration)
     resurrectionIcon:SetTimer(start, duration)
     -- timer
     if resurrectionIcon.timer then resurrectionIcon.timer:Cancel() end
-    resurrectionIcon.timer = C_Timer.NewTimer(start + duration - GetTime(), function()
-        rez[guid] = nil
-        resurrectionIcon:Hide()
-    end)
+    local timeToStart = 0
+    if F.IsValueNonSecret(start) and F.IsValueNonSecret(duration) then
+        timeToStart = start + duration - GetTime()
+    end
+    if timeToStart > 0 then
+        resurrectionIcon.timer = C_Timer.NewTimer(timeToStart, function()
+            rez[guid] = nil
+            resurrectionIcon:Hide()
+        end)
+    end
 end
 
 -------------------------------------------------

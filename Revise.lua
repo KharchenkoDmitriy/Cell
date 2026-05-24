@@ -3670,6 +3670,35 @@ function F.Revise()
         -- Saved variable secrets: any secrets stored before this version will be nil'd by WoW.
     end
 
+    -- privateAuraOptions extension (dispel overlay options)
+    do
+        local privateAurasIndex = Cell.defaults.indicatorIndices["privateAuras"]
+        for _, layout in pairs(CellDB["layouts"]) do
+            local indicator = layout["indicators"] and layout["indicators"][privateAurasIndex]
+            if indicator and indicator["indicatorName"] == "privateAuras" then
+                indicator["privateAuraOptions"] = indicator["privateAuraOptions"] or {true, false, 1, false, 1}
+                local opts = indicator["privateAuraOptions"]
+                if opts[6] == nil then opts[6] = false end -- showDispelOverlay
+                if opts[7] == nil then opts[7] = true end  -- dispelByMeOnly
+                if opts[8] == nil then opts[8] = 1 end     -- overlayAlpha
+                if opts[9] == nil then opts[9] = 6 end     -- overlayFrameLevel
+                if opts[10] == nil then opts[10] = 0 end   -- overlayInset
+                if opts[11] == nil then opts[11] = 0 end   -- gradient direction
+            end
+        end
+    end
+
+    -- targetedSpells forced disable (Blizzard restrictions / LUA safety)
+    do
+        for _, layout in pairs(CellDB["layouts"]) do
+            for _, indicator in pairs(layout["indicators"] or {}) do
+                if indicator and indicator["indicatorName"] == "targetedSpells" then
+                    indicator["enabled"] = false
+                end
+            end
+        end
+    end
+
     -- ----------------------------------------------------------------------- --
     --            update from old versions, validate all indicators            --
     -- ----------------------------------------------------------------------- --

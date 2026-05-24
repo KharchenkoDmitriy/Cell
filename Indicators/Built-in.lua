@@ -886,7 +886,11 @@ local function UpdateDebuffsForCurrentZone(instanceName)
     if iName == "" then return end
 
     if iName == instanceName or instanceName == nil then
-        currentAreaDebuffs = F.GetDebuffList(iName)
+        if F.GetDebuffList then
+            currentAreaDebuffs = F.GetDebuffList(iName) or {}
+        else
+            currentAreaDebuffs = {}
+        end
         F.Debug("|cffff77AARaidDebuffsChanged:|r", iName)
     end
 end
@@ -1129,6 +1133,13 @@ local function PrivateAuras_RemoveAllAnchors(self)
             end
         end
     end
+
+    if self.dispelContainerAnchorID then
+        local success = pcall(C_UnitAuras.RemovePrivateAuraAnchor, self.dispelContainerAnchorID)
+        if success then
+            self.dispelContainerAnchorID = nil
+        end
+    end
 end
 
 local function PrivateAuras_UpdateHolderVisibility(self, maxAuras)
@@ -1145,6 +1156,17 @@ end
 
 local function PrivateAuras_UpdateAnchorFrame(self, holder)
     local anchorFrame = holder.privateAuraAnchor or holder
+    local idx = holder._cellPrivateAuraIndex or 1
+
+    -- Keep private aura anchors explicitly above the indicator parent.
+    -- Some users report occasional z-order drops where private aura icons render
+    -- behind unit frames; re-applying strata/level stabilizes ordering.
+    holder:SetFrameStrata(self:GetFrameStrata())
+    anchorFrame:SetFrameStrata(self:GetFrameStrata())
+    local baseLevel = (self:GetFrameLevel() or 1) + 10 + idx
+    holder:SetFrameLevel(baseLevel)
+    anchorFrame:SetFrameLevel(baseLevel + 1)
+
     anchorFrame:ClearAllPoints()
     anchorFrame:SetPoint("CENTER", holder)
 
@@ -1154,9 +1176,14 @@ local function PrivateAuras_UpdateAnchorFrame(self, holder)
         anchorFrame:SetSize(holder:GetWidth(), holder:GetHeight())
     end
 
-    anchorFrame:EnableMouse(not self.hideTooltip)
-    if anchorFrame.SetPropagateMouseMotion then anchorFrame:SetPropagateMouseMotion(not self.hideTooltip) end
-    if anchorFrame.SetPropagateMouseClicks then anchorFrame:SetPropagateMouseClicks(not self.hideTooltip) end
+    -- We only update EnableMouse and mouse propagation if NOT in combat, to prevent ADDON_ACTION_BLOCKED
+    -- taint errors on secure private aura anchors when entering LFR or during combat.
+    -- When in combat, the size change above (0.001 size) is already sufficient to effectively disable mouse interaction.
+    if not InCombatLockdown() then
+        anchorFrame:EnableMouse(not self.hideTooltip)
+        if anchorFrame.SetPropagateMouseMotion then anchorFrame:SetPropagateMouseMotion(not self.hideTooltip) end
+        if anchorFrame.SetPropagateMouseClicks then anchorFrame:SetPropagateMouseClicks(not self.hideTooltip) end
+    end
 
     return anchorFrame
 end
@@ -1173,6 +1200,46 @@ local function PrivateAuras_UpdateSize(self, iconsShown)
     -- Max Displayed or the visual position drifts when anchored by center/top.
     if self.width and self.height then
         self:_SetSize(self.width, self.height)
+    end
+end
+
+local function PrivateAuras_UpdateDispelOverlayVisibility(self)
+    if not self.dispelOverlayFrame then return end
+    
+    local targetAlpha = 0
+    if self.showDispelOverlay then
+        local hasNormalDispel = false
+        
+        -- Check both self.button._debuffs_dispel (for active player dispels)
+        -- AND search self.button._debuffs_cache for any normal (non-secret) dispellable debuffs.
+        -- This ensures that the Blizzard Private Dispel Overlay is hidden if there is
+        -- a normal dispellable debuff on the unit, letting Cell's own debuff/dispel indicators
+        -- take absolute priority for non-private auras.
+        if self.button then
+            if self.button._debuffs_dispel then
+                for dispelType, value in pairs(self.button._debuffs_dispel) do
+                    if value then
+                        hasNormalDispel = true
+                        break
+                    end
+                end
+            end
+            
+            if not hasNormalDispel and self.button._dispelAuraID then
+                hasNormalDispel = true
+            end
+        end
+        
+        if not hasNormalDispel then
+            targetAlpha = tonumber(self.dispelOverlayAlpha) or 1
+        end
+    end
+
+    -- Only update alpha if it actually changes.
+    -- Calling SetAlpha continuously during combat can bug out Blizzard's
+    -- internal PrivateAuraContainer update logic, causing the overlay to get stuck.
+    if self.dispelOverlayFrame:GetAlpha() ~= targetAlpha then
+        self.dispelOverlayFrame:SetAlpha(targetAlpha)
     end
 end
 
@@ -1215,9 +1282,9 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
                 showCountdownFrame = _showCountdownFrame,
                 showCountdownNumbers = _showCountdownNumbers,
                 iconInfo = {
-                    iconWidth = holder:GetWidth(),
-                    iconHeight = holder:GetHeight(),
-                    borderScale = (holder:GetWidth() / 16) * (self.borderScale or 1),
+                    iconWidth = F.GetWidth(holder),
+                    iconHeight = F.GetHeight(holder),
+                    borderScale = (F.GetWidth(holder) / 16) * (self.borderScale or 1),
                     iconAnchor = {
                         point = "CENTER",
                         relativeTo = anchorFrame,
@@ -1238,6 +1305,61 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
                 holder.auraAnchorID = auraAnchorID
             end
         end
+
+        -- Optional Blizzard dispel overlay for private auras (container mode).
+        -- This is the only reliable path for private-aura dispel visuals.
+        if self.showDispelOverlay and self.dispelOverlayFrame then
+            local overlay = self.dispelOverlayFrame
+            local groupType = strfind(unit, "^party") and 4 or 5
+            -- Blizzard container MUST have these numeric limits/flags set
+            -- before AddPrivateAuraAnchor(isContainer=true), otherwise internal
+            -- reserve loops can receive nil counts.
+            overlay:SetAttribute("max-buffs", 0)
+            overlay:SetAttribute("max-debuffs", 0)
+            overlay:SetAttribute("max-dispel-debuffs", 1)
+            overlay:SetAttribute("ignore-buffs", true)
+            overlay:SetAttribute("ignore-debuffs", true)
+            overlay:SetAttribute("ignore-dispel-debuffs", true)
+            overlay:SetAttribute("show-dispel-indicator-overlay", true)
+            overlay:SetAttribute("suppress-dispel-border-icons", true)
+            overlay:SetAttribute("power-bar-used-height", 0)
+            overlay:SetAttribute("icon-size", 10)
+            overlay:SetAttribute("set-aura-size-to-icon-size", false)
+            overlay:SetAttribute("group-type", groupType)
+            -- 1 = dispellable by me, 2 = all dispellable.
+            -- Respect user option so non-dispellable types for current class
+            -- (e.g. Bleed for Mage) don't trigger overlay.
+            overlay:SetAttribute("dispel-indicator-option", self.dispelByMeOnly and 1 or 2)
+            overlay:SetAttribute("aura-organization-type", tonumber(self.dispelGradientDirection) or 0)
+            overlay:SetAttribute("update-settings", true)
+
+            overlay:ClearAllPoints()
+            local inset = tonumber(self.dispelOverlayInset) or 0
+            -- Draw the dispel overlay around the whole unit frame area,
+            -- not only around the private-aura indicator icon region.
+            local overlayAnchor = self:GetParent() or self
+            overlay:SetPoint("TOPLEFT", overlayAnchor, "TOPLEFT", -inset, inset)
+            overlay:SetPoint("BOTTOMRIGHT", overlayAnchor, "BOTTOMRIGHT", inset, -inset)
+            overlay:SetFrameStrata(self:GetFrameStrata())
+            overlay:SetFrameLevel((self:GetFrameLevel() or 1) + (tonumber(self.dispelOverlayFrameLevel) or 6))
+            overlay:SetAlpha(0)
+            overlay:Show()
+
+            local success, anchorID = pcall(C_UnitAuras.AddPrivateAuraAnchor, {
+                unitToken = unit,
+                auraIndex = 1,
+                parent = overlay,
+                isContainer = true,
+                showCountdownFrame = false,
+                showCountdownNumbers = false,
+            })
+            if success then
+                self.dispelContainerAnchorID = anchorID
+            end
+            PrivateAuras_UpdateDispelOverlayVisibility(self)
+        elseif self.dispelOverlayFrame then
+            self.dispelOverlayFrame:Hide()
+        end
     end
 end
 
@@ -1246,6 +1368,8 @@ function I.CreatePrivateAuras(parent)
     parent.indicators.privateAuras = privateAuras
     privateAuras:Hide()
 
+    privateAuras.button = parent
+    privateAuras.UpdateDispelOverlayVisibility = PrivateAuras_UpdateDispelOverlayVisibility
     privateAuras.UpdatePrivateAuraAnchor = PrivateAuras_UpdatePrivateAuraAnchor
     privateAuras._SetSize = privateAuras.SetSize
     privateAuras.UpdateSize = PrivateAuras_UpdateSize
@@ -1258,22 +1382,35 @@ function I.CreatePrivateAuras(parent)
     privateAuras.spacingY = 1
     privateAuras.borderScale = 1
     privateAuras.hideTooltip = false
+    privateAuras.showDispelOverlay = false
+    privateAuras.dispelByMeOnly = true
+    privateAuras.dispelOverlayAlpha = 1
+    privateAuras.dispelOverlayFrameLevel = 6
+    privateAuras.dispelOverlayInset = 0
+    privateAuras.dispelGradientDirection = 0
+
+    privateAuras.dispelOverlayFrame = CreateFrame("Frame", nil, privateAuras)
+    privateAuras.dispelOverlayFrame:Hide()
 
     for i = 1, PRIVATE_AURAS_MAX do
         local holder = CreateFrame("Frame", nil, privateAuras)
+        holder._cellPrivateAuraIndex = i
         holder.privateAuraAnchor = CreateFrame("Frame", nil, holder)
         holder.privateAuraAnchor:SetPoint("CENTER", holder)
+        
+        -- Pre-configure mouse propagation at creation (when frame is brand new and untainted)
+        holder.privateAuraAnchor:EnableMouse(true)
+        if holder.privateAuraAnchor.SetPropagateMouseMotion then
+            holder.privateAuraAnchor:SetPropagateMouseMotion(true)
+        end
+        if holder.privateAuraAnchor.SetPropagateMouseClicks then
+            holder.privateAuraAnchor:SetPropagateMouseClicks(true)
+        end
+        
         tinsert(privateAuras, holder)
     end
 
     privateAuras:SetOrientation("left-to-right")
-
-    privateAuras:HookScript("OnShow", function()
-        privateAuras:UpdatePrivateAuraAnchor(privateAuras.unit)
-    end)
-    privateAuras:HookScript("OnHide", function()
-        PrivateAuras_RemoveAllAnchors(privateAuras)
-    end)
 
     function privateAuras:SetSize(width, height)
         privateAuras.width = width
@@ -1292,6 +1429,12 @@ function I.CreatePrivateAuras(parent)
         self.maxAuras = PrivateAuras_GetMaxAuras(self, t)
         self.hideTooltip = t[4] or false
         self.borderScale = tonumber(t[5]) or 1
+        self.showDispelOverlay = t[6] or false
+        self.dispelByMeOnly = t[7] ~= false
+        self.dispelOverlayAlpha = tonumber(t[8]) or 1
+        self.dispelOverlayFrameLevel = tonumber(t[9]) or 6
+        self.dispelOverlayInset = tonumber(t[10]) or 0
+        self.dispelGradientDirection = tonumber(t[11]) or 0
 
         for i = 1, #self do
             local holder = self[i]
@@ -1304,6 +1447,7 @@ function I.CreatePrivateAuras(parent)
 
         PrivateAuras_UpdateHolderVisibility(self, self.maxAuras)
         privateAuras:UpdatePrivateAuraAnchor(privateAuras.unit)
+        PrivateAuras_UpdateDispelOverlayVisibility(privateAuras)
     end
 end
 
@@ -1417,19 +1561,39 @@ function I.CreateNameText(parent)
         -- update vehicle
         local vp, _, vrp, _, vy = nameText.vehicle:GetPoint(1)
         if vp and vrp and vy then
-            if string.find(vp, "TOP") then
-                vp, vrp = "TOP", "BOTTOM"
-            else -- BOTTOM
-                vp, vrp = "BOTTOM", "TOP"
-            end
+            -- Guard against secret string values on vp, vrp, or point (Patch 12.0+)
+            if F.IsValueNonSecret(vp) and F.IsValueNonSecret(vrp) and F.IsValueNonSecret(point) then
+                if string.find(vp, "TOP") then
+                    vp, vrp = "TOP", "BOTTOM"
+                else -- BOTTOM
+                    vp, vrp = "BOTTOM", "TOP"
+                end
 
-            nameText.vehicle:ClearAllPoints()
-            if string.find(point, "LEFT") then
-                nameText.vehicle:SetPoint(vp.."LEFT", nameText.name, vrp.."LEFT", 0, vy)
-            elseif string.find(point, "RIGHT") then
-                nameText.vehicle:SetPoint(vp.."RIGHT", nameText.name, vrp.."RIGHT", 0, vy)
-            else -- "CENTER"
-                nameText.vehicle:SetPoint(vp, nameText.name, vrp, 0, vy)
+                nameText.vehicle:ClearAllPoints()
+                if string.find(point, "LEFT") then
+                    nameText.vehicle:SetPoint(vp.."LEFT", nameText.name, vrp.."LEFT", 0, vy)
+                elseif string.find(point, "RIGHT") then
+                    nameText.vehicle:SetPoint(vp.."RIGHT", nameText.name, vrp.."RIGHT", 0, vy)
+                else -- "CENTER"
+                    nameText.vehicle:SetPoint(vp, nameText.name, vrp, 0, vy)
+                end
+            else
+                -- Fallback for restricted/secret values: use exact string matches on non-secret point,
+                -- and safe default positioning for the vehicle text.
+                local isLeft = (point == "TOPLEFT" or point == "BOTTOMLEFT" or point == "LEFT")
+                local isRight = (point == "TOPRIGHT" or point == "BOTTOMRIGHT" or point == "RIGHT")
+                
+                local safeVp, safeVrp = "TOP", "BOTTOM"
+                local safeVy = (vy and F.IsValueNonSecret(vy)) and vy or -1
+                
+                nameText.vehicle:ClearAllPoints()
+                if isLeft then
+                    nameText.vehicle:SetPoint("TOPLEFT", nameText.name, "BOTTOMLEFT", 0, safeVy)
+                elseif isRight then
+                    nameText.vehicle:SetPoint("TOPRIGHT", nameText.name, "BOTTOMRIGHT", 0, safeVy)
+                else
+                    nameText.vehicle:SetPoint("TOP", nameText.name, "BOTTOM", 0, safeVy)
+                end
             end
         end
     end
@@ -1494,11 +1658,12 @@ function I.CreateNameText(parent)
             end
         end
 
-        local width, height = nameText.name:GetWidth(), nameText.name:GetHeight()
-        if not F.IsValueNonSecret(width) or width <= 0 then
-            width = parent.widgets.healthBar and parent.widgets.healthBar:GetWidth() or 50
+        local width, height = F.GetWidth(nameText.name), F.GetHeight(nameText.name)
+        if width <= 0 then
+            width = F.GetWidth(parent.widgets.healthBar)
+            if width <= 0 then width = 50 end
         end
-        if not F.IsValueNonSecret(height) or height <= 0 then
+        if height <= 0 then
             height = 14
         end
         nameText:SetSize(width, height)
@@ -2518,7 +2683,7 @@ end
 -- shield bar
 -------------------------------------------------
 local function ShieldBar_SetHorizontalValue(bar, percent)
-    local maxWidth = bar.parentHealthBar:GetWidth()
+    local maxWidth = F.GetWidth(bar.parentHealthBar)
     local barWidth
     if percent >= 1 then
         barWidth = maxWidth
@@ -2535,7 +2700,7 @@ local function ShieldBar_SetHorizontalValue(bar, percent)
 end
 
 local function ShieldBar_SetVerticalValue(bar, percent)
-    local maxHeight = bar.parentHealthBar:GetHeight()
+    local maxHeight = F.GetHeight(bar.parentHealthBar)
     local barHeight
     if percent >= 1 then
         barHeight = maxHeight

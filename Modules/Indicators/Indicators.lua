@@ -340,16 +340,25 @@ local function InitIndicator(indicatorName)
 
     elseif indicatorName == "aggroBar" then
         indicator:SetStatusBarColor(1, 0, 0)
-        indicator.value = 0
+        if indicator.SetValue then
+            indicator:SetValue(0)
+        else
+            indicator.value = 0
+        end
         indicator:SetScript("OnUpdate", function(self, elapsed)
             self.elapsed = (self.elapsed or 0) + elapsed
             if self.elapsed >= 0.01 then
                 self.elapsed = 0
-                self.value = self.value + 1
-                if self.value >= 100 then
-                    self.value = 0
+                local currentValue = self:GetValue() or 0
+                currentValue = currentValue + 1
+                if currentValue >= 100 then
+                    currentValue = 0
                 end
-                self:SetValue(self.value)
+                if self.SetValue then
+                    self:SetValue(currentValue)
+                else
+                    self.value = currentValue
+                end
             end
         end)
 
@@ -1658,6 +1667,7 @@ end
 local indicatorSettings
 local DEBUFFS_TOOLTIP1 = L["This will make these icons not click-through-able"].."|"..L["Tooltips need to be enabled in General tab"]
 local DEBUFFS_TOOLTIP2 = L["This will make these icons not click-through-able"]
+local TARGETED_SPELLS_DISABLED_WARNING = "warning:This functionality is restricted by Blizzard and no longer works reliably. It has been disabled internally to prevent LUA errors."
 -- Midnight: Blizzard's countdown text doesn't support anchor/offset, use simplified font widget.
 -- Pre-Midnight: Cell's own duration text supports full positioning.
 local midnightDurationFont = Cell.isMidnight and "font-noOffset:durationFont" or "font2:durationFont"
@@ -1704,9 +1714,7 @@ if Cell.isRetail or Cell.isMists then
         ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton:onlyShowTopGlow", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["privateAuras"] = {"|cffb7b7b7"..L["Due to restrictions of the private aura system, this indicator can only use Blizzard style."], "warning:"..L["Private auras are controlled by Blizzard. Positioning and style are limited, and changes may be delayed until combat ends."], "enabled", "privateAuraOptions", "size-square", "numPerLine:5", "spacing", "orientation", "position", "frameLevel"},
-        ["targetedSpells"] = Cell.isMidnight
-            and {"warning:"..L["Targeted spells may use restricted data in Midnight. Some updates can fall back to safer delayed paths."], "enabled", "targetedSpellsDisplayMode", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"}
-            or {"enabled", "checkbutton:showAllSpells:"..L["Glow is only available to the spells in the list below"], "targetedSpellsDisplayMode", "targetedSpellsList", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
+        ["targetedSpells"] = {TARGETED_SPELLS_DISABLED_WARNING, "targetedSpellsDisplayMode", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "warning:"..L["Target Counter depends on visible enemy nameplates and can be inaccurate when nameplates are hidden or restricted."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
         ["crowdControls"] = {"enabled", "builtInCrowdControls", "customCrowdControls", midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["actions"] = {"|cffb7b7b7"..L["Play animation when the unit uses a specific spell/item. The list is global shared, not layout-specific."], "enabled", "actionsPreview", "actionsList"},
@@ -1749,7 +1757,7 @@ elseif Cell.isCata or Cell.isWrath then
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
         ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton:onlyShowTopGlow", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["targetedSpells"] = {"enabled", "checkbutton:showAllSpells:"..L["Glow is only available to the spells in the list below"], "targetedSpellsDisplayMode", "targetedSpellsList", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
+        ["targetedSpells"] = {TARGETED_SPELLS_DISABLED_WARNING, "targetedSpellsDisplayMode", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
         ["actions"] = {"|cffb7b7b7"..L["Play animation when the unit uses a specific spell/item. The list is global shared, not layout-specific."], "enabled", "actionsPreview", "actionsList"},
         ["healthThresholds"] = {"enabled", "thresholds", "thickness"},
@@ -1785,7 +1793,7 @@ elseif Cell.isVanilla or Cell.isTBC then
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
         ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton:onlyShowTopGlow", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["targetedSpells"] = {"enabled", "checkbutton:showAllSpells:"..L["Glow is only available to the spells in the list below"], "targetedSpellsDisplayMode", "targetedSpellsList", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
+        ["targetedSpells"] = {TARGETED_SPELLS_DISABLED_WARNING, "targetedSpellsDisplayMode", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
         ["actions"] = {"|cffb7b7b7"..L["Play animation when the unit uses a specific spell/item. The list is global shared, not layout-specific."], "enabled", "actionsPreview", "actionsList"},
         ["healthThresholds"] = {"enabled", "thresholds", "thickness"},

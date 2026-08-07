@@ -64,7 +64,7 @@ Without their work, this fork would not exist.
 | Classic Era / Hardcore (`1.15.9`) | Supported |
 | TBC Classic (Anniversary) (`2.5.6`) | Supported |
 | MoP Classic (`5.5.4`) | Supported |
-| Cata / MoP | TOC present; not the main focus of this branch |
+| Wotlk / Cata  | TOC present; not the main focus of this branch |
 
 ---
 
@@ -162,7 +162,7 @@ Bug reports, fixes, ideas and suggestions are welcome.
 
 When reporting an issue, please include:
 
-- WoW version / client (Retail, Classic Era, TBC)
+- WoW version / client (Retail, Classic Era, TBC, MoP)
 - Addon version (`r277.8.2` etc.)
 - Lua errors (BugSack / `/console scriptErrors 1`)
 - Reproduction steps
@@ -175,7 +175,6 @@ This fork may:
 
 - include additional QoL not present upstream
 - migrate profile data automatically (e.g. Actions potion IDs)
-- keep Targeted Spells disabled on purpose
 - diverge further over time as NeRgY continues maintenance
 
 ---
@@ -214,7 +213,7 @@ https://github.com/enderneko/Cell
 
 ## NeRgY
 
-Continuing Cell for healers across Retail Midnight, Classic Era and TBC.
+Continuing Cell for healers across Retail Midnight, Classic Era, TBC and MoP.
 
 </div>
 

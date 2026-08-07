@@ -245,20 +245,46 @@ function I.Cooldowns_SetOrientation_WithSpacing(self, orientation)
         newLinePoint2 = "BOTTOMRIGHT"
         newLineX = self.spacingX or 1
         newLineY = 0
+    elseif orientation == "krysio-style" then
+        point1 = "TOPLEFT"
+        point2 = "TOPRIGHT"
+        self.orientation = "horizontal"
+        x = 1
+        y = 0
+        newLinePoint2 = "BOTTOMLEFT"
+        newLineX = 0
+        newLineY = -(self.spacingY or 1)
     end
 
     self.growth = orientation
     x = x * (self.spacingX or 1)
     y = y * (self.spacingY or 1)
 
-    for i = 1, #self do
-        P.ClearPoints(self[i])
-        if i == 1 then
-            P.Point(self[i], point1)
-        elseif self.numPerLine and i % self.numPerLine == 1 then
-            P.Point(self[i], point1, self[i-self.numPerLine], newLinePoint2, newLineX, newLineY)
-        else
-            P.Point(self[i], point1, self[i-1], point2, x, y)
+    if self.growth == "krysio-style" then
+        -- Krysio Style: first aura centered, second to the left, third+ to the right
+        for i = 1, #self do
+            P.ClearPoints(self[i])
+            if i == 1 then
+                P.Point(self[i], "CENTER")
+            elseif i == 2 then
+                P.Point(self[i], "TOPRIGHT", self[1], "TOPLEFT", -(self.spacingX or 1), 0)
+            elseif i == 3 then
+                -- Third aura anchors to center (self[1]), not to self[2] which is on the left
+                P.Point(self[i], "TOPLEFT", self[1], "TOPRIGHT", self.spacingX or 1, 0)
+            else
+                P.Point(self[i], "TOPLEFT", self[i-1], "TOPRIGHT", self.spacingX or 1, 0)
+            end
+        end
+    else
+        for i = 1, #self do
+            P.ClearPoints(self[i])
+            if i == 1 then
+                P.Point(self[i], point1)
+            elseif self.numPerLine and i % self.numPerLine == 1 then
+                P.Point(self[i], point1, self[i-self.numPerLine], newLinePoint2, newLineX, newLineY)
+            else
+                P.Point(self[i], point1, self[i-1], point2, x, y)
+            end
         end
     end
 
@@ -572,18 +598,32 @@ local function Debuffs_EnableBlacklistShortcut(debuffs, enabled)
                     return
                 end
 
-                if not F.TContains(CellDB["debuffBlacklist"], self.spellId) then
-                    -- print msg
-                    local name, icon = F.GetSpellInfo(self.spellId)
-                    if name and icon then
-                        F.Print(L["Added |T%d:0|t|cFFFF3030%s(%d)|r into debuff blacklist."]:format(icon, name, self.spellId))
+                if Cell.isRetail then
+                    -- New system: auraBlacklist.debuffs
+                    local sid = self.spellId
+                    if not F.GetAuraBlacklistEntry or not F.GetAuraBlacklistEntry(sid, "HARMFUL") then
+                        local name, icon = F.GetSpellInfo(sid)
+                        if name and icon then
+                            F.Print(L["Added |T%d:0|t|cFFFF3030%s(%d)|r into debuff blacklist."]:format(icon, name, sid))
+                        end
+                        if F.ToggleAuraBlacklist then
+                            F.ToggleAuraBlacklist(sid, "HARMFUL", true, true)
+                        end
+                        Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, "", "bigDebuffs")
+                        F.ReloadIndicatorOptions(Cell.defaults.indicatorIndices.debuffs)
                     end
-                    -- update db
-                    tinsert(CellDB["debuffBlacklist"], self.spellId)
-                    Cell.vars.debuffBlacklist = F.ConvertTable(CellDB["debuffBlacklist"])
-                    Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, "", "debuffBlacklist")
-                    -- refresh
-                    F.ReloadIndicatorOptions(Cell.defaults.indicatorIndices.debuffs)
+                else
+                    -- Legacy system: debuffBlacklist (non-Retail)
+                    if not F.TContains(CellDB["debuffBlacklist"], self.spellId) then
+                        local name, icon = F.GetSpellInfo(self.spellId)
+                        if name and icon then
+                            F.Print(L["Added |T%d:0|t|cFFFF3030%s(%d)|r into debuff blacklist."]:format(icon, name, self.spellId))
+                        end
+                        tinsert(CellDB["debuffBlacklist"], self.spellId)
+                        Cell.vars.debuffBlacklist = F.ConvertTable(CellDB["debuffBlacklist"])
+                        Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, "", "debuffBlacklist")
+                        F.ReloadIndicatorOptions(Cell.defaults.indicatorIndices.debuffs)
+                    end
                 end
             end)
         else
@@ -712,15 +752,19 @@ local function Dispels_SetDispels(self, dispelTypes)
             if not found and self.highlightType ~= "none" and dispelType and showHighlight then
                 found = true
                 local r, g, b = I.GetDebuffTypeColor(dispelType)
-                if self.highlightType == "entire" then
-                    self.highlight:SetTexture(Cell.vars.whiteTexture)
-                    self.highlight:SetVertexColor(r, g, b, 0.5)
-                elseif self.highlightType == "current" or self.highlightType == "current+" then
-                    self.highlight:SetTexture(Cell.vars.texture)
+                if self.highlightType == "edge-top" or self.highlightType == "edge-bottom" or self.highlightType == "gradient-sharp" then
+                    self.highlight:SetTexture("Interface\\AddOns\\Cell\\Media\\gradient-fade-bottom")
+                    -- Texture is opaque at the top by default; flip for bottom edge.
+                    if self.highlightType == "edge-bottom" or self.highlightType == "gradient-sharp" then
+                        self.highlight:SetTexCoord(0, 1, 1, 0)
+                    else
+                        self.highlight:SetTexCoord(0, 1, 0, 1)
+                    end
                     self.highlight:SetVertexColor(r, g, b, 1)
-                elseif self.highlightType == "gradient" or self.highlightType == "gradient-half" then
+                else -- entire (full health bar)
                     self.highlight:SetTexture(Cell.vars.whiteTexture)
-                    self.highlight:SetGradient("VERTICAL", CreateColor(r, g, b, 1), CreateColor(r, g, b, 0))
+                    self.highlight:SetTexCoord(0, 1, 0, 1)
+                    self.highlight:SetVertexColor(r, g, b, 0.5)
                 end
                 self.highlight:Show()
             end
@@ -732,10 +776,10 @@ local function Dispels_SetDispels(self, dispelTypes)
         end
     end
 
-    self:UpdateSize(i)
+    self:UpdateSize(self.showIcons and i or 0)
 
     -- hide unused
-    for j = i+1, 5 do
+    for j = (self.showIcons and i or 0)+1, 5 do
         self[j]:Hide()
     end
 end
@@ -802,43 +846,26 @@ local function Dispels_SetOrientation(self, orientation)
 end
 
 local function Dispels_UpdateHighlight(self, highlightType)
+    if highlightType == "gradient-sharp" then
+        highlightType = "edge-bottom"
+    elseif highlightType ~= "edge-top" and highlightType ~= "edge-bottom" then
+        highlightType = "entire"
+    end
     self.highlightType = highlightType
     self.highlight:SetBlendMode("BLEND")
-
-    if highlightType == "none" then
-        self.highlight:Hide()
-    elseif highlightType == "gradient" then
-        -- self.highlight:SetParent(self.parent.widgets.indicatorFrame)
-        self.highlight:ClearAllPoints()
-        self.highlight:SetAllPoints(self.parent.widgets.healthBar)
+    self.highlight:ClearAllPoints()
+    self.highlight:SetAllPoints(self.parent.widgets.healthBar)
+    self.highlight:SetDrawLayer("ARTWORK", 0)
+    if highlightType == "edge-top" or highlightType == "edge-bottom" then
+        self.highlight:SetTexture("Interface\\AddOns\\Cell\\Media\\gradient-fade-bottom")
+        if highlightType == "edge-bottom" then
+            self.highlight:SetTexCoord(0, 1, 1, 0)
+        else
+            self.highlight:SetTexCoord(0, 1, 0, 1)
+        end
+    else
         self.highlight:SetTexture(Cell.vars.whiteTexture)
-        self.highlight:SetDrawLayer("ARTWORK", 0)
-    elseif highlightType == "gradient-half" then
-        -- self.highlight:SetParent(self.parent.widgets.indicatorFrame)
-        self.highlight:ClearAllPoints()
-        self.highlight:SetPoint("BOTTOMLEFT", self.parent.widgets.healthBar)
-        self.highlight:SetPoint("TOPRIGHT", self.parent.widgets.healthBar, "RIGHT")
-        self.highlight:SetTexture(Cell.vars.whiteTexture)
-        self.highlight:SetDrawLayer("ARTWORK", 0)
-    elseif highlightType == "entire" then
-        -- self.highlight:SetParent(self.parent.widgets.indicatorFrame)
-        self.highlight:ClearAllPoints()
-        self.highlight:SetAllPoints(self.parent.widgets.healthBar)
-        self.highlight:SetTexture(Cell.vars.whiteTexture)
-        self.highlight:SetDrawLayer("ARTWORK", 0)
-    elseif highlightType == "current" then
-        -- self.highlight:SetParent(self.parent.widgets.healthBar)
-        self.highlight:ClearAllPoints()
-        self.highlight:SetAllPoints(self.parent.widgets.healthBar:GetStatusBarTexture())
-        self.highlight:SetTexture(Cell.vars.texture)
-        self.highlight:SetDrawLayer("ARTWORK", -7)
-    elseif highlightType == "current+" then
-        -- self.highlight:SetParent(self.parent.widgets.healthBar)
-        self.highlight:ClearAllPoints()
-        self.highlight:SetAllPoints(self.parent.widgets.healthBar:GetStatusBarTexture())
-        self.highlight:SetTexture(Cell.vars.texture)
-        self.highlight:SetDrawLayer("ARTWORK", -7)
-        self.highlight:SetBlendMode("ADD")
+        self.highlight:SetTexCoord(0, 1, 0, 1)
     end
 end
 
@@ -1159,10 +1186,18 @@ local function PrivateAuras_UpdateAnchorFrame(self, holder)
     local idx = holder._cellPrivateAuraIndex or 1
 
     -- Keep private aura anchors explicitly above the indicator parent.
-    -- Some users report occasional z-order drops where private aura icons render
-    -- behind unit frames; re-applying strata/level stabilizes ordering.
-    holder:SetFrameStrata(self:GetFrameStrata())
-    anchorFrame:SetFrameStrata(self:GetFrameStrata())
+    -- The private auras container inherits "MEDIUM" strata from indicatorFrame,
+    -- same as every other Cell indicator.  Setting holders/anchorFrames to "HIGH"
+    -- strata ensures Blizzard private aura icons always render above all MEDIUM-frame
+    -- siblings (debuffs, cooldowns, etc.) regardless of their frameLevel.
+    local parentStrata = self:GetFrameStrata()
+    if parentStrata == "MEDIUM" or parentStrata == "LOW" or parentStrata == "BACKGROUND" then
+        holder:SetFrameStrata("HIGH")
+        anchorFrame:SetFrameStrata("HIGH")
+    else
+        holder:SetFrameStrata(parentStrata)
+        anchorFrame:SetFrameStrata(parentStrata)
+    end
     local baseLevel = (self:GetFrameLevel() or 1) + 10 + idx
     holder:SetFrameLevel(baseLevel)
     anchorFrame:SetFrameLevel(baseLevel + 1)
@@ -1176,13 +1211,16 @@ local function PrivateAuras_UpdateAnchorFrame(self, holder)
         anchorFrame:SetSize(holder:GetWidth(), holder:GetHeight())
     end
 
-    -- We only update EnableMouse and mouse propagation if NOT in combat, to prevent ADDON_ACTION_BLOCKED
-    -- taint errors on secure private aura anchors when entering LFR or during combat.
-    -- When in combat, the size change above (0.001 size) is already sufficient to effectively disable mouse interaction.
     if not InCombatLockdown() then
-        anchorFrame:EnableMouse(not self.hideTooltip)
-        if anchorFrame.SetPropagateMouseMotion then anchorFrame:SetPropagateMouseMotion(not self.hideTooltip) end
-        if anchorFrame.SetPropagateMouseClicks then anchorFrame:SetPropagateMouseClicks(not self.hideTooltip) end
+        pcall(function()
+            anchorFrame:EnableMouse(not self.hideTooltip)
+            if anchorFrame.SetPropagateMouseMotion then
+                anchorFrame:SetPropagateMouseMotion(not self.hideTooltip)
+            end
+            if anchorFrame.SetPropagateMouseClicks then
+                anchorFrame:SetPropagateMouseClicks(not self.hideTooltip)
+            end
+        end)
     end
 
     return anchorFrame
@@ -1200,6 +1238,40 @@ local function PrivateAuras_UpdateSize(self, iconsShown)
     -- Max Displayed or the visual position drifts when anchored by center/top.
     if self.width and self.height then
         self:_SetSize(self.width, self.height)
+    end
+end
+
+local function PrivateAuras_HookBlizzardEventFrames(frame, depth)
+    if depth > 5 then return end
+    for i = 1, frame:GetNumChildren() do
+        local child = select(i, frame:GetChildren())
+        if child and not child.__cell_hooked then
+            local origOnEvent = child:GetScript("OnEvent")
+            local origOnUpdate = child:GetScript("OnUpdate")
+            if origOnEvent then
+                child.__cell_hooked = true
+                child:SetScript("OnEvent", function(...)
+                    local ok, err = pcall(origOnEvent, ...)
+                    if not ok and not tostring(err):find("CheckExistingDispelHasCorrectType") then
+                        geterrorhandler()(err)
+                    end
+                end)
+            end
+            if origOnUpdate then
+                if not child.__cell_hooked then
+                    child.__cell_hooked = true
+                end
+                child:SetScript("OnUpdate", function(...)
+                    local ok, err = pcall(origOnUpdate, ...)
+                    if not ok and not tostring(err):find("CheckExistingDispelHasCorrectType") then
+                        geterrorhandler()(err)
+                    end
+                end)
+            end
+            if not child.__cell_hooked then
+                PrivateAuras_HookBlizzardEventFrames(child, depth + 1)
+            end
+        end
     end
 end
 
@@ -1244,6 +1316,10 @@ local function PrivateAuras_UpdateDispelOverlayVisibility(self)
 end
 
 local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
+    -- krysio: MoP/Classic no tiene AddPrivateAuraAnchor. Si el API existe como
+    -- stub con firma distinta, el pcall abajo igual lanza error de argumentos.
+    if not Cell.isMidnight then return end
+
     -- 12.0.1+: AddPrivateAuraAnchor/RemovePrivateAuraAnchor cannot be called in combat.
     -- Defer until combat ends if needed.
     if InCombatLockdown() then
@@ -1340,7 +1416,7 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
             local overlayAnchor = self:GetParent() or self
             overlay:SetPoint("TOPLEFT", overlayAnchor, "TOPLEFT", -inset, inset)
             overlay:SetPoint("BOTTOMRIGHT", overlayAnchor, "BOTTOMRIGHT", inset, -inset)
-            overlay:SetFrameStrata(self:GetFrameStrata())
+            overlay:SetFrameStrata("HIGH")
             overlay:SetFrameLevel((self:GetFrameLevel() or 1) + (tonumber(self.dispelOverlayFrameLevel) or 6))
             overlay:SetAlpha(0)
             overlay:Show()
@@ -1355,6 +1431,9 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
             })
             if success then
                 self.dispelContainerAnchorID = anchorID
+                C_Timer.After(0, function()
+                    PrivateAuras_HookBlizzardEventFrames(overlay, 0)
+                end)
             end
             PrivateAuras_UpdateDispelOverlayVisibility(self)
         elseif self.dispelOverlayFrame then
@@ -1397,16 +1476,19 @@ function I.CreatePrivateAuras(parent)
         holder._cellPrivateAuraIndex = i
         holder.privateAuraAnchor = CreateFrame("Frame", nil, holder)
         holder.privateAuraAnchor:SetPoint("CENTER", holder)
-        
-        -- Pre-configure mouse propagation at creation (when frame is brand new and untainted)
-        holder.privateAuraAnchor:EnableMouse(true)
-        if holder.privateAuraAnchor.SetPropagateMouseMotion then
-            holder.privateAuraAnchor:SetPropagateMouseMotion(true)
+
+        if not InCombatLockdown() then
+            pcall(function()
+                holder.privateAuraAnchor:EnableMouse(true)
+                if holder.privateAuraAnchor.SetPropagateMouseMotion then
+                    holder.privateAuraAnchor:SetPropagateMouseMotion(true)
+                end
+                if holder.privateAuraAnchor.SetPropagateMouseClicks then
+                    holder.privateAuraAnchor:SetPropagateMouseClicks(true)
+                end
+            end)
         end
-        if holder.privateAuraAnchor.SetPropagateMouseClicks then
-            holder.privateAuraAnchor:SetPropagateMouseClicks(true)
-        end
-        
+
         tinsert(privateAuras, holder)
     end
 

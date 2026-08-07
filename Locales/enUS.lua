@@ -34,8 +34,13 @@ select(2, ...).L = setmetatable({
     ["castByMe"] = "Only show buffs cast by me",
     ["buffByMe"] = "Only show buffs I can apply",
     ["trackByName"] = "Track by name",
+    ["keepInHealers"] = "Keep in Healers indicator",
+    ["Healers indicator is up to date."] = "Healers indicator is up to date.",
+    ["Healers indicator already exists. Add new spells?"] = "Healers indicator already exists. Add |cFFFFB5C5%d|r new spell(s)?",
     ["showDuration"] = "Show duration text",
     ["showAnimation"] = "Show animation",
+    ["Animation"] = "Animation",
+    ["Circular"] = "Circular",
     ["showStack"] = "Show stack text",
     ["showTooltip"] = "Show aura tooltip",
     ["Cooldown Style"] = "Cooldown Style",
@@ -52,7 +57,8 @@ select(2, ...).L = setmetatable({
     ["fadeOut"] = "Fade out over time",
     ["shieldByMe"] = "Only show PW:S cast by me",
     ["onlyShowOvershields"] = "Only show overshields",
-    ["showAllSpells"] = "Show all spells",
+    ["Icons only"] = "Icons only",
+    ["Glow only"] = "Glow only",
     ["enableBlacklistShortcut"] = "Blacklist: Alt+Ctrl+RightClick",
     ["smooth"] = "Smooth",
     ["onlyEnableNotInCombat"] = "Only when I'm not in combat",
@@ -71,6 +77,8 @@ select(2, ...).L = setmetatable({
     ["right-to-left"] = "Right to Left",
     ["top-to-bottom"] = "Top to Bottom",
     ["bottom-to-top"] = "Bottom to Top",
+    ["krysio-style"] = "Krysio Style",
+    ["Krysio Style Desc"] = "First aura centered. Second to the left. Third and beyond stack to the right.",
 
     ["ALL"] = "All",
     ["INVERT"] = "Invert",
@@ -96,6 +104,170 @@ select(2, ...).L = setmetatable({
     ["BACKUP_TIPS2"] = "Note for Classic players: Backups do not include Click-Castings and Layout Auto Switch of other characters",
     ["CHANGELOGS"] = [[
 
+
+        <h1>r277.9 - NeRgY</h1>
+        <h2>Retail PTR (12.1.0)</h2>
+        <p>* Important buffs and debuffs (defensives, externals, crowd controls, healers, and more) now show correctly both in and out of combat.</p>
+        <p>* Dispels can highlight the health bar as a solid color or with a soft fade from the top or bottom.</p>
+        <p>* Healers indicator: choose how the cooldown looks - none, top to bottom, or circular.</p>
+        <p>* Healers indicator: duration text is a simple on/off checkbox (no more percentage options that did not work there).</p>
+        <p>* Healers indicator: glow type setting removed (it did not apply there).</p>
+        <h2>MoP Classic</h2>
+        <p>* Hiding Blizzard party/raid frames is more stable and less likely to cause errors.</p>
+        <p>* Fewer issues while inspecting group members in combat.</p>
+        <p>* Custom indicators that track all timed auras no longer cause Lua errors.</p>
+        <h2>Classic / TBC</h2>
+        <p>* Buff Tracker is more reliable when joining a raid.</p>
+        <p>* Raid Debuffs correctly detect Serpentshrine Cavern and Tempest Keep.</p>
+        <br/>
+
+        <h1>r277.8.3 - NeRgY</h1>
+        <h2>Retail / Midnight</h2>
+        <p>* Fixed TextStatusBar error spam (attempt to compare a secret number value, execution tainted by Cell) on Blizzard party mana/power bars when Hide Blizzard Party is enabled.</p>
+        <p>* Hide Blizzard Party/Raid: hidden frames no longer keep updating health/power bars in the background.</p>
+        <p>* Miscellaneous small bug fixes and stability improvements.</p>
+        <h2>Classic / TBC</h2>
+        <p>* Fixed Buff Tracker errors when joining a raid (safer aura lookup + missing class guards).</p>
+        <p>* Classic flavors no longer use the retail Hide Blizzard path (fixes raid-entry Lua errors).</p>
+        <p>* Fixed TBC Raid Debuffs zone detection for SSC / Tempest Keep (instance name mapping now matches GetInstanceInfo).</p>
+        <br/>
+
+        <h1>r277.8.2 - NeRgY</h1>
+        <h2>Retail / Midnight</h2>
+        <p>* Hide Blizzard Party / Raid is more stable and causes fewer errors in raids and with other addons.</p>
+        <p>* Fixed a rare error when power bars update while playing solo.</p>
+        <br/>
+
+        <h1>r277.8.1 - NeRgY</h1>
+        <h2>Retail / Midnight</h2>
+        <p>* Fixed Bar Animation &gt; Smooth: health and power bars animate smoothly again.</p>
+        <p>* Fixed Out of Range Alpha: frames correctly fade when out of range again.</p>
+        <h2>Classic Era / TBC</h2>
+        <p>* Fixed Out of Range Alpha: frames correctly fade when out of range again.</p>
+        <br/>
+
+        <h1>r277.8 - NeRgY</h1>
+        <p>Continued development of Krysio's Cell fork (enderneko → jdtoppin / krysiolol). This release starts from Krysio r277.7.5.3 and extends it further.</p>
+        <h2>New: Options &gt; AddOns page</h2>
+        <p>* Cell now appears under Esc &gt; Options &gt; AddOns with its own landing page (icon, version, credits, and an Open Options button that opens the Cell settings).</p>
+        <p>* Available on Retail, Classic Era, and TBC.</p>
+        <h2>New: Minimap button</h2>
+        <p>* Added a Cell Minimap button (left-click opens options, drag to reposition). Can be toggled under General.</p>
+        <h2>Retail / Midnight</h2>
+        <p>* Appearance &gt; Bar Animation: retail-only "Legacy" option for comparison with "Smooth". On Midnight, live frames use immediate SetValue for Legacy (SmoothStatusBarMixin cannot animate secret unit health); Smooth uses StatusBarInterpolation. The Appearance preview still shows the classic mixin for Legacy.</p>
+        <p>* Built on Krysio's Midnight foundation (Secret Aura Fingerprint, HandleBuff, Aura Blacklist, Midnight Tools, Locale Override, Comm guards/queue, Private Dispel / indicator work).</p>
+        <p>* Extended aura handling with Utils_Auras helpers (safer timing, stacks, and meta binding) on top of the existing cooldown path.</p>
+        <p>* Strengthened Hide Blizzard: KeepHidden for Compact Party/Raid groups, combined with the existing PartyMemberFrameMixin anti-taint hooks.</p>
+        <p>* Updated party utilities for 12.0.7+ (C_PartyInfo ready check / role poll with legacy fallbacks).</p>
+        <p>* TOC updated for Interface 120007, IconTexture, AddonCompartment, and Unit Frames category.</p>
+        <h2>Retail: Indicators &gt; Actions (potions)</h2>
+        <p>* Renewed the Actions indicator defaults for Midnight: Silvermoon Health Potion and Light's Potential replace the old TWW Algari Healing Potion / Tempered Potion entries.</p>
+        <p>* Existing profiles are overwritten/migrated automatically (including mistaken alchemy craft-spell IDs) so unit-frame animations work again when someone drinks a potion.</p>
+        <h2>Retail: Raid Debuffs (Midnight Season 1)</h2>
+        <p>* Verified Raid Debuffs still work on Midnight for readable spell IDs (not force-disabled like Targeted Spells).</p>
+        <p>* Re-checked Voidspire, March on Quel'Danas, Sporefall, and The Dreamrift against JournalEncounterSection (12.0.7); added missing Midnight Falls Dissonance silence (1295191) and Crown of the Cosmos Corrupting Essence player debuff (1241520).</p>
+        <h2>Classic Era / Vanilla</h2>
+        <p>* Clearer profile Import UX (detailed errors, whitespace/newline stripping, chat feedback).</p>
+        <p>* About tab: Import &amp; Export All Settings moved near the top; Layouts Import now warns if a full profile string (!CELL:#:ALL!) is pasted there by mistake.</p>
+        <p>* Fixed Import/About Lua errors when addon version metadata is missing (nil Cell.version / versionNum); Import button can enable again.</p>
+        <p>* Fixed out-of-range fade on Classic/TBC: range APIs returning 0/1 were misread as always in-range.</p>
+        <p>* TOC: Interface 11508/11509, IconTexture, AddonCompartment, categories/notes.</p>
+        <p>* Classic-safe load path kept (no SecretAuraFingerprint on Vanilla); HandleBuff remains safe when Cell._hb is unused.</p>
+        <h2>TBC Classic</h2>
+        <p>* Same Classic-line improvements (Import UX, HideBlizzard KeepHidden, TOC metadata, version init, out-of-range fix).</p>
+        <p>* TOC: Interface 20506 with matching icon/compartment/category metadata.</p>
+        <br/>
+
+        <h1>r277.7.5.3-krysio - Click Casting 12.0.7 + Cyrillic Text</h1>
+        <h2>Fixed: Click Casting with modifier keys</h2>
+        <p>* Fixed modifier+click combinations (Ctrl/Shift/Alt + mouse buttons) not working in WoW 12.0.7.</p>
+        <h2>Fixed: Cyrillic/Russian text rendering</h2>
+        <p>* Fixed [] boxes appearing in raid frame names for non-Latin characters (Russian, Korean, Chinese).</p>
+        <br/>
+        
+        <h1>r277.7.5.2-krysio - Secret Aura Detection &amp; Classic Fixes</h1>
+        <h2>Fixed: LUA error on MoP/Classic when Private Dispel Overlay was enabled</h2>
+        <p>The Private Aura Anchor API (AddPrivateAuraAnchor) does not exist on Classic clients. Calls to it now bail out early on non-Midnight versions.</p>
+        <h2>Fixed: Arcane Intellect and Battle Shout detection</h2>
+        <p>These buffs now correctly show as missing for all party/raid members (not just casters or specific specs).</p>
+        <h2>Fixed: Self-cast defensives timing</h2>
+        <p>Increased detection window for self-cast abilities to improve reliability in raids.</p>
+        <h2>Fixed: Secret Aura detection improvements</h2>
+        <p>Better filtering of trinket procs, weapon enchants, and item effects that were causing false detections.</p>
+        <h2>Fixed: Prefetch and instance detection</h2>
+        <p>Corrected internal checks that were preventing proper data loading in instances and raids.</p>
+        <h2>Added: Version warning for non-Midnight users</h2>
+        <p>This Krysio build is focused on Midnight (Retail 12.0). Classic users will see a chat message directing them to the official r276-beta release.</p>
+        <br/>
+        
+        <h1>r277.7.5.1-krysio Keep in Healers, Profile Migration &amp; UI Fixes</h1>
+        <h2>New: Keep in Healers indicator</h2>
+        <p>* Added "Keep in Healers indicator" checkbox for custom buff indicators. When checked, the aura is NOT consumed from the Healers indicator — it shows in both the custom indicator and the Healers overflow area.</p>
+        <p>* Useful for purely visual indicators (glow, border, overlay) where you want to keep the aura visible in its default Healers position.</p>
+        <h2>Fix: Profile backward compatibility</h2>
+        <p>* Fixed debuffBlacklist to auraBlacklist migration not running on imported profiles. When importing an old profile, the blacklist entries were lost because the migration only ran at login, not after import.</p>
+        <h2>Fix: Aura Blacklist export/import</h2>
+        <p>* Fixed Export.lua missing auraBlacklist_debuffs on Retail (was never exported)</p>
+        <p>* Fixed Import.lua overwriting instead of merging existing auraBlacklist_debuffs</p>
+        <h2>Fix: Custom indicator dedup on Midnight</h2>
+        <p>* Fixed secret aura dedup not working when spellId is secret (Midnight). Uses name-based lookup as fallback when trackByName=false.</p>
+        <h2>Fix: Stale indicator listButtons crash</h2>
+        <p>* Fixed LUA error (attempt to index local 'i' a nil value) when clicking indicator settings buttons after deleting a custom indicator.</p>
+        <h2>Fix: Aura Blacklist debuffs not filtering</h2>
+        <p>* Fixed debuff blacklist not hiding/removing debuffs when toggling combat/OOC checkboxes (added missing frame refresh).</p>
+        <p>* Fixed old debuffBlacklist still blocking debuffs on Retail even with AuraBlacklist checkboxes unchecked.</p>
+        <p>* All known debuffs now default to blacklisted (combat + OOC) on first run or for spells never configured; existing user settings are preserved.</p>
+        <h2>New: /cell healers update detection</h2>
+        <p>* /cell healers now checks if the Healers indicator has missing spells and shows an update popup with the new spell icons.</p>
+        <p>* If no spells are missing, prints "Healers indicator is up to date."</p>
+        <p>* Rename button is blocked on Healers indicator to preserve name == "Healers" detection.</p>
+        <p>* Translations added to all 10 supported locales.</p>
+        <h2>Fix: Non-defensive buffs appearing in Defensives + Externals</h2>
+        <p>* Added not F.IsValueNonSecret(spellId) guard to Step 2 (direct API filter call). Procs with readable spellId were being falsely classified as defensive by Blizzard's unreliable BIG_DEFENSIVE/EXTERNAL_DEFENSIVE filter. The guard ensures Step 1's verdict (curated tables) is respected when the spellId is legible — the API filter is only trusted for truly opaque (secret) spell IDs.</p>
+        <br/>
+        <p>* Expanded cast tracking: 7 additional defensive cast spell IDs (Time Dilation, Ironbark, Pain Suppression, Power Infusion, Guardian Spirit, Blessing of Protection, Blessing of Sacrifice) for safer identification when the defensive is sourced by another player.</p>
+        <br/>
+        <p>* Fix: pre-fetch no longer stores auras with readable spellId. Prevents Devotion Aura, reputation tabards and similar passive buffs from being falsely classified as defensive on out-of-range or out-of-instance units.</p>
+        <br/>
+        <p>* Fix: Step 2.5 re-enabled timing-only match for fully-secret auras (needed for Blessing of Freedom, Divine Protection, Shield of Vengeance on Ret/Prot paladins) but added a source guard returning from party members. External defensives now require source="player" to avoid classifying ally procs/trinkets.</p>
+        <br/>
+
+        <h1>r277.7.5-krysio Spell Picker, Pet Side, Aura Blacklist &amp; System Updates</h1>
+        <h2>New: Spell Picker</h2>
+        <p>* Added a visual Spell Picker dialog for custom indicators. Replaces manual spell ID typing with a categorized list of available buffs/debuffs.</p>
+        <p>* Class/spec dropdown automatically filters spells for the selected spec, with an Auto mode that detects your current specialization.</p>
+        <p>* Single-click to select and confirm — no more remembering spell IDs or copying from external sources.</p>
+        <p>* "No spells available for your spec" message for specs with no blacklistable spells (e.g. Windwalker Monk).</p>
+        <h2>New: Pet Side positioning</h2>
+        <p>* Added "Pet Side" setting in Layouts &gt; Pet tab to control pet position relative to the owner frame.</p>
+        <p>* Options: Left, Right, Top, Bottom — adapts to the pet's orientation mode (horizontal or vertical).</p>
+        <h2>New: Aura Blacklist</h2>
+        <p>* Added a new global Aura Blacklist under Indicators tab. Hide unwanted buffs and debuffs from ALL indicators at once.</p>
+        <p>* Class dropdown (Auto + all classes) for Buffs/Debuffs filter tabs, and per-spell Combat/OOC toggles.</p>
+        <p>* Blacklisted auras are removed instantly — no need to configure each indicator individually.</p>
+        <p>* Aura Blacklist entry moved directly above "Debuffs" in the indicator list for easier access.</p>
+        <h2>New: Secret Aura Detection</h2>
+        <p>* Improved detection of hidden/secret healing auras across all game languages (English, Spanish, Chinese, etc.).</p>
+        <h2>New: Custom Indicator Dedup</h2>
+        <p>* Custom indicators no longer show duplicate auras when multiple indicators could display the same spell.</p>
+        <h2>Migration</h2>
+        <p>* The old "Debuff Filter (blacklist)" has been replaced by the new Aura Blacklist system. Your existing blacklist settings have been migrated automatically.</p>
+        <h2>Krysio Style orientation</h2>
+        <p>* "Krysio Style" orientation is now only available in Private Auras settings, a new style of sorting the private auras.</p>
+        <h2>Updated Spell Lists</h2>
+        <p>* Updated Healers default buff/debuff lists with missing TWW spells (Holy Armaments, Symbiotic Relationship, etc.).</p>
+        <br/>
+
+        <h1>r277.7.4-krysio Private Aura z-order &amp; CPU Optimizations</h1>
+        <h2>Raid Frames / Private Auras</h2>
+        <p>* Fixed private aura icons intermittently rendering behind other indicators (debuffs, cooldowns) by forcing holders, anchor frames, and the dispel overlay to "HIGH" render strata.</p>
+        <p>* Fixed missing cooldown swipe and timer on secret auras shown through the opaque fallback in custom indicators.</p>
+        <p>* Fixed occasional LUA errors when GetAuraApplicationDisplayCount returns an invalid value.</p>
+        <h2>Performance</h2>
+        <p>* Reduced CPU usage on group roster changes by skipping cleanup when the group size hasn't changed.</p>
+        <p>* Reduced redundant iteration when no buff or debuff indicators are enabled.</p>
+        <p>* Optimized unit button iteration and buff processing loops for lower frame time during raid encounters.</p>
+        <br/>
 
         <h1>r277.7.3-krysio Dispel Filters, Shaman Poison &amp; Taint Fixes</h1>
         <h2>Raid Frames / Dispels</h2>
@@ -169,7 +341,7 @@ select(2, ...).L = setmetatable({
         <p>* Fixed persistent false Missing Buff alerts for Blessing of the Bronze after reapplying.</p>
         <p>* Added broader class-buff aura alias coverage (Fortitude, Mark of the Wild, Skyfury, Arcane Brilliance, Battle Shout families) to reduce false negatives/positives.</p>
         <p>* Added safe fail-open behavior when buff name resolution is unavailable, preventing stuck missing states.</p>
-        <p>* Added Danders-style combat behavior for Bronze movement buff tracking: hide/suspend in combat and resync on combat transitions.</p>
+        <p>* Added combat behavior for Bronze movement buff tracking: hide/suspend in combat and resync on combat transitions.</p>
         <h2>Raid Frames / Auras</h2>
         <p>* Fixed an issue where normal debuffs could appear in Raid Debuffs position during encounters by removing over-broad secret-debuff fallback classification.</p>
         <p>* Fixed secret-key table assignment errors on unit hide/attribute changes for pet/group unit mappings.</p>

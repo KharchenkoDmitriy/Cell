@@ -1582,29 +1582,33 @@ local function CreateSetting_Orientation(parent)
 
         widget.orientation = Cell.CreateDropdown(widget, 245)
         widget.orientation:SetPoint("TOPLEFT", 5, -20)
+        local function onSelect(value)
+            widget.func(value)
+        end
+
         widget.orientation:SetItems({
             {
                 ["text"] = L["left-to-right"],
                 ["onClick"] = function()
-                    widget.func("left-to-right")
+                    onSelect("left-to-right")
                 end,
             },
             {
                 ["text"] = L["right-to-left"],
                 ["onClick"] = function()
-                    widget.func("right-to-left")
+                    onSelect("right-to-left")
                 end,
             },
             {
                 ["text"] = L["top-to-bottom"],
                 ["onClick"] = function()
-                    widget.func("top-to-bottom")
+                    onSelect("top-to-bottom")
                 end,
             },
             {
                 ["text"] = L["bottom-to-top"],
                 ["onClick"] = function()
-                    widget.func("bottom-to-top")
+                    onSelect("bottom-to-top")
                 end,
             },
         })
@@ -1624,6 +1628,98 @@ local function CreateSetting_Orientation(parent)
         end
     else
         widget = settingWidgets["orientation"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- ============================================================
+-- Private Aura Orientation: standard options + Krysio Style
+-- ============================================================
+local function CreateSetting_PrivateAuraOrientation(parent)
+    local widget
+
+    if not settingWidgets["privateAuraOrientation"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_PrivateAuraOrientation", parent, 240, 100)
+        settingWidgets["privateAuraOrientation"] = widget
+
+        widget.orientation = Cell.CreateDropdown(widget, 245)
+        widget.orientation:SetPoint("TOPLEFT", 5, -20)
+        local function onSelect(value)
+            widget.func(value)
+            if widget.desc then
+                if value == "krysio-style" then
+                    widget.desc:Show()
+                else
+                    widget.desc:Hide()
+                end
+            end
+        end
+
+        widget.orientation:SetItems({
+            {
+                ["text"] = L["left-to-right"],
+                ["onClick"] = function()
+                    onSelect("left-to-right")
+                end,
+            },
+            {
+                ["text"] = L["right-to-left"],
+                ["onClick"] = function()
+                    onSelect("right-to-left")
+                end,
+            },
+            {
+                ["text"] = L["top-to-bottom"],
+                ["onClick"] = function()
+                    onSelect("top-to-bottom")
+                end,
+            },
+            {
+                ["text"] = L["bottom-to-top"],
+                ["onClick"] = function()
+                    onSelect("bottom-to-top")
+                end,
+            },
+            {
+                ["text"] = L["krysio-style"],
+                ["onClick"] = function()
+                    onSelect("krysio-style")
+                end,
+            },
+        })
+
+        widget.orientationText = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.orientationText:SetText(L["Orientation"])
+        widget.orientationText:SetPoint("BOTTOMLEFT", widget.orientation, "TOPLEFT", 0, 1)
+
+        -- scrolling description shown only when Krysio Style is selected
+        widget.desc = Cell.CreateScrollTextFrame(widget, "", 0.02, nil, nil, true)
+        widget.desc:SetPoint("TOPLEFT", widget.orientation, "BOTTOMLEFT", 5, -4)
+        widget.desc:SetPoint("TOPRIGHT", widget.orientation, "BOTTOMRIGHT", -5, -4)
+        widget.desc:SetHeight(20)
+        widget.desc:SetText(L["Krysio Style Desc"])
+        widget.desc:Hide()
+
+        -- callback
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        -- show db value
+        function widget:SetDBValue(orientation)
+            widget.orientation:SetSelected(L[orientation])
+            if widget.desc then
+                if orientation == "krysio-style" then
+                    widget.desc:Show()
+                else
+                    widget.desc:Hide()
+                end
+            end
+        end
+    else
+        widget = settingWidgets["privateAuraOrientation"]
     end
 
     widget:Show()
@@ -4160,7 +4256,7 @@ local function CreateSetting_Texture(parent)
     return widget
 end
 
-local function CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc)
+local function CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc, usePicker)
     local n = #auraTable
 
     -- tooltip
@@ -4201,6 +4297,19 @@ local function CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons
     end
 
     auraButtons[0]:SetScript("OnClick", function(self)
+        if usePicker then
+            Cell.ShowSpellPicker(parent, nil, function(spellId)
+                if hasColorPicker then
+                    tinsert(auraTable, {spellId, {1, 0.26667, 0.4, 1}})
+                else
+                    tinsert(auraTable, spellId)
+                end
+                parent.func(auraTable)
+                CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc, usePicker)
+                updateHeightFunc(#auraTable, 19)
+            end)
+            return
+        end
         local popup = Cell.CreatePopupEditBox(parent, function(text)
             local spellId = tonumber(text)
             local spellName = F.GetSpellInfo(spellId)
@@ -4426,6 +4535,33 @@ local function CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons
 
         -- functions
         auraButtons[i]:SetScript("OnClick", function()
+            if usePicker then
+                local currentId = auraButtons[i].spellId
+                Cell.ShowSpellPicker(parent, currentId, function(spellId)
+                    local spellName, spellIcon = F.GetSpellInfo(spellId)
+                    if spellName then
+                        auraButtons[i].spellIdText:SetText(spellId)
+                        auraButtons[i].spellId = spellId
+                        auraButtons[i].spellTex = spellIcon
+                        auraButtons[i].spellNameText:SetText(spellName)
+                        if hasColorPicker then
+                            auraTable[i][1] = spellId
+                        else
+                            auraTable[i] = spellId
+                        end
+                        parent.func(auraTable)
+                        if spellIcon then
+                            auraButtons[i].spellIcon:SetTexture(spellIcon)
+                            auraButtons[i].spellIconBg:Show()
+                            auraButtons[i].spellIcon:Show()
+                        else
+                            auraButtons[i].spellIconBg:Hide()
+                            auraButtons[i].spellIcon:Hide()
+                        end
+                    end
+                end)
+                return
+            end
             local popup = Cell.CreatePopupEditBox(parent, function(text)
                 local spellId = tonumber(text)
                 if spellId == 0 then
@@ -4476,7 +4612,7 @@ local function CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons
         auraButtons[i].del:SetScript("OnClick", function()
             tremove(auraTable, i)
             parent.func(auraTable)
-            CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc)
+            CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc, usePicker)
             updateHeightFunc(#auraTable, -19)
         end)
 
@@ -4485,7 +4621,7 @@ local function CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons
             auraTable[i-1] = auraTable[i]
             auraTable[i] = temp
             parent.func(auraTable)
-            CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc)
+            CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc, usePicker)
         end)
 
         auraButtons[i].down:SetScript("OnClick", function()
@@ -4493,7 +4629,7 @@ local function CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons
             auraTable[i+1] = auraTable[i]
             auraTable[i] = temp
             parent.func(auraTable)
-            CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc)
+            CreateAuraButtons(parent, auraButtons, auraTable, noUpDownButtons, isZeroValid, hasColorPicker, updateHeightFunc, usePicker)
         end)
 
         if hasColorPicker then
@@ -4741,7 +4877,183 @@ local function CreateSetting_Auras(parent, index)
             widget.frame.func = func
         end
 
-        -- show db value
+    -- show db value
+    function widget:SetDBValue(title, t, noUpDownButtons, isZeroValid, hasColorPicker)
+        widget.title = title
+        widget.t = t
+        widget.noUpDownButtons = noUpDownButtons
+        widget.isZeroValid = isZeroValid
+        widget.hasColorPicker = hasColorPicker
+
+        widget.text:SetText(title)
+
+        if not auraButtons[index] then auraButtons[index] = {} end
+
+        CreateAuraButtons(widget.frame, auraButtons[index], t, noUpDownButtons, isZeroValid, hasColorPicker, function(n, diff)
+            local height = (n + 1) * P.Scale(20) - n * P.Scale(1)
+            widget.frame:SetHeight(height)
+            widget:SetHeight(height + P.Scale(22) + P.Scale(7))
+            if diff then parent:SetHeight(parent:GetHeight() + P.Scale(diff)) end
+        end, widget.usePicker)
+
+        local height = (#t + 1) * P.Scale(20) - #t * P.Scale(1)
+        widget.frame:SetHeight(height)
+        widget:SetHeight(height + P.Scale(22) + P.Scale(7))
+    end
+    else
+        widget = settingWidgets["auras"..index]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-------------------------------------------------
+-- CreateSetting_AurasPicker - same as Auras but with spell picker instead of ID entry
+-------------------------------------------------
+local function CreateSetting_AurasPicker(parent)
+    local widget
+    if not auraImportExportFrame then
+        auraImportExportFrame = Cell.CreateFrame(nil, parent, 1, 200)
+        auraImportExportFrame:SetBackdropBorderColor(Cell.GetAccentColorRGB())
+        auraImportExportFrame:EnableMouse(true)
+        auraImportExportFrame:Hide()
+
+        function auraImportExportFrame:ShowUp()
+            auraImportExportFrame:SetParent(auraImportExportFrame.parent)
+            auraImportExportFrame:SetPoint("TOPLEFT")
+            auraImportExportFrame:SetPoint("TOPRIGHT")
+            auraImportExportFrame:SetToplevel(true)
+            auraImportExportFrame:Show()
+        end
+
+        auraImportExportFrame:SetScript("OnHide", function()
+            auraImportExportFrame:Hide()
+        end)
+
+        auraImportExportFrame.textArea = Cell.CreateScrollEditBox(auraImportExportFrame, function(eb, userChanged)
+            if userChanged then
+                if auraImportExportFrame.isImport then
+                    local data = ConvertAuraData(eb:GetText())
+                    if data and #data ~= 0 then
+                        auraImportExportFrame.data = data
+                        auraImportExportFrame.info:SetText(Cell.GetAccentColorString()..L["Spells"]..":|r "..#data)
+                        auraImportExportFrame.importBtn:SetEnabled(true)
+                    else
+                        auraImportExportFrame.info:SetText(Cell.GetAccentColorString()..L["Spells"]..":|r 0")
+                        auraImportExportFrame.importBtn:SetEnabled(false)
+                    end
+                else
+                    eb:SetText(auraImportExportFrame.exported)
+                    eb:SetCursorPosition(0)
+                    eb:HighlightText()
+                end
+            end
+        end)
+        Cell.StylizeFrame(auraImportExportFrame.textArea.scrollFrame, {0, 0, 0, 0}, Cell.GetAccentColorTable())
+        auraImportExportFrame.textArea:SetPoint("TOPLEFT", 5, -22)
+        auraImportExportFrame.textArea:SetPoint("BOTTOMRIGHT", -5, 5)
+        auraImportExportFrame.textArea.eb:SetAutoFocus(true)
+
+        auraImportExportFrame.textArea.eb:SetScript("OnEditFocusGained", function() auraImportExportFrame.textArea.eb:HighlightText() end)
+        auraImportExportFrame.textArea.eb:SetScript("OnMouseUp", function()
+            if not auraImportExportFrame.isImport then
+                auraImportExportFrame.textArea.eb:HighlightText()
+            end
+        end)
+
+        auraImportExportFrame.info = auraImportExportFrame:CreateFontString(nil, "OVERLAY", font_name)
+        auraImportExportFrame.info:SetPoint("BOTTOMLEFT", auraImportExportFrame.textArea, "TOPLEFT", 0, 3)
+
+        auraImportExportFrame.closeBtn = Cell.CreateButton(auraImportExportFrame, "×", "red", {18, 18}, false, false, "CELL_FONT_SPECIAL", "CELL_FONT_SPECIAL")
+        auraImportExportFrame.closeBtn:SetPoint("BOTTOMRIGHT", auraImportExportFrame.textArea, "TOPRIGHT", 0, 1)
+        auraImportExportFrame.closeBtn:SetScript("OnClick", function() auraImportExportFrame:Hide() end)
+
+        auraImportExportFrame.importBtn = Cell.CreateButton(auraImportExportFrame, L["Import"], "green", {57, 18})
+        auraImportExportFrame.importBtn:SetPoint("TOPRIGHT", auraImportExportFrame.closeBtn, "TOPLEFT", P.Scale(1), 0)
+        auraImportExportFrame.importBtn:SetScript("OnClick", function()
+            wipe(auraImportExportFrame.parent.t)
+            for _, data in pairs(auraImportExportFrame.data) do
+                tinsert(auraImportExportFrame.parent.t, data)
+            end
+            auraImportExportFrame.parent:SetDBValue(auraImportExportFrame.parent.title,
+                auraImportExportFrame.parent.t,
+                auraImportExportFrame.parent.noUpDownButtons,
+                auraImportExportFrame.parent.isZeroValid,
+                auraImportExportFrame.parent.hasColorPicker
+            )
+            auraImportExportFrame:Hide()
+            Cell.UpdateIndicatorSettingsHeight()
+            auraImportExportFrame.parent.frame.func(auraImportExportFrame.parent.t)
+        end)
+    end
+
+    if not settingWidgets["auras-picker"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_AurasPicker", parent, 240, 128)
+        settingWidgets["auras-picker"] = widget
+        widget.usePicker = true
+
+        widget.frame = Cell.CreateFrame(nil, widget, 20, 20)
+        widget.frame:SetPoint("TOPLEFT", 5, -22)
+        widget.frame:SetPoint("RIGHT", -5, 0)
+        widget.frame:Show()
+        Cell.StylizeFrame(widget.frame, {0.15, 0.15, 0.15, 1})
+
+        widget.text = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.text:SetPoint("BOTTOMLEFT", widget.frame, "TOPLEFT", 0, 3)
+
+        widget.export = Cell.CreateButton(widget, nil, "accent-hover", {21, 17}, nil, nil, nil, nil, nil, L["Export"])
+        widget.export:SetPoint("BOTTOMRIGHT", widget.frame, "TOPRIGHT", 0, 1)
+        widget.export:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\export", {15, 15}, {"CENTER", 0, 0})
+        widget.export:SetScript("OnClick", function()
+            auraImportExportFrame.isImport = false
+            auraImportExportFrame.parent = widget
+            local n
+            auraImportExportFrame.exported, n = GetExportString(widget.t)
+            auraImportExportFrame.info:SetText(Cell.GetAccentColorString()..L["Spells"]..":|r "..n)
+            auraImportExportFrame.textArea:SetText(auraImportExportFrame.exported)
+            auraImportExportFrame.importBtn:Hide()
+            auraImportExportFrame:ShowUp()
+            if widget.frame.popupEditBox then
+                widget.frame.popupEditBox:Hide()
+            end
+        end)
+
+        widget.import = Cell.CreateButton(widget, nil, "accent-hover", {21, 17}, nil, nil, nil, nil, nil, L["Import"])
+        widget.import:SetPoint("BOTTOMRIGHT", widget.export, "BOTTOMLEFT", -1, 0)
+        widget.import:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\import", {15, 15}, {"CENTER", 0, 0})
+        widget.import:SetScript("OnClick", function()
+            auraImportExportFrame.isImport = true
+            auraImportExportFrame.parent = widget
+            auraImportExportFrame.textArea:SetText("")
+            auraImportExportFrame.info:SetText(Cell.GetAccentColorString()..L["Spells"]..":|r 0")
+            auraImportExportFrame.importBtn:Show()
+            auraImportExportFrame.importBtn:SetEnabled(false)
+            auraImportExportFrame:ShowUp()
+            if widget.frame.popupEditBox then
+                widget.frame.popupEditBox:Hide()
+            end
+        end)
+
+        widget.clear = Cell.CreateButton(widget, nil, "accent-hover", {21, 17}, nil, nil, nil, nil, nil, L["Clear"], "|cffffb5c5Ctrl+"..L["Left-Click"])
+        widget.clear:SetPoint("BOTTOMRIGHT", widget.import, "BOTTOMLEFT", -1, 0)
+        widget.clear:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\trash", {15, 15}, {"CENTER", 0, 0})
+        widget.clear:SetScript("OnClick", function(self, button)
+            if button == "LeftButton" and IsControlKeyDown() then
+                wipe(widget.t)
+                widget:SetDBValue(widget.title, widget.t, widget.noUpDownButtons, widget.isZeroValid, widget.hasColorPicker)
+                Cell.UpdateIndicatorSettingsHeight()
+                widget.frame.func(widget.t)
+                if widget.frame.popupEditBox then
+                    widget.frame.popupEditBox:Hide()
+                end
+            end
+        end)
+
+        function widget:SetFunc(func)
+            widget.frame.func = func
+        end
+
         function widget:SetDBValue(title, t, noUpDownButtons, isZeroValid, hasColorPicker)
             widget.title = title
             widget.t = t
@@ -4751,21 +5063,22 @@ local function CreateSetting_Auras(parent, index)
 
             widget.text:SetText(title)
 
-            if not auraButtons[index] then auraButtons[index] = {} end
+            local pickerIndex = 3 -- separate cache from auras(1) and auras2(2)
+            if not auraButtons[pickerIndex] then auraButtons[pickerIndex] = {} end
 
-            CreateAuraButtons(widget.frame, auraButtons[index], t, noUpDownButtons, isZeroValid, hasColorPicker, function(n, diff)
+            CreateAuraButtons(widget.frame, auraButtons[pickerIndex], t, noUpDownButtons, isZeroValid, hasColorPicker, function(n, diff)
                 local height = (n + 1) * P.Scale(20) - n * P.Scale(1)
                 widget.frame:SetHeight(height)
                 widget:SetHeight(height + P.Scale(22) + P.Scale(7))
                 if diff then parent:SetHeight(parent:GetHeight() + P.Scale(diff)) end
-            end)
+            end, true) -- usePicker = true
 
             local height = (#t + 1) * P.Scale(20) - #t * P.Scale(1)
             widget.frame:SetHeight(height)
             widget:SetHeight(height + P.Scale(22) + P.Scale(7))
         end
     else
-        widget = settingWidgets["auras"..index]
+        widget = settingWidgets["auras-picker"]
     end
 
     widget:Show()
@@ -5407,6 +5720,23 @@ local function CreateSetting_ActionsPreview(parent)
     return widget
 end
 
+local ACTION_SPELL_ITEM = {
+    [1234768] = 241304,
+    [1236616] = 241309,
+    [431416] = 211880,
+    [431932] = 212265,
+}
+
+local function GetActionItemIcon(itemId)
+    if not itemId then return end
+    if C_Item and C_Item.GetItemIconByID then
+        return C_Item.GetItemIconByID(itemId)
+    end
+    if GetItemIcon then
+        return GetItemIcon(itemId)
+    end
+end
+
 local actionButtons = {}
 local function CreateActionButtons(parent, spellTable, updateHeightFunc)
     local n = #spellTable
@@ -5583,15 +5913,24 @@ local function CreateActionButtons(parent, spellTable, updateHeightFunc)
             -- spell tooltip
             actionButtons[i]:HookScript("OnEnter", function(self)
                 if not parent.popupEditBox:IsShown() then
-                    local name = F.GetSpellInfo(self.spellId)
+                    local spellId = self.spellId
+                    local itemId = spellId and ACTION_SPELL_ITEM[spellId]
+
+                    CellSpellTooltip:SetOwner(actionButtons[i], "ANCHOR_NONE")
+                    CellSpellTooltip:SetPoint("TOPRIGHT", actionButtons[i], "TOPLEFT", -1, 0)
+                    if itemId then
+                        CellSpellTooltip:SetItemByID(itemId)
+                        CellSpellTooltip:Show()
+                        return
+                    end
+
+                    local name = F.GetSpellInfo(spellId)
                     if not name then
                         CellSpellTooltip:Hide()
                         return
                     end
 
-                    CellSpellTooltip:SetOwner(actionButtons[i], "ANCHOR_NONE")
-                    CellSpellTooltip:SetPoint("TOPRIGHT", actionButtons[i], "TOPLEFT", -1, 0)
-                    CellSpellTooltip:SetSpellByID(self.spellId)
+                    CellSpellTooltip:SetSpellByID(spellId)
                     CellSpellTooltip:Show()
                 end
             end)
@@ -5604,6 +5943,8 @@ local function CreateActionButtons(parent, spellTable, updateHeightFunc)
 
         -- fill data
         local name, icon = F.GetSpellInfo(spell[1])
+        local itemIcon = GetActionItemIcon(ACTION_SPELL_ITEM[spell[1]])
+        if itemIcon then icon = itemIcon end
         actionButtons[i].spellIdText:SetText(spell[1])
         actionButtons[i].spellId = spell[1]
         actionButtons[i].spellNameText:SetText(name or L["Invalid"])
@@ -5637,6 +5978,7 @@ local function CreateActionButtons(parent, spellTable, updateHeightFunc)
                 local spellId = tonumber(text)
                 local spellName, spellIcon = F.GetSpellInfo(spellId)
                 if spellId and spellName then
+                    spellIcon = GetActionItemIcon(ACTION_SPELL_ITEM[spellId]) or spellIcon
                     -- update text
                     actionButtons[i].spellIdText:SetText(spellId)
                     actionButtons[i].spellId = spellId
@@ -5915,45 +6257,24 @@ local function CreateSetting_HighlightType(parent)
         widget.highlightType:SetPoint("TOPLEFT", 5, -20)
         widget.highlightType:SetItems({
             {
-                ["text"] = L["None"],
-                ["value"] = "none",
-                ["onClick"] = function()
-                    widget.func("none")
-                end,
-            },
-            {
-                ["text"] = L["Gradient"].." - "..L["Health Bar"].." ("..L["Entire"]..")",
-                ["value"] = "gradient",
-                ["onClick"] = function()
-                    widget.func("gradient")
-                end,
-            },
-            {
-                ["text"] = L["Gradient"].." - "..L["Health Bar"].." ("..L["Half"]..")",
-                ["value"] = "gradient-half",
-                ["onClick"] = function()
-                    widget.func("gradient-half")
-                end,
-            },
-            {
-                ["text"] = L["Solid"].." - "..L["Health Bar"].." ("..L["Entire"]..")",
+                ["text"] = L["Solid"].." - "..L["Health Bar"],
                 ["value"] = "entire",
                 ["onClick"] = function()
                     widget.func("entire")
                 end,
             },
             {
-                ["text"] = L["Solid"].." - "..L["Health Bar"].." ("..L["Current"]..")",
-                ["value"] = "current",
+                ["text"] = L["Edge Fade"].." ("..L["TOP"]..")",
+                ["value"] = "edge-top",
                 ["onClick"] = function()
-                    widget.func("current")
+                    widget.func("edge-top")
                 end,
             },
             {
-                ["text"] = L["Solid"].." - "..L["Health Bar"].." ("..L["Current"].."+)",
-                ["value"] = "current+",
+                ["text"] = L["Edge Fade"].." ("..L["BOTTOM"]..")",
+                ["value"] = "edge-bottom",
                 ["onClick"] = function()
-                    widget.func("current+")
+                    widget.func("edge-bottom")
                 end,
             },
         })
@@ -6011,11 +6332,12 @@ local function CreateSetting_HighlightType(parent)
 
         -- show db value
         function widget:SetDBValue(highlightType)
+            if highlightType == "gradient-sharp" then
+                highlightType = "edge-bottom"
+            elseif highlightType ~= "edge-top" and highlightType ~= "edge-bottom" then
+                highlightType = "entire"
+            end
             widget.highlightType:SetSelectedValue(highlightType)
-            -- widget.curseCP:SetColor(I.GetDebuffTypeColor("Curse"))
-            -- widget.diseaseCP:SetColor(I.GetDebuffTypeColor("Disease"))
-            -- widget.magicCP:SetColor(I.GetDebuffTypeColor("Magic"))
-            -- widget.poisonCP:SetColor(I.GetDebuffTypeColor("Poison"))
         end
     else
         widget = settingWidgets["highlightType"]
@@ -6643,6 +6965,61 @@ local function CreateSetting_MaxValue(parent)
     return widget
 end
 
+local function CreateSetting_AnimationStyle(parent)
+    local widget
+
+    if not settingWidgets["animationStyle"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_AnimationStyle", parent, 240, 50)
+        settingWidgets["animationStyle"] = widget
+
+        widget.dropdown = Cell.CreateDropdown(widget, 245)
+        widget.dropdown:SetPoint("TOPLEFT", 5, -20)
+        widget.dropdown:SetItems({
+            {
+                ["text"] = L["None"],
+                ["value"] = "none",
+                ["onClick"] = function()
+                    widget.func("none")
+                end,
+            },
+            {
+                ["text"] = L["top-to-bottom"],
+                ["value"] = "vertical",
+                ["onClick"] = function()
+                    widget.func("vertical")
+                end,
+            },
+            {
+                ["text"] = L["Circular"],
+                ["value"] = "clock",
+                ["onClick"] = function()
+                    widget.func("clock")
+                end,
+            },
+        })
+
+        widget.label = widget:CreateFontString(nil, "OVERLAY", font_name)
+        widget.label:SetText(L["Animation"])
+        widget.label:SetPoint("BOTTOMLEFT", widget.dropdown, "TOPLEFT", 0, 1)
+
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        function widget:SetDBValue(style)
+            if style ~= "none" and style ~= "vertical" and style ~= "clock" then
+                style = "clock"
+            end
+            widget.dropdown:SetSelectedValue(style)
+        end
+    else
+        widget = settingWidgets["animationStyle"]
+    end
+
+    widget:Show()
+    return widget
+end
+
 local function CreateSetting_IconStyle(parent)
     local widget
 
@@ -6734,14 +7111,21 @@ local function CreateSetting_TargetedSpellsDisplayMode(parent)
         widget.dropdown:SetPoint("TOPLEFT", 5, -20)
         widget.dropdown:SetItems({
             {
-                ["text"] = L["Icons"],
+                ["text"] = L["None"],
+                ["value"] = "None",
+                ["onClick"] = function()
+                    widget.func("None")
+                end,
+            },
+            {
+                ["text"] = L["Icons only"],
                 ["value"] = "Icons",
                 ["onClick"] = function()
                     widget.func("Icons")
                 end,
             },
             {
-                ["text"] = L["Border"],
+                ["text"] = L["Glow only"],
                 ["value"] = "Border",
                 ["onClick"] = function()
                     widget.func("Border")
@@ -7012,6 +7396,655 @@ local function CreateSetting_ClassFilters(parent)
     return widget
 end
 
+-------------------------------------------------
+-- Spell Picker dialog for custom indicators
+-- Spell data sourced from AuraBlacklist.lua (via F.GetAuraBlacklistBuffSpells / DebuffSpells)
+-------------------------------------------------
+local SpellPickerFrame
+local function RefreshSpellPicker()
+    if not SpellPickerFrame then return end
+    local state = SpellPickerFrame.state
+    local search = strlower(SpellPickerFrame.searchBox:GetText() or "")
+    local c = state.class
+    local s = state.specIndex
+    if c == "AUTO" then
+        local _, t = UnitClass("player"); c = t
+        s = GetSpecialization()  -- auto-detect spec so we only see relevant spells
+    end
+    local spells = F.GetAuraBlacklistBuffSpells(c, s) or {}
+
+    -- Clear old rows
+    for _, r in ipairs(SpellPickerFrame.rows or {}) do r:Hide(); r:ClearAllPoints() end
+    SpellPickerFrame.rows = {}
+
+    local idx = 0
+    local ar, ag, ab = Cell.GetAccentColorRGB()
+    for _, s in ipairs(spells) do
+        local name = strlower(s.display)
+        if search == "" or name:find(search, 1, true) then
+            idx = idx + 1
+            local row = CreateFrame("Button", nil, SpellPickerFrame.content, "BackdropTemplate")
+            row:SetHeight(20); row:SetPoint("TOPLEFT", 4, -((idx-1)*21))
+            row:SetPoint("TOPRIGHT", -4, -((idx-1)*21))
+            row:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+            row:SetBackdropColor(0.15, 0.15, 0.15, 0.95)
+            row.spellId = s.spellId
+
+            -- Icon
+            local ic = row:CreateTexture(nil, "ARTWORK")
+            ic:SetSize(16, 16); ic:SetPoint("LEFT", 4, 0)
+            ic:SetTexture(s.icon or 134400); ic:SetTexCoord(0.08,0.92,0.08,0.92)
+
+            -- Name
+            local txt = row:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+            txt:SetPoint("LEFT", ic, "RIGHT", 6, 0); txt:SetPoint("RIGHT", -4, 0)
+            txt:SetJustifyH("LEFT"); txt:SetText(s.display); txt:SetTextColor(1,1,1)
+
+            -- Accent bar if selected
+            local abar = row:CreateTexture(nil, "ARTWORK")
+            abar:SetSize(3, 16); abar:SetPoint("LEFT", 0, 0)
+            abar:SetColorTexture(ar,ag,ab,1)
+            abar:SetShown(s.spellId == SpellPickerFrame.currentSpellId)
+
+            local function Unsel()
+                for _, r in ipairs(SpellPickerFrame.rows or {}) do
+                    r:SetBackdropColor(0.15,0.15,0.15,0.95)
+                end
+                abar:SetShown(s.spellId == SpellPickerFrame.currentSpellId)
+            end
+
+            row:SetScript("OnClick", function()
+                if SpellPickerFrame.onConfirm then
+                    SpellPickerFrame.onConfirm(s.spellId)
+                end
+                SpellPickerFrame:Hide()
+            end)
+            row:SetScript("OnEnter", function()
+                row:SetBackdropColor(0.20,0.20,0.20,0.95)
+                if CellSpellTooltip then
+                    CellSpellTooltip:SetOwner(row, "ANCHOR_RIGHT")
+                    CellSpellTooltip:SetSpellByID(s.spellId)
+                    CellSpellTooltip:Show()
+                end
+            end)
+            row:SetScript("OnLeave", function()
+                row:SetBackdropColor(0.15,0.15,0.15,0.95)
+                if CellSpellTooltip then CellSpellTooltip:Hide() end
+            end)
+
+            tinsert(SpellPickerFrame.rows, row)
+        end
+    end
+
+    local totalH = #SpellPickerFrame.rows * 21 + 4
+
+    -- Empty state message
+    if not SpellPickerFrame.emptyLabel then
+        SpellPickerFrame.emptyLabel = SpellPickerFrame.content:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        SpellPickerFrame.emptyLabel:SetPoint("TOPLEFT", 8, -20)
+        SpellPickerFrame.emptyLabel:SetPoint("RIGHT", -8, 0)
+        SpellPickerFrame.emptyLabel:SetTextColor(0.6, 0.6, 0.6)
+        SpellPickerFrame.emptyLabel:SetJustifyH("LEFT")
+    end
+    if #SpellPickerFrame.rows == 0 then
+        local _, classToken = UnitClass("player")
+            local noSpellsMsg = L["No spells available for your spec."]
+            if classToken and c == classToken then
+                local _, specName = GetSpecializationInfo(GetSpecialization())
+                if specName then
+                    noSpellsMsg = L["No spells available for %s."]:format(specName)
+                end
+            end
+        SpellPickerFrame.emptyLabel:SetText(noSpellsMsg)
+        SpellPickerFrame.emptyLabel:Show()
+        totalH = 40  -- just enough for the message
+    else
+        SpellPickerFrame.emptyLabel:Hide()
+    end
+
+    SpellPickerFrame.content:SetHeight(math.max(totalH, 100))
+end
+
+local function CreateSpellPicker()
+    if SpellPickerFrame and SpellPickerFrame.searchBox and SpellPickerFrame.classBtn then return end
+    SpellPickerFrame = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    SpellPickerFrame:SetSize(260, 360)
+    Cell.StylizeFrame(SpellPickerFrame, {0.08,0.08,0.08,1}, {0.25,0.25,0.25,1})
+    SpellPickerFrame:SetFrameStrata("DIALOG")
+    SpellPickerFrame:SetFrameLevel(600)
+    SpellPickerFrame:EnableMouse(true)
+    SpellPickerFrame:SetToplevel(true)
+    SpellPickerFrame.state = { class = "AUTO", specIndex = nil }
+
+    -- Title
+    local title = SpellPickerFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+    title:SetPoint("TOPLEFT", 8, -6); title:SetText(L["Select Spell"]); title:SetTextColor(1,1,1)
+
+    -- Close button
+    local closeBtn = Cell.CreateButton(SpellPickerFrame, "×", "red", {18,18}, false, false, "CELL_FONT_SPECIAL", "CELL_FONT_SPECIAL")
+    closeBtn:SetPoint("TOPRIGHT", -4, -4)
+    closeBtn:SetScript("OnClick", function() SpellPickerFrame:Hide() end)
+
+    -- Tabs: Buffs only (debuffs can't be used in custom indicators per Blizzard restrictions)
+    local tabH = 22
+    local b1 = CreateFrame("Button", nil, SpellPickerFrame, "BackdropTemplate")
+    b1:SetSize(70, tabH); b1:SetPoint("TOPLEFT", 6, -26)
+    b1:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+    b1:SetBackdropColor(0.20,0.20,0.20,0.95)
+    do local t = b1:CreateFontString(nil,"OVERLAY","CELL_FONT_WIDGET")
+        t:SetPoint("CENTER"); t:SetText(L["Buffs"]); t:SetTextColor(1,1,1)
+    end
+    b1:SetScript("OnEnter", function() b1:SetBackdropColor(0.30,0.30,0.30,0.95) end)
+    b1:SetScript("OnLeave", function() b1:SetBackdropColor(0.20,0.20,0.20,0.95) end)
+
+    -- Class/spec selector dropdown (custom, not Cell.CreateDropdown)
+    -- Builds a spec-aware popup: Healers show Holy/Disc/Resto etc, non-healers show class only
+    do
+        -- Auto-build spec labels from AuraBlacklist data + spec names
+        -- Only includes specs that have at least one spell entry.
+        local function BuildSpecLabels()
+            local labels = {}
+            for classToken, names in pairs(F.AuraBlacklistSpecNames or {}) do
+                for i, name in ipairs(names) do
+                    local spells = F.GetAuraBlacklistBuffSpells(classToken, i)
+                    if spells and #spells > 0 then
+                        labels[classToken] = labels[classToken] or {}
+                        labels[classToken][i] = name
+                    end
+                end
+            end
+            return labels
+        end
+
+        -- Build flat dropdown items: { label, value, isAuto }
+        local function BuildItems()
+            local specLabels = BuildSpecLabels()
+            local items = {}
+            local c = SpellPickerFrame.state.class
+            local specIdx = SpellPickerFrame.state.specIndex
+
+            -- Auto item with current spec info
+            local autoLabel = "|cffbababaAuto|r"
+            local _, classToken = UnitClass("player")
+            if classToken and specLabels[classToken] then
+                local mySpec = GetSpecialization()
+                if mySpec then
+                    local _, specName = GetSpecializationInfo(mySpec)
+                    if specName then autoLabel = ("|cffbababaAuto (%s %s)|r"):format(specName, classToken) end
+                end
+            end
+            tinsert(items, { label = autoLabel, value = "AUTO", specIdx = nil })
+
+            -- Separator (as disabled item)
+            tinsert(items, { label = "---", value = nil, isSep = true })
+
+            -- Per-class entries with spec sub-items
+            local classOrder = F.AuraBlacklistClassOrder or F.AuraBlacklistClassNames and {"PRIEST","DRUID","PALADIN","SHAMAN","MONK","EVOKER","MAGE","WARRIOR","ROGUE","HUNTER"} or {}
+            for _, ct in ipairs(classOrder) do
+                local r, g, b = F.GetClassColor(ct)
+                local colorStr = ("%02x%02x%02x"):format(r*255, g*255, b*255)
+                local localized = F.GetLocalizedClassName(ct) or ct
+                local specs = specLabels[ct] or {}
+                if next(specs) then
+                    -- Has specs — add one entry per spec
+                    for si, sn in pairs(specs) do
+                        tinsert(items, {
+                            label = ("|cff%s%s (%s)|r"):format(colorStr, localized, sn),
+                            value = ct,
+                            specIdx = si,
+                            indent = true,
+                        })
+                    end
+                else
+                    -- No specs — add class-level entry
+                    tinsert(items, {
+                        label = ("|cff%s%s|r"):format(colorStr, localized),
+                        value = ct,
+                        specIdx = nil,
+                    })
+                end
+            end
+            return items
+        end
+
+        -- Main trigger button
+        local btn = CreateFrame("Button", nil, SpellPickerFrame, "BackdropTemplate")
+        btn:SetPoint("TOPLEFT", b1, "TOPRIGHT", 10, 2)
+        btn:SetPoint("TOPRIGHT", -8, 2)
+        btn:SetHeight(20)
+        btn:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+        btn:SetBackdropColor(0.115,0.115,0.115,0.95)
+        do local t = btn:CreateFontString(nil,"OVERLAY","CELL_FONT_WIDGET")
+            t:SetPoint("LEFT", 6, 0); t:SetPoint("RIGHT", -6, 0)
+            t:SetJustifyH("LEFT"); t:SetText("|cffbababaAuto|r")
+            btn.text = t
+        end
+        btn:SetScript("OnEnter", function() btn:SetBackdropColor(0.20,0.20,0.20,0.95) end)
+        btn:SetScript("OnLeave", function() btn:SetBackdropColor(0.115,0.115,0.115,0.95) end)
+        SpellPickerFrame.classBtn = btn
+
+        -- Dropdown popup (child of picker so inherits DIALOG strata)
+        local ddFrame = CreateFrame("Frame", nil, SpellPickerFrame, "BackdropTemplate")
+        ddFrame:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -2)
+        ddFrame:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -2)
+        ddFrame:SetBackdrop({ bgFile = Cell.vars.whiteTexture, edgeFile = Cell.vars.whiteTexture, edgeSize = 1 })
+        ddFrame:SetBackdropColor(0.08,0.08,0.08,0.98)
+        ddFrame:SetBackdropBorderColor(0.3,0.3,0.3,1)
+        ddFrame:SetFrameLevel(SpellPickerFrame:GetFrameLevel() + 50)
+        ddFrame:Hide()
+        local ddButtons = {}
+
+        local function RefreshDropdown()
+            -- Kill old buttons
+            for _, b in ipairs(ddButtons) do b:Hide(); b:ClearAllPoints() end
+            wipe(ddButtons)
+            local items = BuildItems()
+            local ar, ag, ab = Cell.GetAccentColorRGB()
+            local yOff = 0
+            for _, item in ipairs(items) do
+                if item.isSep then
+                    -- Separator line
+                    local line = ddFrame:CreateTexture(nil, "ARTWORK")
+                    line:SetHeight(1); line:SetPoint("LEFT", 4, yOff); line:SetPoint("RIGHT", -4, yOff)
+                    line:SetColorTexture(0.25,0.25,0.25,1)
+                    tinsert(ddButtons, line)
+                    yOff = yOff - 8
+                else
+                    local b = CreateFrame("Button", nil, ddFrame, "BackdropTemplate")
+                    b:SetHeight(20); b:SetPoint("TOPLEFT", 1, yOff); b:SetPoint("TOPRIGHT", -1, yOff)
+                    b:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+                    b:SetBackdropColor(0.12,0.12,0.12,0.95)
+                    do local t = b:CreateFontString(nil,"OVERLAY","CELL_FONT_WIDGET")
+                        t:SetPoint("LEFT", item.indent and 16 or 6, 0); t:SetPoint("RIGHT", -4, 0)
+                        t:SetJustifyH("LEFT"); t:SetText(item.label)
+                        b.text = t
+                    end
+                    b:SetScript("OnClick", function()
+                        btn.text:SetText(item.label)
+                        SpellPickerFrame.state.class = item.value
+                        SpellPickerFrame.state.specIndex = item.specIdx
+                        ddFrame:Hide()
+                        RefreshSpellPicker()
+                    end)
+                    b:SetScript("OnEnter", function() b:SetBackdropColor(0.25,0.25,0.25,0.95) end)
+                    b:SetScript("OnLeave", function() b:SetBackdropColor(0.12,0.12,0.12,0.95) end)
+                    tinsert(ddButtons, b)
+                    yOff = yOff - 24
+                end
+            end
+            local h = -yOff + 4
+            ddFrame:SetHeight(h)
+        end
+
+        btn:SetScript("OnClick", function()
+            if ddFrame:IsShown() then ddFrame:Hide(); return end
+            RefreshDropdown()
+            ddFrame:Show()
+        end)
+
+        -- Hide dropdown when clicking outside picker
+        SpellPickerFrame:SetScript("OnHide", function()
+            ddFrame:Hide()
+            if CellSpellTooltip then CellSpellTooltip:Hide() end
+            SpellPickerFrame.searchBox:SetText("")
+            SpellPickerFrame.selectedId = nil
+        end)
+    end
+
+    -- Search box
+    do
+        local sb = Cell.CreateEditBox(SpellPickerFrame, 20, 20, false, false, true)
+        sb:SetPoint("TOPLEFT", b1, "BOTTOMLEFT", 0, -4)
+        sb:SetPoint("TOPRIGHT", -8, -4)
+        sb:SetHeight(20)
+        sb:SetAutoFocus(false)
+        sb:SetScript("OnTextChanged", function() RefreshSpellPicker() end)
+        SpellPickerFrame.searchBox = sb
+        local tip = sb:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        tip:SetPoint("LEFT", 4, 0); tip:SetText(L["Search"].."..."); tip:SetTextColor(0.4,0.4,0.4)
+        sb:HookScript("OnEditFocusGained", function() tip:Hide() end)
+        sb:HookScript("OnEditFocusLost", function() if sb:GetText() == "" then tip:Show() end end)
+    end
+
+    -- Scrollable spell list (container frame for Cell scroll system)
+    do
+        local container = CreateFrame("Frame", nil, SpellPickerFrame)
+        container:SetPoint("TOPLEFT", 4, -58)
+        container:SetPoint("BOTTOMRIGHT", -4, -32)
+        Cell.CreateScrollFrame(container)
+        SpellPickerFrame.scrollFrame = container.scrollFrame
+        SpellPickerFrame.content = container.scrollFrame.content
+    end
+
+    -- Buttons
+    local cancelBtn = Cell.CreateButton(SpellPickerFrame, L["Cancel"], "red-hover", {60, 22})
+    cancelBtn:SetPoint("BOTTOMRIGHT", -50, 6)
+    cancelBtn:SetScript("OnClick", function() SpellPickerFrame:Hide() end)
+
+    local okBtn = Cell.CreateButton(SpellPickerFrame, L["Confirm"], "green", {60, 22})
+    okBtn:SetPoint("RIGHT", cancelBtn, "LEFT", -4, 0)
+    okBtn:SetScript("OnClick", function()
+        if SpellPickerFrame.selectedId and SpellPickerFrame.onConfirm then
+            SpellPickerFrame.onConfirm(SpellPickerFrame.selectedId)
+        end
+        SpellPickerFrame:Hide()
+    end)
+end
+
+function Cell.ShowSpellPicker(parent, currentSpellId, onConfirm)
+    CreateSpellPicker()
+    SpellPickerFrame.state = { class = "AUTO", specIndex = nil }
+    SpellPickerFrame.currentSpellId = currentSpellId
+    SpellPickerFrame.selectedId = currentSpellId or nil
+    SpellPickerFrame.onConfirm = onConfirm
+    SpellPickerFrame:ClearAllPoints()
+    SpellPickerFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", -10, 5)
+    SpellPickerFrame:SetSize(280, 380)
+    SpellPickerFrame:SetFrameStrata("DIALOG")
+    SpellPickerFrame:SetFrameLevel(600)
+    SpellPickerFrame:SetToplevel(true)
+    if CellSpellTooltip then CellSpellTooltip:Hide() end
+    RefreshSpellPicker()
+    SpellPickerFrame:Show()
+
+    -- Auto-close the picker when the parent settings panel is hidden
+    -- (e.g. when closing the Cell options panel entirely).
+    if parent and not parent._spellPickerHooked then
+        parent._spellPickerHooked = true
+        parent:HookScript("OnHide", function()
+            if SpellPickerFrame and SpellPickerFrame:IsShown() then
+                SpellPickerFrame:Hide()
+            end
+        end)
+    end
+end
+
+-----------------------------------------
+-- CreateSetting_AuraBlacklist
+-- Blacklist: filter tabs, class dropdown, spell rows
+-----------------------------------------
+local function CreateSetting_AuraBlacklist(parent)
+    local widget
+
+    if not settingWidgets["auraBlacklist"] then
+        local pairs, ipairs, tinsert = pairs, ipairs, table.insert
+        local wipe = table.wipe
+
+        widget = Cell.CreateFrame("CellIndicatorSettings_AuraBlacklist", parent, 240, 155)
+        settingWidgets["auraBlacklist"] = widget
+
+        -- Persistent state
+        local state = { filter = "buffs", class = "AUTO", spec = nil }
+        local ar, ag, ab = Cell.GetAccentColorRGB()
+
+        local function DBFilter()  return state.filter == "buffs" and "HELPFUL" or "HARMFUL"  end
+
+        local function Spells()
+            if state.filter == "debuffs" then return F.GetAuraBlacklistDebuffSpells() end
+            local c = state.class
+            local s = state.spec
+            if c == "AUTO" then
+                local _, t = UnitClass("player"); c = t
+                s = nil  -- auto-detect class, show all specs
+            end
+            return F.GetAuraBlacklistBuffSpells(c, s) or {}
+        end
+
+        -- ── Layout constants ──
+        local DD_Y = -5          -- class dropdown
+        local SPEC_Y = -28       -- spec dropdown (hidden when class = AUTO)
+        local FILTER_Y = -50     -- buffs/debuffs toggle
+        local HEADER_Y = -78     -- column headers
+        local FIRST_ROW_Y = -98  -- first spell row
+        local ROW_H = 20
+        local ROW_GAP = 6
+
+        local spellRows = {}
+
+        local function MakeRow(spell, idx)
+            local sid = spell.spellId
+            local f = DBFilter()
+            local en = F.GetAuraBlacklistEntry(sid, f)
+            local bl = en ~= nil
+
+            local row = CreateFrame("Button", nil, widget, "BackdropTemplate")
+            row:SetHeight(ROW_H)
+            local yOff = FIRST_ROW_Y - (idx-1)*(ROW_H + ROW_GAP)
+            row:SetPoint("TOPLEFT", 8, yOff)
+            row:SetPoint("TOPRIGHT", -8, yOff)
+            row:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+            row:SetBackdropColor(bl and 0.25 or 0.15, bl and 0.25 or 0.15, bl and 0.25 or 0.15, 0.95)
+
+            -- Accent bar
+            local abar = row:CreateTexture(nil, "ARTWORK")
+            abar:SetSize(3, ROW_H-4); abar:SetPoint("LEFT", 2, 0)
+            abar:SetColorTexture(ar,ag,ab,1); abar:SetShown(bl)
+
+            -- Icon
+            local icon = row:CreateTexture(nil, "ARTWORK")
+            icon:SetSize(16, 16); icon:SetPoint("LEFT", 8, 0)
+            icon:SetTexture(spell.icon or 134400); icon:SetTexCoord(0.08,0.92,0.08,0.92)
+            if not bl then icon:SetAlpha(0.5) end
+
+            -- Name (wider area; -140 leaves room for Combat/OOC checkboxes)
+            local txt = row:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+            txt:SetPoint("LEFT", icon, "RIGHT", 6, 0); txt:SetPoint("RIGHT", -140, 0)
+            txt:SetJustifyH("LEFT"); txt:SetText(spell.display)
+            txt:SetTextColor(1, 1, 1)
+
+            local function Upd()
+                local ne = F.GetAuraBlacklistEntry(sid, f)
+                local nb = ne ~= nil
+                row:SetBackdropColor(nb and 0.25 or 0.15, nb and 0.25 or 0.15, nb and 0.25 or 0.15, 0.95)
+                abar:SetShown(nb); icon:SetAlpha(nb and 1 or 0.5)
+                txt:SetTextColor(1, 1, 1)
+            end
+
+            -- Combat checkbox
+            do
+                local skip = true
+                local cb = Cell.CreateCheckButton(row, "", function(checked)
+                    if skip then return end
+                    local e = F.GetAuraBlacklistEntry(sid, f)
+                    if e then
+                        if checked or e.ooc then F.ToggleAuraBlacklist(sid, f, checked, e.ooc)
+                        else F.RemoveAuraBlacklist(sid, f) end
+                    else F.ToggleAuraBlacklist(sid, f, true, false) end
+                    Upd()
+                    Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, "", "bigDebuffs")
+                end)
+                cb:SetSize(16, 16)
+                cb:SetPoint("RIGHT", row, "RIGHT", -102, 0)
+                cb:SetChecked(bl and en.combat or false)
+                skip = false
+            end
+
+            -- OOC checkbox
+            do
+                local skip = true
+                local cb = Cell.CreateCheckButton(row, "", function(checked)
+                    if skip then return end
+                    local e = F.GetAuraBlacklistEntry(sid, f)
+                    if e then
+                        if checked or e.combat then F.ToggleAuraBlacklist(sid, f, e.combat, checked)
+                        else F.RemoveAuraBlacklist(sid, f) end
+                    else F.ToggleAuraBlacklist(sid, f, false, true) end
+                    Upd()
+                    Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, "", "bigDebuffs")
+                end)
+                cb:SetSize(16, 16)
+                cb:SetPoint("RIGHT", row, "RIGHT", -42, 0)
+                cb:SetChecked(bl and en.ooc or false)
+                skip = false
+            end
+
+            -- Click row toggles both
+            row:SetScript("OnClick", function()
+                local e = F.GetAuraBlacklistEntry(sid, f)
+                if e then F.RemoveAuraBlacklist(sid, f)
+                else F.ToggleAuraBlacklist(sid, f, true, true) end
+                Upd()
+                Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, "", "bigDebuffs")
+            end)
+
+            row:SetScript("OnEnter", function(self)
+                row:SetBackdropColor(bl and 0.30 or 0.20, bl and 0.30 or 0.20, bl and 0.30 or 0.20, 0.95)
+                if CellSpellTooltip then
+                    CellSpellTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    CellSpellTooltip:SetSpellByID(sid); CellSpellTooltip:Show()
+                end
+            end)
+            row:SetScript("OnLeave", function() Upd(); if CellSpellTooltip then CellSpellTooltip:Hide() end end)
+
+            return row
+        end
+
+        local function Refresh()
+            for _, r in ipairs(spellRows) do r:Hide(); r:ClearAllPoints() end
+            wipe(spellRows)
+            local spells = Spells()
+            for i, s in ipairs(spells) do tinsert(spellRows, MakeRow(s, i)) end
+            local n = #spells
+            local rowsH = n > 0 and (n * ROW_H + (n-1) * ROW_GAP) or 0
+            local hContent = -FIRST_ROW_Y + rowsH + 36
+            widget:SetHeight(math.max(155, hContent))
+            Cell.UpdateIndicatorSettingsHeight()
+        end
+
+        -- ── Class dropdown ──
+        do
+            local dd = Cell.CreateDropdown(widget, 224)
+            dd:SetPoint("TOPLEFT", 8, DD_Y)
+
+            local items = {
+                { text = "|cffbababaAuto|r", value = "AUTO",
+                  onClick = function() state.class = "AUTO"; state.spec = nil;
+                      if widget.specDD then widget.specDD:Hide() end
+                      Refresh()
+                  end },
+            }
+            local classes = { "PRIEST","DRUID","PALADIN","SHAMAN","MONK","EVOKER","MAGE","WARRIOR","ROGUE","HUNTER" }
+            for _, c in ipairs(classes) do
+                local r, g, b = F.GetClassColor(c)
+                local localized = F.GetLocalizedClassName(c) or c
+                tinsert(items, {
+                    text = ("|cff%02x%02x%02x%s|r"):format(r*255, g*255, b*255, localized),
+                    value = c,
+                    onClick = function()
+                        state.class = c; state.spec = nil
+                        if widget.specDD then
+                            -- Rebuild spec items for this class
+                            local sNames = F.AuraBlacklistSpecNames[c] or {}
+                            local sItems = {
+                                { text = L["All specs"],
+                                  value = nil,
+                                  onClick = function() state.spec = nil; Refresh() end },
+                            }
+                            for si, sName in ipairs(sNames) do
+                                local specIdx = si  -- Lua 5.1: fresh local per iteration for the closure
+                                tinsert(sItems, {
+                                    text = "  " .. sName,
+                                    value = specIdx,
+                                    onClick = function() state.spec = specIdx; Refresh() end,
+                                })
+                            end
+                            widget.specDD:SetItems(sItems)
+                            widget.specDD:SetSelectedValue(nil)
+                            widget.specDD:SetShown(true)
+                        end
+                        Refresh()
+                    end,
+                })
+            end
+            dd:SetItems(items)
+            dd:SetSelectedValue(state.class)
+            widget.classDD = dd
+        end
+
+        -- ── Spec dropdown ──
+        do
+            local specDD = Cell.CreateDropdown(widget, 224)
+            specDD:SetPoint("TOPLEFT", 8, SPEC_Y)
+            specDD:SetShown(state.class ~= "AUTO")
+            widget.specDD = specDD
+        end
+
+        -- ── Filter buttons ──
+        local bw, bh = 80, 22
+        local b1 = CreateFrame("Button", nil, widget, "BackdropTemplate")
+        b1:SetSize(bw, bh); b1:SetPoint("TOPLEFT", 5, FILTER_Y)
+        b1:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+        b1:SetBackdropColor(0.20,0.20,0.20,0.95)
+        do local t = b1:CreateFontString(nil,"OVERLAY","CELL_FONT_WIDGET")
+            t:SetPoint("CENTER"); t:SetText("Buffs"); t:SetTextColor(1,1,1)
+        end
+
+        local b2 = CreateFrame("Button", nil, widget, "BackdropTemplate")
+        b2:SetSize(bw, bh); b2:SetPoint("LEFT", b1, "RIGHT", 4, 0)
+        b2:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
+        b2:SetBackdropColor(0.08,0.08,0.08,0.95)
+        do local t = b2:CreateFontString(nil,"OVERLAY","CELL_FONT_WIDGET")
+            t:SetPoint("CENTER"); t:SetText("Debuffs"); t:SetTextColor(1,1,1)
+        end
+
+        local function UpdTabs()
+            local c = state.filter == "buffs" and 0.20 or 0.08
+            b1:SetBackdropColor(c,c,c,0.95)
+            c = state.filter == "debuffs" and 0.20 or 0.08
+            b2:SetBackdropColor(c,c,c,0.95)
+        end
+        UpdTabs()
+
+        local function ShowClassDD(shown)
+            widget.classDD:SetShown(shown)
+            if widget.specDD then
+                widget.specDD:SetShown(shown and state.class ~= "AUTO")
+            end
+        end
+
+        b1:SetScript("OnClick", function()
+            if state.filter == "buffs" then return end
+            state.filter = "buffs"
+            ShowClassDD(true)
+            UpdTabs(); Refresh()
+        end)
+        b1:SetScript("OnEnter", function() b1:SetBackdropColor(0.30,0.30,0.30,0.95) end)
+        b1:SetScript("OnLeave", UpdTabs)
+        b2:SetScript("OnClick", function()
+            if state.filter == "debuffs" then return end
+            state.filter = "debuffs"
+            ShowClassDD(false)
+            UpdTabs(); Refresh()
+        end)
+        b2:SetScript("OnEnter", function() b2:SetBackdropColor(0.30,0.30,0.30,0.95) end)
+        b2:SetScript("OnLeave", UpdTabs)
+
+        -- ── Column headers ──
+        local hdr = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
+        hdr:SetPoint("TOPLEFT", 8, HEADER_Y); hdr:SetText("Spell"); hdr:SetTextColor(0.6,0.6,0.6)
+        local chCombat = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
+        chCombat:SetPoint("TOPLEFT", 138, HEADER_Y); chCombat:SetText("Combat"); chCombat:SetTextColor(0.6,0.6,0.6)
+        local chOOC = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
+        chOOC:SetPoint("TOPLEFT", 206, HEADER_Y); chOOC:SetText("OOC"); chOOC:SetTextColor(0.6,0.6,0.6)
+
+        -- ── Footer ──
+        local footer = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
+        footer:SetPoint("BOTTOMLEFT", 8, 4)
+        footer:SetPoint("BOTTOMRIGHT", -8, 4)
+        footer:SetText("Click a spell to toggle. Combat = hidden in combat, OOC = hidden out of combat.")
+        footer:SetTextColor(0.45,0.45,0.45)
+        footer:SetJustifyH("LEFT")
+
+        function widget:SetFunc(func) end
+        function widget:SetDBValue() Refresh() end
+    else
+        widget = settingWidgets["auraBlacklist"]
+    end
+
+    widget:Show()
+    return widget
+end
+
 -----------------------------------------
 -- update parent height
 -----------------------------------------
@@ -7078,14 +8111,18 @@ local builders = {
     ["highlightType"] = CreateSetting_HighlightType,
     ["thresholds"] = CreateSetting_Thresholds,
     ["privateAuraOptions"] = CreateSetting_PrivateAuraOptions,
+    ["privateAuraOrientation"] = CreateSetting_PrivateAuraOrientation,
     ["warning"] = CreateSetting_Warning,
     ["shape"] = CreateSetting_Shape,
     ["targetCounterFilters"] = CreateSetting_TargetCounterFilters,
     ["dispelFilters"] = CreateSetting_DispelFilters,
     ["castBy"] = CreateSetting_CastBy,
     -- ["showOn"] = CreateSetting_ShowOn,
+    ["builtInAuraBlacklist"] = CreateSetting_AuraBlacklist,
+    ["auras-picker"] = CreateSetting_AurasPicker,
     ["maxValue"] = CreateSetting_MaxValue,
     ["iconStyle"] = CreateSetting_IconStyle,
+    ["animationStyle"] = CreateSetting_AnimationStyle,
     ["targetedSpellsDisplayMode"] = CreateSetting_TargetedSpellsDisplayMode,
     ["powerTextFilters"] = CreateSetting_RoleFilters,
 }

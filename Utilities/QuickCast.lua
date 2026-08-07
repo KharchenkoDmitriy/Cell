@@ -264,7 +264,6 @@ UpdatePreview = function()
 
         local name = Cell.vars.playerNameShort
         name = Cell.vars.nicknameCustoms[name] or Cell.vars.nicknames[name] or name
-        if not name then name = _G.UNKNOWN or "Player" end
         if string.len(name) == string.utf8len(name) then -- en
             previewButton.nameText:SetText(string.utf8sub(name, 1, 3))
         else
@@ -899,7 +898,7 @@ local function QuickCast_UpdateAuras(self)
 
     AuraUtil.ForEachAura(self.unit, "HELPFUL", nil, function(name, icon, count, debuffType, duration, expirationTime, source, isStealable, nameplateShowPersonal, spellId)
         -- Midnight 12.0.0+: skip auras whose fields are secret; non-secret auras (e.g. raid buffs) are safe to read
-        if not F.IsValueNonSecret(spellId) then return end
+        if Cell.isMidnight and issecretvalue and issecretvalue(spellId) then return end
 
         if glowBuffs[name] then
             glowBuffFound = true
@@ -926,7 +925,7 @@ end
 
 local function QuickCast_UpdateCasts(self, spellId)
     -- Midnight 12.0.0+: spellId from UNIT_SPELLCAST_SUCCEEDED is secret during restricted contexts
-    if not F.IsValueNonSecret(spellId) then return end
+    if Cell.isMidnight and issecretvalue and issecretvalue(spellId) then return end
     if glowCasts[spellId] then
         self:SetGlowCastCooldown(GetTime(), glowCasts[spellId])
     end

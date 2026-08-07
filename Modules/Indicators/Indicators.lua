@@ -193,6 +193,43 @@ local function SetOnUpdate(indicator, type, icon, stack, extra)
     end)
 end
 
+-- Healers indicator: preview should follow per-indicator animationStyle (none/vertical/clock).
+local function ResolveHealersPreviewAnimationStyle(cfg)
+    if type(cfg) == "table" and type(cfg.animationStyle) == "string" then
+        local s = cfg.animationStyle
+        if s == "none" or s == "vertical" or s == "clock" then
+            return s
+        end
+    end
+    if type(cfg) == "table" and cfg.showAnimation == false then
+        return "none"
+    end
+    return "clock"
+end
+
+local function ApplyHealersPreviewAnimationStyle(indicator, style)
+    if not indicator then return end
+    style = (style == "none" or style == "vertical" or style == "clock") and style or "clock"
+
+    if style == "none" then
+        if indicator.ShowAnimation then
+            indicator:ShowAnimation(false)
+        end
+    else
+        if indicator.SetCooldownStyle then
+            indicator:SetCooldownStyle(style == "clock" and "CLOCK" or "VERTICAL")
+        end
+        if indicator.ShowAnimation then
+            indicator:ShowAnimation(true)
+        end
+    end
+
+    if indicator.enabled ~= false then
+        indicator:Hide()
+        indicator:Show()
+    end
+end
+
 -- init preview button indicator animation
 local function InitIndicator(indicatorName)
     local indicator = previewButton.indicators[indicatorName]
@@ -436,12 +473,18 @@ local function InitIndicator(indicatorName)
                 if not found and self.highlightType ~= "none" and dispelType and showHighlight then
                     found = true
                     local r, g, b = I.GetDebuffTypeColor(dispelType)
-                    if self.highlightType == "entire" then
-                        self.highlight:SetVertexColor(r, g, b, 0.5)
-                    elseif self.highlightType == "current" or self.highlightType == "current+" then
+                    if self.highlightType == "edge-top" or self.highlightType == "edge-bottom" or self.highlightType == "gradient-sharp" then
+                        if self.highlightType == "edge-bottom" or self.highlightType == "gradient-sharp" then
+                            self.highlight:SetTexture("Interface\\AddOns\\Cell\\Media\\Edge-Fade-Bottom")
+                        else
+                            self.highlight:SetTexture("Interface\\AddOns\\Cell\\Media\\Edge-Fade-Top")
+                        end
+                        self.highlight:SetTexCoord(0, 1, 0, 1)
                         self.highlight:SetVertexColor(r, g, b, 1)
-                    elseif self.highlightType == "gradient" or self.highlightType == "gradient-half" then
-                        self.highlight:SetGradient("VERTICAL", CreateColor(r, g, b, 1), CreateColor(r, g, b, 0))
+                    else
+                        self.highlight:SetTexture(Cell.vars.whiteTexture)
+                        self.highlight:SetTexCoord(0, 1, 0, 1)
+                        self.highlight:SetVertexColor(r, g, b, 0.5)
                     end
                     if indicator.isVisible then self.highlight:Show() end
                 end
@@ -768,8 +811,11 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 if t["spacing"] then
                     indicator:SetSpacing(t["spacing"])
                 end
-                -- update orientation
-                if t["orientation"] then
+                -- privateAuraOrientation tiene prioridad sobre orientation
+                -- (Raid Debuffs usa privateAuraOrientation, otros indicadores usan orientation)
+                if t["privateAuraOrientation"] then
+                    indicator:SetOrientation(t["privateAuraOrientation"])
+                elseif t["orientation"] then
                     indicator:SetOrientation(t["orientation"])
                 end
                 -- update font
@@ -814,7 +860,9 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     indicator:SetTexture(t["texture"])
                 end
                 -- update animation
-                if type(t["showAnimation"]) == "boolean" then
+                if t["name"] == "Healers" then
+                    ApplyHealersPreviewAnimationStyle(indicator, ResolveHealersPreviewAnimationStyle(t))
+                elseif type(t["showAnimation"]) == "boolean" then
                     indicator:ShowAnimation(t["showAnimation"])
                 end
                 -- update duration
@@ -962,6 +1010,8 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             indicator:SetSpacing(value)
         elseif setting == "orientation" then
             indicator:SetOrientation(value)
+        elseif setting == "privateAuraOrientation" then
+            indicator:SetOrientation(value)
         elseif setting == "font" then
             indicator:SetFont(unpack(value))
             if indicator.isCustomText and indicator.enabled then
@@ -1045,6 +1095,12 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     indicator:Hide()
                     indicator:Show()
                 end
+            elseif value == "showDuration" then
+                indicator:ShowDuration(value2)
+                if indicator.enabled then
+                    indicator:Hide()
+                    indicator:Show()
+                end
             elseif value == "showStack" then
                 indicator:ShowStack(value2)
             elseif value == "fadeOut" then
@@ -1053,6 +1109,8 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             elseif value == "smooth" then
                 indicator:EnableSmooth(value2)
             end
+        elseif setting == "animationStyle" then
+            ApplyHealersPreviewAnimationStyle(indicator, value)
         elseif setting == "create" then
             indicator = I.CreateIndicator(previewButton, value)
             indicator.configs = value
@@ -1123,7 +1181,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 indicator:ShowDuration(value["showDuration"])
             end
             -- update animation
-            if type(value["showAnimation"]) == "boolean" then
+            if type(value["showAnimation"]) == "boolean" and value["name"] ~= "Healers" then
                 indicator:ShowAnimation(value["showAnimation"])
             end
             -- update stack
@@ -1147,6 +1205,9 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 indicator:SetupGlow(value["glowOptions"])
             end
             InitIndicator(indicatorName)
+            if value["name"] == "Healers" then
+                ApplyHealersPreviewAnimationStyle(indicator, ResolveHealersPreviewAnimationStyle(value))
+            end
             indicator:Show()
             indicator.enabled = true
         elseif setting == "remove" then
@@ -1667,7 +1728,8 @@ end
 local indicatorSettings
 local DEBUFFS_TOOLTIP1 = L["This will make these icons not click-through-able"].."|"..L["Tooltips need to be enabled in General tab"]
 local DEBUFFS_TOOLTIP2 = L["This will make these icons not click-through-able"]
-local TARGETED_SPELLS_DISABLED_WARNING = "warning:This functionality is restricted by Blizzard and no longer works reliably. It has been disabled internally to prevent LUA errors."
+local TARGETED_SPELLS_PARTY_NOTE = "|cffb7b7b7Works in party only (not in raid). Enemy nameplates must be enabled.|r"
+local TARGETED_SPELLS_PTR_WARNING = "warning:On current Midnight Patch, many dungeon casts hide the cast target from addons, so icons/glow may not appear even when the spell is listed."
 -- Midnight: Blizzard's countdown text doesn't support anchor/offset, use simplified font widget.
 -- Pre-Midnight: Cell's own duration text supports full positioning.
 local midnightDurationFont = Cell.isMidnight and "font-noOffset:durationFont" or "font2:durationFont"
@@ -1711,10 +1773,10 @@ if Cell.isRetail or Cell.isMists then
         ["allCooldowns"] = {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "glowOptions", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["tankActiveMitigation"] = {"|cffb7b7b7"..I.GetTankActiveMitigationString(), "enabled", "color-class", "size", "position", "frameLevel"},
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
-        ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton:onlyShowTopGlow", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["privateAuras"] = {"|cffb7b7b7"..L["Due to restrictions of the private aura system, this indicator can only use Blizzard style."], "warning:"..L["Private auras are controlled by Blizzard. Positioning and style are limited, and changes may be delayed until combat ends."], "enabled", "privateAuraOptions", "size-square", "numPerLine:5", "spacing", "orientation", "position", "frameLevel"},
-        ["targetedSpells"] = {TARGETED_SPELLS_DISABLED_WARNING, "targetedSpellsDisplayMode", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
+        ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton:onlyShowTopGlow", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "privateAuraOrientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["privateAuras"] = {"|cffb7b7b7"..L["Due to restrictions of the private aura system, this indicator can only use Blizzard style."], "warning:"..L["Private auras are controlled by Blizzard. Positioning and style are limited, and changes may be delayed until combat ends."], "enabled", "privateAuraOptions", "size-square", "numPerLine:5", "spacing", "privateAuraOrientation", "position", "frameLevel"},
+        ["targetedSpells"] = {TARGETED_SPELLS_PTR_WARNING, TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "warning:"..L["Target Counter depends on visible enemy nameplates and can be inaccurate when nameplates are hidden or restricted."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
         ["crowdControls"] = {"enabled", "builtInCrowdControls", "customCrowdControls", midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["actions"] = {"|cffb7b7b7"..L["Play animation when the unit uses a specific spell/item. The list is global shared, not layout-specific."], "enabled", "actionsPreview", "actionsList"},
@@ -1756,8 +1818,8 @@ elseif Cell.isCata or Cell.isWrath then
         ["allCooldowns"] = {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "glowOptions", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
         ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton:onlyShowTopGlow", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["targetedSpells"] = {TARGETED_SPELLS_DISABLED_WARNING, "targetedSpellsDisplayMode", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
+        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton:onlyShowTopGlow", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "privateAuraOrientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["targetedSpells"] = {TARGETED_SPELLS_PTR_WARNING, TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
         ["actions"] = {"|cffb7b7b7"..L["Play animation when the unit uses a specific spell/item. The list is global shared, not layout-specific."], "enabled", "actionsPreview", "actionsList"},
         ["healthThresholds"] = {"enabled", "thresholds", "thickness"},
@@ -1792,8 +1854,8 @@ elseif Cell.isVanilla or Cell.isTBC then
         ["allCooldowns"] = {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "glowOptions", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
         ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton:onlyShowTopGlow", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["targetedSpells"] = {TARGETED_SPELLS_DISABLED_WARNING, "targetedSpellsDisplayMode", "targetedSpellsGlow", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
+        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton:onlyShowTopGlow", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "privateAuraOrientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["targetedSpells"] = {TARGETED_SPELLS_PTR_WARNING, TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
         ["actions"] = {"|cffb7b7b7"..L["Play animation when the unit uses a specific spell/item. The list is global shared, not layout-specific."], "enabled", "actionsPreview", "actionsList"},
         ["healthThresholds"] = {"enabled", "thresholds", "thickness"},
@@ -1806,6 +1868,18 @@ local function ShowIndicatorSettings(id)
 
     settingsFrame.scrollFrame:ResetScroll()
     settingsFrame.scrollFrame:ResetHeight()
+
+    -- ── Aura Blacklist special rendering ──
+    if Cell.isRetail and id == "__auraBlacklist" then
+        local widgets = Cell.CreateIndicatorSettings(settingsFrame.scrollFrame.content, {"builtInAuraBlacklist"})
+        for _, w in pairs(widgets) do
+            w:SetPoint("TOPLEFT")
+            w:SetPoint("RIGHT")
+            if w.SetDBValue then w:SetDBValue() end
+        end
+        selected = id
+        return
+    end
 
     local notifiedLayout = F.GetNotifiedLayoutName(currentLayout)
     local indicatorTable = currentLayoutTable["indicators"][id]
@@ -1827,38 +1901,59 @@ local function ShowIndicatorSettings(id)
         -- end
     else
         if indicatorType == "icon" then
-            settingsTable = {"enabled", "auras", "checkbutton3:showStack", "durationVisibility", "checkbutton4:showAnimation", "glowOptions", CELL_RECTANGULAR_CUSTOM_INDICATOR_ICONS and "size" or "size-square", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
+            settingsTable = {"enabled", "auras-picker", "checkbutton3:showStack", "durationVisibility", "checkbutton4:showAnimation", "glowOptions", CELL_RECTANGULAR_CUSTOM_INDICATOR_ICONS and "size" or "size-square", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "icons" then
-            settingsTable = {"enabled", "auras", "checkbutton3:showStack", "durationVisibility", "checkbutton4:showAnimation", "glowOptions", CELL_RECTANGULAR_CUSTOM_INDICATOR_ICONS and "size" or "size-square", "num:10", "numPerLine:10", "spacing", "orientation", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
+            settingsTable = {"enabled", "auras-picker", "checkbutton3:showStack", "durationVisibility", "checkbutton4:showAnimation", "glowOptions", CELL_RECTANGULAR_CUSTOM_INDICATOR_ICONS and "size" or "size-square", "num:10", "numPerLine:10", "spacing", "orientation", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "text" then
-            settingsTable = {"enabled", "auras", "duration", "stack", "colors", "position", "frameLevel", "font-noOffset"}
+            settingsTable = {"enabled", "auras-picker", "duration", "stack", "colors", "position", "frameLevel", "font-noOffset"}
         elseif indicatorType == "bar" then
-            settingsTable = {"enabled", "auras", "maxValue", "colors", "checkbutton3:showStack", "durationVisibility", "barOrientation", "glowOptions", "size", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
+            settingsTable = {"enabled", "auras-picker", "maxValue", "colors", "checkbutton3:showStack", "durationVisibility", "barOrientation", "glowOptions", "size", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "bars" then
-            settingsTable = {"enabled", "auras", "maxValue", "checkbutton3:showStack", "durationVisibility", "glowOptions", "size", "num:10", "numPerLine:10", "spacing", "orientation", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
+            settingsTable = {"enabled", "auras-picker", "maxValue", "checkbutton3:showStack", "durationVisibility", "glowOptions", "size", "num:10", "numPerLine:10", "spacing", "orientation", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "rect" then
-            settingsTable = {"enabled", "auras", "colors", "checkbutton3:showStack", "durationVisibility", "glowOptions", "size", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
+            settingsTable = {"enabled", "auras-picker", "colors", "checkbutton3:showStack", "durationVisibility", "glowOptions", "size", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "color" then
-            settingsTable = {"enabled", "auras", "customColors", "anchor", "frameLevel:50"}
+            settingsTable = {"enabled", "auras-picker", "customColors", "anchor", "frameLevel:50"}
         elseif indicatorType == "texture" then
-            settingsTable = {"enabled", "checkbutton3:fadeOut", "auras", "texture", "size", "position", "frameLevel"}
+            settingsTable = {"enabled", "checkbutton3:fadeOut", "auras-picker", "texture", "size", "position", "frameLevel"}
         elseif indicatorType == "glow" then
-            settingsTable = {"enabled", "checkbutton3:fadeOut", "auras", "glowOptions", "frameLevel"}
+            settingsTable = {"enabled", "checkbutton3:fadeOut", "auras-picker", "glowOptions", "frameLevel"}
         elseif indicatorType == "overlay" then
-            settingsTable = {"enabled", "auras", "overlayColors", "checkbutton3:smooth", "barOrientation", "frameLevel:50"}
+            settingsTable = {"enabled", "auras-picker", "overlayColors", "checkbutton3:smooth", "barOrientation", "frameLevel:50"}
         elseif indicatorType == "block" then
-            settingsTable = {"enabled", "auras", "blockColors", "checkbutton3:showStack", "durationVisibility", "glowOptions", "size", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
+            settingsTable = {"enabled", "auras-picker", "blockColors", "checkbutton3:showStack", "durationVisibility", "glowOptions", "size", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "blocks" then
-            settingsTable = {"enabled", "auras", "checkbutton3:showStack", "durationVisibility", "glowOptions", "size", "num:10", "numPerLine:10", "spacing", "orientation", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
+            settingsTable = {"enabled", "auras-picker", "checkbutton3:showStack", "durationVisibility", "glowOptions", "size", "num:10", "numPerLine:10", "spacing", "orientation", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "border" then
-            settingsTable = {"enabled", "checkbutton3:fadeOut", "auras", "thickness", "frameLevel:50"}
+            settingsTable = {"enabled", "checkbutton3:fadeOut", "auras-picker", "thickness", "frameLevel:50"}
+        end
+
+        -- Healers (AuraContainer on 12.1): animation style dropdown + simple duration checkbox.
+        if indicatorTable["name"] == "Healers" and (indicatorType == "icon" or indicatorType == "icons") then
+            -- Legacy threshold dropdown values (0.75, 10, …) → on/off boolean.
+            if type(indicatorTable["showDuration"]) == "number" then
+                indicatorTable["showDuration"] = true
+            elseif type(indicatorTable["showDuration"]) ~= "boolean" then
+                indicatorTable["showDuration"] = not not indicatorTable["showDuration"]
+            end
+            for i = #settingsTable, 1, -1 do
+                local s = settingsTable[i]
+                if s == "glowOptions" then
+                    tremove(settingsTable, i)
+                elseif s == "durationVisibility" or s == "durationVisibilitySimple" then
+                    settingsTable[i] = "checkbutton4:showDuration"
+                elseif s == "checkbutton4:showAnimation" then
+                    settingsTable[i] = "animationStyle"
+                end
+            end
         end
 
         tinsert(settingsTable, 2, "castBy")
 
-        if indicatorTable["auraType"] == "buff" then
+        if indicatorTable["auraType"] == "buff" and indicatorTable["name"] ~= "Healers" then
             tinsert(settingsTable, 3, "checkbutton2:trackByName")
-            -- tinsert(settingsTable, 4, "showOn")
+            tinsert(settingsTable, 4, "checkbutton:keepInHealers")
+            -- tinsert(settingsTable, 5, "showOn")
         end
 
         -- tips
@@ -1947,22 +2042,13 @@ local function ShowIndicatorSettings(id)
                 Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "font", indicatorTable["font"])
             end)
 
-        -- auras
-        elseif currentSetting == "auras" then
+        -- auras / auras-picker
+        elseif currentSetting == "auras" or currentSetting == "auras-picker" then
             w:SetDBValue(L[F.UpperFirst(indicatorTable["auraType"]).." List"], indicatorTable["auras"], indicatorType == "glow", indicatorType == "icons",
                 indicatorType == "bars" or indicatorType == "blocks" or indicatorType == "border")
             w:SetFunc(function(value)
                 -- NOTE: already changed in widget
                 Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "auras", indicatorTable["auraType"], value)
-            end)
-
-        -- debuffBlacklist
-        elseif currentSetting == "debuffBlacklist" then
-            w:SetDBValue(L["Debuff Filter (blacklist)"], CellDB["debuffBlacklist"], true)
-            w:SetFunc(function(value)
-                CellDB["debuffBlacklist"] = value
-                Cell.vars.debuffBlacklist = F.ConvertTable(CellDB["debuffBlacklist"])
-                Cell.Fire("UpdateIndicators", notifiedLayout, "", "debuffBlacklist")
             end)
 
         -- dispelBlacklist
@@ -2083,6 +2169,9 @@ local function ShowIndicatorSettings(id)
             w:SetFunc(function(value)
                 CellDB["targetedSpellsList"] = value
                 Cell.vars.targetedSpellsList = F.ConvertTable(CellDB["targetedSpellsList"])
+                if I.RefreshTargetedSpellsList then
+                    I.RefreshTargetedSpellsList()
+                end
             end)
 
         -- targetedSpellsDisplayMode
@@ -2091,7 +2180,11 @@ local function ShowIndicatorSettings(id)
             w:SetFunc(function(value)
                 indicatorTable["displayMode"] = value
                 I.UpdateTargetedSpellsDisplayMode(value)
-                CellIndicatorsPreviewButton.indicators.targetedSpells:ShowGlowPreview()
+                local ts = CellIndicatorsPreviewButton.indicators.targetedSpells
+                if ts then
+                    ts:Show()
+                    ts:ShowGlowPreview()
+                end
             end)
 
         -- targetedSpellsGlow
@@ -2177,6 +2270,20 @@ local function ShowIndicatorSettings(id)
                 Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, currentSetting, value)
             end)
 
+        -- animationStyle (Healers AuraContainer)
+        elseif currentSetting == "animationStyle" then
+            local style = indicatorTable["animationStyle"]
+            if type(style) ~= "string" then
+                style = (indicatorTable["showAnimation"] == false) and "none" or "clock"
+                indicatorTable["animationStyle"] = style
+            end
+            w:SetDBValue(style)
+            w:SetFunc(function(value)
+                indicatorTable["animationStyle"] = value
+                indicatorTable["showAnimation"] = value ~= "none"
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "animationStyle", value)
+            end)
+
         -- healthFormat
         elseif currentSetting == "healthFormat" then
             w:SetDBValue(indicatorTable["format"])
@@ -2201,6 +2308,17 @@ local function ShowIndicatorSettings(id)
                 Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "orientation", value)
             end)
 
+        -- privateAuraOrientation: read con fallback a orientation (legacy layouts)
+        -- y save en ambas claves para que no se pierda al cambiar de layout.
+        elseif currentSetting == "privateAuraOrientation" then
+            local dbValue = indicatorTable["privateAuraOrientation"] or indicatorTable["orientation"] or "left-to-right"
+            w:SetDBValue(dbValue)
+            w:SetFunc(function(value)
+                indicatorTable["privateAuraOrientation"] = value
+                indicatorTable["orientation"] = value
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "privateAuraOrientation", value)
+            end)
+
         -- common
         else
             w:SetDBValue(indicatorTable[currentSetting])
@@ -2216,7 +2334,8 @@ local function ShowIndicatorSettings(id)
     Cell.UpdateIndicatorSettingsHeight()
 
     if string.find(indicatorName, "indicator") then
-        renameBtn:SetEnabled(true)
+        -- Block rename for Healers so the internal name stays stable for /cell healers update detection
+        renameBtn:SetEnabled(indicatorTable["name"] ~= "Healers")
         deleteBtn:SetEnabled(true)
     else
         renameBtn:SetEnabled(false)
@@ -2259,6 +2378,17 @@ LoadIndicatorList = function()
     F.Debug("|cffff7777LoadIndicatorList:|r", currentLayout)
     listFrame.scrollFrame:Reset()
     currentLayoutIssueReport = F.GetCompatibilityLayoutIssues and F.GetCompatibilityLayoutIssues(currentLayout)
+
+    -- Find the index of "debuffs" so we can insert Aura Blacklist right above it
+    local debuffsIndex
+    if Cell.isRetail then
+        for idx, t in pairs(currentLayoutTable["indicators"]) do
+            if t["indicatorName"] == "debuffs" then
+                debuffsIndex = idx
+                break
+            end
+        end
+    end
 
     local n = 0
     for i, t in pairs(currentLayoutTable["indicators"]) do
@@ -2344,22 +2474,71 @@ LoadIndicatorList = function()
         b.id = i
         n = i
 
+        -- Insert Aura Blacklist button right before the Debuffs indicator
+        if Cell.isRetail and debuffsIndex and i == debuffsIndex then
+            local blacklistId = "__auraBlacklist"
+            if not listButtons[blacklistId] then
+                listButtons[blacklistId] = Cell.CreateButton(listFrame.scrollFrame.content, " ", "transparent-accent", {20, 20})
+            end
+            do
+                local bb = listButtons[blacklistId]
+                bb.id = blacklistId
+                bb.isBuiltIn = true
+                bb:SetText("Aura Blacklist")
+                bb:GetFontString():ClearAllPoints()
+                bb:GetFontString():SetPoint("LEFT", 5, 0)
+                bb:GetFontString():SetPoint("RIGHT", -5, 0)
+                if bb.typeIcon then bb.typeIcon:Hide() end
+
+                bb:SetParent(listFrame.scrollFrame.content)
+                bb:SetPoint("RIGHT")
+                if i == 1 then
+                    bb:SetPoint("TOPLEFT")
+                else
+                    bb:SetPoint("TOPLEFT", listButtons[i - 1], "BOTTOMLEFT", 0, P.Scale(1))
+                end
+                bb:Show()
+            end
+            -- The debuffs button below will anchor to the blacklist button
+        end
+
         UpdateIndicatorButtonVisual(i)
 
         b:SetParent(listFrame.scrollFrame.content)
         b:SetPoint("RIGHT")
-        if i == 1 then
+        if Cell.isRetail and debuffsIndex and i == debuffsIndex then
+            -- Debuffs anchors below the Aura Blacklist button
+            b:SetPoint("TOPLEFT", listButtons["__auraBlacklist"], "BOTTOMLEFT", 0, P.Scale(1))
+        elseif i == 1 then
             b:SetPoint("TOPLEFT")
         else
             b:SetPoint("TOPLEFT", listButtons[i - 1], "BOTTOMLEFT", 0, P.Scale(1))
         end
         b:Show()
     end
+
+    -- Clean up stale buttons (indices that no longer exist after delete/tremove)
+    for k, b in pairs(listButtons) do
+        if type(k) == "number" and not currentLayoutTable["indicators"][k] then
+            b:Hide()
+            listButtons[k] = nil
+        end
+    end
+
     UpdateListCompatibilityText()
     Cell.Fire("UpdateCompatibilityReport")
-    listFrame.scrollFrame:SetContentHeight(P.Scale(20), n, -P.Scale(1))
+    if Cell.isRetail then
+        listFrame.scrollFrame:SetContentHeight(P.Scale(20), (n or 0) + 1, -P.Scale(1))
+    else
+        listFrame.scrollFrame:SetContentHeight(P.Scale(20), (n or 0), -P.Scale(1))
+    end
 
     ListHighlightFn = Cell.CreateButtonGroup(listButtons, ShowIndicatorSettings, function(id)
+        if id == "__auraBlacklist" then return end  -- not a real indicator
+
+        -- Stale guard: after delete/tremove, indices shift and listButtons may have stale entries
+        if not currentLayoutTable["indicators"][id] then return end
+
         local i = previewButton.indicators[currentLayoutTable["indicators"][id]["indicatorName"]]
 
         -- always show selected indicator
@@ -2403,7 +2582,7 @@ LoadIndicatorList = function()
             end
         end
     end, function(id)
-        if not currentLayoutTable["indicators"][id] then return end
+        if not currentLayoutTable["indicators"][id] then return end  -- blacklist or unknown
 
         local i = previewButton.indicators[currentLayoutTable["indicators"][id]["indicatorName"]]
 
@@ -2515,7 +2694,12 @@ local function UpdatePreviewCooldownStyle(style)
 
     for _, indicator in pairs(previewButton.indicators) do
         if indicator and indicator.SetCooldownStyle then
-            indicator:SetCooldownStyle(style)
+            -- Healers keeps its own animationStyle; don't override with appearance.
+            if indicator.configs and indicator.configs.name == "Healers" then
+                ApplyHealersPreviewAnimationStyle(indicator, ResolveHealersPreviewAnimationStyle(indicator.configs))
+            else
+                indicator:SetCooldownStyle(style)
+            end
         end
     end
 end

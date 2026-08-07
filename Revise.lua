@@ -621,8 +621,14 @@ function F.Revise()
             end
         end
 
-        if not F.TContains(CellDB["debuffBlacklist"], 160029) then
-            tinsert(CellDB["debuffBlacklist"], 2, 160029)
+        if Cell.isRetail then
+            if not CellDB["auraBlacklist"]["debuffs"][160029] then
+                CellDB["auraBlacklist"]["debuffs"][160029] = { combat = true, ooc = true }
+            end
+        else
+            if not F.TContains(CellDB["debuffBlacklist"], 160029) then
+                tinsert(CellDB["debuffBlacklist"], 2, 160029)
+            end
         end
 
         -- glow options for raidDebuffs
@@ -1009,9 +1015,15 @@ function F.Revise()
     -- r63-release
     if CellDB["revise"] and dbRevision < 63 then
         -- 起伏机动
-        if not F.TContains(CellDB["debuffBlacklist"], 352562) then
-            tinsert(CellDB["debuffBlacklist"], 352562)
-            Cell.vars.debuffBlacklist = F.ConvertTable(CellDB["debuffBlacklist"])
+        if Cell.isRetail then
+            if not CellDB["auraBlacklist"]["debuffs"][352562] then
+                CellDB["auraBlacklist"]["debuffs"][352562] = { combat = true, ooc = true }
+            end
+        else
+            if not F.TContains(CellDB["debuffBlacklist"], 352562) then
+                tinsert(CellDB["debuffBlacklist"], 352562)
+                Cell.vars.debuffBlacklist = F.ConvertTable(CellDB["debuffBlacklist"])
+            end
         end
     end
 
@@ -1036,9 +1048,15 @@ function F.Revise()
             end
         end
         -- 审判灵魂
-        if not F.TContains(CellDB["debuffBlacklist"], 356419) then
-            tinsert(CellDB["debuffBlacklist"], 356419)
-            Cell.vars.debuffBlacklist = F.ConvertTable(CellDB["debuffBlacklist"])
+        if Cell.isRetail then
+            if not CellDB["auraBlacklist"]["debuffs"][356419] then
+                CellDB["auraBlacklist"]["debuffs"][356419] = { combat = true, ooc = true }
+            end
+        else
+            if not F.TContains(CellDB["debuffBlacklist"], 356419) then
+                tinsert(CellDB["debuffBlacklist"], 356419)
+                Cell.vars.debuffBlacklist = F.ConvertTable(CellDB["debuffBlacklist"])
+            end
         end
     end
 
@@ -1713,9 +1731,8 @@ function F.Revise()
     if CellDB["revise"] and dbRevision < 138 then
         if Cell.isRetail then
             -- 邪甲术
-            if not F.TContains(CellDB["debuffBlacklist"], 387847) then
-                tinsert(CellDB["debuffBlacklist"], 387847)
-                Cell.vars.debuffBlacklist = F.ConvertTable(CellDB["debuffBlacklist"])
+            if not CellDB["auraBlacklist"]["debuffs"][387847] then
+                CellDB["auraBlacklist"]["debuffs"][387847] = { combat = true, ooc = true }
             end
         end
 
@@ -1735,9 +1752,8 @@ function F.Revise()
     if CellDB["revise"] and dbRevision < 139 then
         if Cell.isRetail then
             -- 筋疲力尽
-            if not F.TContains(CellDB["debuffBlacklist"], 390435) then
-                tinsert(CellDB["debuffBlacklist"], 390435)
-                Cell.vars.debuffBlacklist = F.ConvertTable(CellDB["debuffBlacklist"])
+            if not CellDB["auraBlacklist"]["debuffs"][390435] then
+                CellDB["auraBlacklist"]["debuffs"][390435] = { combat = true, ooc = true }
             end
         end
     end
@@ -1901,9 +1917,9 @@ function F.Revise()
                 tinsert(CellDB["targetedSpellsList"], 193092)
             end
 
-            -- debuffBlacklist
-            if not F.TContains(CellDB["debuffBlacklist"], 213213) then -- 伪装
-                tinsert(CellDB["debuffBlacklist"], 213213)
+            -- debuffBlacklist (migrated to auraBlacklist)
+            if not CellDB["auraBlacklist"]["debuffs"][213213] then -- 伪装
+                CellDB["auraBlacklist"]["debuffs"][213213] = { combat = true, ooc = true }
             end
 
             -- bigDebuffs
@@ -2929,10 +2945,16 @@ function F.Revise()
 
     -- r223-release
     if CellDB["revise"] and dbRevision < 223 then
-        -- debuffBlacklist
-        if not F.TContains(CellDB["debuffBlacklist"], 89798) then -- 大冒险家奖励
-            tinsert(CellDB["debuffBlacklist"], 89798)
-            Cell.vars.debuffBlacklist = F.ConvertTable(CellDB["debuffBlacklist"])
+        -- debuffBlacklist → auraBlacklist.debuffs
+        if Cell.isRetail then
+            if not CellDB["auraBlacklist"]["debuffs"][89798] then -- 大冒险家奖励
+                CellDB["auraBlacklist"]["debuffs"][89798] = { combat = true, ooc = true }
+            end
+        else
+            if not F.TContains(CellDB["debuffBlacklist"], 89798) then -- 大冒险家奖励
+                tinsert(CellDB["debuffBlacklist"], 89798)
+                Cell.vars.debuffBlacklist = F.ConvertTable(CellDB["debuffBlacklist"])
+            end
         end
     end
 
@@ -3670,6 +3692,29 @@ function F.Revise()
         -- Saved variable secrets: any secrets stored before this version will be nil'd by WoW.
     end
 
+    if Cell.isRetail and GetCompatibilityDB().s2TargetedSpells ~= 2 then
+        CellDB["targetedSpellsList"] = I.GetDefaultTargetedSpellsList()
+        Cell.vars.targetedSpellsList = F.ConvertTable(CellDB["targetedSpellsList"])
+        GetCompatibilityDB().s2TargetedSpells = 2
+    end
+
+    if Cell.isRetail and type(CellDB["actions"]) == "table" then
+        local actionSpellReplacements = {
+            [431416] = 1234768,
+            [431932] = 1236616,
+            [1230866] = 1234768,
+            [1230869] = 1236616,
+        }
+        for _, entry in pairs(CellDB["actions"]) do
+            if type(entry) == "table" and actionSpellReplacements[entry[1]] then
+                entry[1] = actionSpellReplacements[entry[1]]
+            end
+        end
+        if I.ConvertActions then
+            Cell.vars.actions = I.ConvertActions(CellDB["actions"])
+        end
+    end
+
     -- privateAuraOptions extension (dispel overlay options)
     do
         local privateAurasIndex = Cell.defaults.indicatorIndices["privateAuras"]
@@ -3684,17 +3729,6 @@ function F.Revise()
                 if opts[9] == nil then opts[9] = 6 end     -- overlayFrameLevel
                 if opts[10] == nil then opts[10] = 0 end   -- overlayInset
                 if opts[11] == nil then opts[11] = 0 end   -- gradient direction
-            end
-        end
-    end
-
-    -- targetedSpells forced disable (Blizzard restrictions / LUA safety)
-    do
-        for _, layout in pairs(CellDB["layouts"]) do
-            for _, indicator in pairs(layout["indicators"] or {}) do
-                if indicator and indicator["indicatorName"] == "targetedSpells" then
-                    indicator["enabled"] = false
-                end
             end
         end
     end

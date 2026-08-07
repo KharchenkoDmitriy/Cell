@@ -162,13 +162,13 @@ local function CheckSRConditions(spellId, unit, sender)
                     return true
                 else
                     if srReplyCD then -- reply cooldown
-                        F.TrySendChatMessage(GetSpellLink(spellId).." "..format(COOLDOWN_TIME, F.SecondsToTime(cdLeft)), "WHISPER", nil, sender)
+                        SendChatMessage(GetSpellLink(spellId).." "..format(COOLDOWN_TIME, F.SecondsToTime(cdLeft)), "WHISPER", nil, sender)
                     end
                     return false
                 end
             else -- NOTE: no require free cd
                 if srReplyCD and not isReady then -- reply cd if cd
-                    F.TrySendChatMessage(GetSpellLink(spellId).." "..format(COOLDOWN_TIME, F.SecondsToTime(cdLeft)), "WHISPER", nil, sender)
+                    SendChatMessage(GetSpellLink(spellId).." "..format(COOLDOWN_TIME, F.SecondsToTime(cdLeft)), "WHISPER", nil, sender)
                 end
                 return true
             end
@@ -254,7 +254,7 @@ function SR:COMBAT_LOG_EVENT_UNFILTERED(_, event, _, sourceGUID, sourceName, sou
             F.Debug("|cffdda15eSR_HIDE [|cffbc6c25CLEU:"..event.."|r]:|r", unit, buffId, Cell.vars.guids[sourceGUID])
             -- cast msg (if castByMe)
             if sourceGUID == Cell.vars.playerGUID and srCastMsg then
-                F.TrySendChatMessage(srCastMsg, "WHISPER", nil, GetUnitName(unit, true))
+                SendChatMessage(srCastMsg, "WHISPER", nil, GetUnitName(unit, true))
             end
             -- clear
             srUnits[unit] = nil
@@ -264,9 +264,7 @@ end
 
 SR:SetScript("OnEvent", function(self, event, ...)
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        if CombatLogGetCurrentEventInfo then
-            self:COMBAT_LOG_EVENT_UNFILTERED(CombatLogGetCurrentEventInfo())
-        end
+        self:COMBAT_LOG_EVENT_UNFILTERED(CombatLogGetCurrentEventInfo())
     else
         self[event](self, ...)
     end
@@ -300,9 +298,7 @@ local function SR_UpdateRequests(which)
                 SR:UnregisterEvent("CHAT_MSG_WHISPER")
             end
 
-            if CombatLogGetCurrentEventInfo then
-                SR:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-            end
+            SR:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
         else
             SR:UnregisterAllEvents()
         end
@@ -355,7 +351,6 @@ end
 -- hide glow if removed
 DR:SetScript("OnEvent", function(self, event)
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        if not CombatLogGetCurrentEventInfo then return end
         local timestamp, subEvent, _, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID = CombatLogGetCurrentEventInfo()
         if subEvent == "SPELL_AURA_REMOVED" then
             local unit = Cell.vars.guids[destGUID]
@@ -427,9 +422,7 @@ local function DR_UpdateRequests(which)
             drDebuffs = F.ConvertTable(CellDB["dispelRequest"]["debuffs"])
             drDisplayType = CellDB["dispelRequest"]["type"]
 
-            if CombatLogGetCurrentEventInfo then
-                DR:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-            end
+            DR:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
             DR:RegisterEvent("ENCOUNTER_START")
             DR:RegisterEvent("ENCOUNTER_END")
         else

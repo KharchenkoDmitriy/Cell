@@ -79,19 +79,8 @@ local function CreateDebuffsImportExportFrame()
             else
                 which = instanceName
             end
-            local backup, backupState = F.CreateAutoBackup("Auto backup before Raid Debuffs import: " .. which, {
-                ["tag"] = "Raid Debuffs",
-                ["type"] = "raiddebuffs_import",
-                ["signature"] = "raiddebuffs_import:" .. tostring(imported["instanceId"]) .. ":" .. tostring(imported["bossId"] or "all"),
-            })
             F.UpdateRaidDebuffs(imported["instanceId"], imported["bossId"], imported["data"], which)
             F.ShowInstanceDebuffs(imported["instanceId"], imported["bossId"])
-            local backupText = F.GetBackupNotificationText(backup, backupState)
-            local message = which
-            if backupText then
-                message = message .. "\n" .. backupText
-            end
-            F.AddAddonNotification("import", "Raid Debuffs Imported", message)
             importExportFrame:Hide()
         end, function(self)
             importExportFrame:Hide()

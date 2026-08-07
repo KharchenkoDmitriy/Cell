@@ -4,6 +4,10 @@ local F = Cell.funcs
 local P = Cell.pixelPerfectFuncs
 local A = Cell.animations
 
+-- 12.0.7+: DoReadyCheck moved to C_PartyInfo (keep legacy fallback for older Classic clients)
+local DoReadyCheck = (C_PartyInfo and C_PartyInfo.DoReadyCheck) or _G.DoReadyCheck
+local InitiateRolePoll = (C_PartyInfo and C_PartyInfo.InitiateRolePoll) or _G.InitiateRolePoll
+
 local readyBtn, pullBtn
 
 local buttonsFrame = CreateFrame("Frame", "CellReadyAndPullFrame", Cell.frames.mainFrame, "SecureFrameTemplate,BackdropTemplate")
@@ -87,7 +91,7 @@ local function Start(sec, sendToChat)
             isPullTickerRunning = false
             pullBtn:SetText(L["Go!"])
             if sendToChat then
-                F.TrySendChatMessage(L["Go!"], IsInRaid() and "RAID_WARNING" or "PARTY")
+                SendChatMessage(L["Go!"], IsInRaid() and "RAID_WARNING" or "PARTY")
             end
         elseif pullBtn.sec == -1 then
             pullBtn:SetText(L["Pull"])
@@ -95,9 +99,9 @@ local function Start(sec, sendToChat)
             pullBtn:SetText(pullBtn.sec)
             if sendToChat then
                 if pullBtn.sec > 3 then
-                    F.TrySendChatMessage(pullBtn.sec, IsInRaid() and "RAID" or "PARTY")
+                    SendChatMessage(pullBtn.sec, IsInRaid() and "RAID" or "PARTY")
                 else
-                    F.TrySendChatMessage(pullBtn.sec, IsInRaid() and "RAID_WARNING" or "PARTY")
+                    SendChatMessage(pullBtn.sec, IsInRaid() and "RAID_WARNING" or "PARTY")
                 end
             end
         end
@@ -153,9 +157,13 @@ readyBtn:Hide()
 readyBtn:RegisterForClicks("LeftButtonDown", "RightButtonDown")
 readyBtn:SetScript("OnClick", function(self, button)
     if button == "LeftButton" then
-        DoReadyCheck()
+        if DoReadyCheck then
+            DoReadyCheck()
+        end
     else
-        InitiateRolePoll()
+        if InitiateRolePoll then
+            InitiateRolePoll()
+        end
     end
 end)
 
@@ -339,11 +347,11 @@ local function UpdateTools(which)
                 pullBtn:SetAttribute("type2", nil)
                 pullBtn:SetScript("OnMouseUp", function(self, button)
                     if button == "LeftButton" then
-                        F.TrySendChatMessage(L["Pull in %d sec"]:format(CellDB["tools"]["readyAndPull"][3][2]), IsInRaid() and "RAID_WARNING" or "PARTY")
+                        SendChatMessage(L["Pull in %d sec"]:format(CellDB["tools"]["readyAndPull"][3][2]), IsInRaid() and "RAID_WARNING" or "PARTY")
                         Start(CellDB["tools"]["readyAndPull"][3][2], true)
                     else
                         if isPullTickerRunning then
-                            F.TrySendChatMessage(L["Pull timer cancelled"], IsInRaid() and "RAID_WARNING" or "PARTY")
+                            SendChatMessage(L["Pull timer cancelled"], IsInRaid() and "RAID_WARNING" or "PARTY")
                             Stop()
                         end
                     end

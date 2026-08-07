@@ -179,6 +179,11 @@ local function utf8len (s)
     return len
 end
 
+-- install in the string library
+if not string.utf8len then
+    string.utf8len = utf8len
+end
+
 -- Safe utf8sub for Midnight 12.0+ 
 local function utf8sub (s, i, j)
     if type(s) ~= "string" then
@@ -230,6 +235,11 @@ local function utf8sub (s, i, j)
     end
 
     return s:sub(startByte, endByte)
+end
+
+-- install in the string library
+if not string.utf8sub then
+    string.utf8sub = utf8sub
 end
 
 

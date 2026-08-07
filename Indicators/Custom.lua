@@ -70,6 +70,19 @@ function I.UpdateIndicatorTable(indicatorTable)
     if auraType == "buff" then
         customIndicators[auraType][indicatorName]["_auras"] = F.Copy(indicatorTable["auras"]) --* save ids
         customIndicators[auraType][indicatorName]["trackByName"] = indicatorTable["trackByName"]
+        customIndicators[auraType][indicatorName]["keepInHealers"] = indicatorTable["keepInHealers"]
+
+        -- Name lookup for secret aura dedup on Midnight (spellId puede ser secreto, name suele ser legible)
+        if Cell.isMidnight and not indicatorTable["trackByName"] then
+            local nameLookup = {}
+            for _, spellId in ipairs(indicatorTable["auras"]) do
+                if type(spellId) == "number" then
+                    local name = F.GetSpellInfo(spellId)
+                    if name then nameLookup[name] = true end
+                end
+            end
+            customIndicators[auraType][indicatorName]["_nameLookup"] = nameLookup
+        end
     end
 end
 
@@ -166,6 +179,18 @@ local function UpdateCustomIndicators(layout, indicatorName, setting, value, val
         else
             customIndicators[value][indicatorName]["auras"] = F.ConvertSpellTable(value2, customIndicators[value][indicatorName]["trackByName"])
         end
+        -- Rebuild name lookup when spell list changes (Midnight secret aura support)
+        if Cell.isMidnight and value == "buff" and customIndicators["buff"][indicatorName]
+            and not customIndicators["buff"][indicatorName]["trackByName"] then
+            local nameLookup = {}
+            for _, spellId in ipairs(value2) do
+                if type(spellId) == "number" then
+                    local name = F.GetSpellInfo(spellId)
+                    if name then nameLookup[name] = true end
+                end
+            end
+            customIndicators["buff"][indicatorName]["_nameLookup"] = nameLookup
+        end
     elseif setting == "checkbutton" then
         if customIndicators["buff"][indicatorName] then
             customIndicators["buff"][indicatorName][value] = value2
@@ -174,6 +199,23 @@ local function UpdateCustomIndicators(layout, indicatorName, setting, value, val
                     customIndicators["buff"][indicatorName]["auras"] = F.ConvertSpellTable_WithColor(customIndicators["buff"][indicatorName]["_auras"], value2)
                 else
                     customIndicators["buff"][indicatorName]["auras"] = F.ConvertSpellTable(customIndicators["buff"][indicatorName]["_auras"], value2)
+                end
+                -- Rebuild name lookup when trackByName changes (Midnight secret aura support)
+                if Cell.isMidnight then
+                    if not value2 then
+                        -- Switched FROM trackByName=true TO false: build name lookup
+                        local nameLookup = {}
+                        for _, spellId in ipairs(customIndicators["buff"][indicatorName]["_auras"]) do
+                            if type(spellId) == "number" then
+                                local name = F.GetSpellInfo(spellId)
+                                if name then nameLookup[name] = true end
+                            end
+                        end
+                        customIndicators["buff"][indicatorName]["_nameLookup"] = nameLookup
+                    else
+                        -- Switched FROM trackByName=false TO true: name lookup no longer needed
+                        customIndicators["buff"][indicatorName]["_nameLookup"] = nil
+                    end
                 end
             end
         elseif customIndicators["debuff"][indicatorName] then
@@ -196,7 +238,8 @@ function I.ResetCustomIndicators(unitButton, auraType)
     local unit = unitButton.states.displayedUnit
 
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
-        if enabledIndicators[indicatorName] and unitButton.indicators[indicatorName] then
+        if enabledIndicators[indicatorName] and unitButton.indicators[indicatorName]
+            and not (I.ShouldSkipLegacyHealers and I.ShouldSkipLegacyHealers(indicatorTable)) then
             unitButton.indicators[indicatorName]:Hide(true)
             if indicatorTable["num"] then
                 if not indicatorTable["found"][unit] then
@@ -219,47 +262,64 @@ end
 -------------------------------------------------
 -- update
 -------------------------------------------------
+local function ResolveAuraEntry(indicatorTable, spell)
+    local auras = indicatorTable["auras"]
+    local entry = auras and auras[spell]
+    if entry == nil and auras then
+        entry = auras[0]
+    end
+    return entry
+end
+
 local function Update(indicator, indicatorTable, unit, spell, start, duration, debuffType, icon, count, refreshing)
+    local entry = ResolveAuraEntry(indicatorTable, spell)
+    if entry == nil then return end
+
+    local order, color
+    if type(entry) == "table" then
+        order, color = entry[1] or 999, entry[2]
+    else
+        order = entry
+    end
+
     if indicatorTable["num"] then
         if indicatorTable["hasColor"] then
-            tinsert(indicatorTable["found"][unit], {indicatorTable["auras"][spell][1], start, duration, debuffType, icon, count, refreshing, indicatorTable["auras"][spell][2]})
+            tinsert(indicatorTable["found"][unit], {order, start, duration, debuffType, icon, count, refreshing, color})
         else
-            tinsert(indicatorTable["found"][unit], {indicatorTable["auras"][spell], start, duration, debuffType, icon, count, refreshing})
+            tinsert(indicatorTable["found"][unit], {order, start, duration, debuffType, icon, count, refreshing})
         end
     else
-        if indicatorTable["hasColor"] then
-            if indicatorTable["auras"][spell][1] < indicatorTable["topOrder"][unit] then
-                indicatorTable["topOrder"][unit] = indicatorTable["auras"][spell][1]
-                indicatorTable["top"][unit]["start"] = start
-                indicatorTable["top"][unit]["duration"] = duration
-                indicatorTable["top"][unit]["debuffType"] = debuffType
-                indicatorTable["top"][unit]["texture"] = icon
-                indicatorTable["top"][unit]["count"] = count
-                indicatorTable["top"][unit]["refreshing"] = refreshing
-                indicatorTable["top"][unit]["color"] = indicatorTable["auras"][spell][2]
-            end
-        else
-            if indicatorTable["auras"][spell] < indicatorTable["topOrder"][unit] then
-                indicatorTable["topOrder"][unit] = indicatorTable["auras"][spell]
-                indicatorTable["top"][unit]["start"] = start
-                indicatorTable["top"][unit]["duration"] = duration
-                indicatorTable["top"][unit]["debuffType"] = debuffType
-                indicatorTable["top"][unit]["texture"] = icon
-                indicatorTable["top"][unit]["count"] = count
-                indicatorTable["top"][unit]["refreshing"] = refreshing
+        if order < (indicatorTable["topOrder"][unit] or 999) then
+            indicatorTable["topOrder"][unit] = order
+            indicatorTable["top"][unit]["start"] = start
+            indicatorTable["top"][unit]["duration"] = duration
+            indicatorTable["top"][unit]["debuffType"] = debuffType
+            indicatorTable["top"][unit]["texture"] = icon
+            indicatorTable["top"][unit]["count"] = count
+            indicatorTable["top"][unit]["refreshing"] = refreshing
+            if color then
+                indicatorTable["top"][unit]["color"] = color
             end
         end
     end
 end
 
-function I.UpdateCustomIndicators(unitButton, auraInfo)
+function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
     local unit = unitButton.states.displayedUnit
 
-    -- Midnight 12.0.0+: bail only if aura type (isHelpful) is secret — we need it to classify buff/debuff.
-    -- spellId may still be secret for some auras even with hotfix; don't bail on spellId.
-    if not F.IsValueNonSecret(auraInfo.isHelpful) then return end
+    local auraType = auraTypeOverride
+    if not auraType then
+        -- Midnight 12.0.0+: bail only if aura type (isHelpful) is secret — we need it to classify buff/debuff.
+        -- spellId may still be secret for some auras even with hotfix; don't bail on spellId.
+        if not F.IsValueNonSecret(auraInfo.isHelpful) then return end
+        auraType = auraInfo.isHelpful and "buff" or "debuff"
+    end
 
-    local auraType = auraInfo.isHelpful and "buff" or "debuff"
+    -- Early exit: no custom indicators of this type are configured.
+    -- Avoids pairs() call + loop overhead called per-aura per event.
+    local indicators = customIndicators[auraType]
+    if not indicators or not next(indicators) then return end
+
     local icon = auraInfo.icon
     -- Midnight 12.0.0+: dispelName may be secret; sanitize to avoid table-key/comparison crashes downstream
     local rawDispelName = auraInfo.dispelName
@@ -281,8 +341,48 @@ function I.UpdateCustomIndicators(unitButton, auraInfo)
         debuffType = I.CheckDebuffType(debuffType, auraInfo.spellId)
     end
 
+    -- Dedup: first pass collects which spells are tracked by non-Healers custom
+    -- indicators, so the Healers indicator can skip them in pass 2.
+    local consumedSpell
+
+    -- Pass 1: mark spell as consumed if any non-Healers indicator would match
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
-        if indicatorName and enabledIndicators[indicatorName] and unitButton.indicators[indicatorName] then
+        if indicatorName and enabledIndicators[indicatorName] and unitButton.indicators[indicatorName]
+            and indicatorTable["name"] ~= "Healers"
+            and not indicatorTable["keepInHealers"] then
+            local spell = indicatorTable["trackByName"] and auraInfo.name or auraInfo.spellId
+            local matchedAura = spell and F.IsValueNonSecret(spell) and indicatorTable["auras"][spell]
+            -- Midnight: si spellId es secreto, probamos con el name lookup (trackByName=false)
+            if not matchedAura and not indicatorTable["trackByName"] and Cell.isMidnight
+                and not F.IsValueNonSecret(auraInfo.spellId)
+                and auraInfo.name and F.IsValueNonSecret(auraInfo.name) then
+                matchedAura = indicatorTable["_nameLookup"] and indicatorTable["_nameLookup"][auraInfo.name]
+                if matchedAura then spell = auraInfo.name end
+            end
+                if matchedAura then
+                    -- check caster
+                    local castBy = indicatorTable["castBy"]
+                    local castByMatches = castBy == "anyone"
+                    if not castByMatches and F.IsValueNonSecret(sourceUnit) then
+                        local castByMe = sourceUnit == "player" or sourceUnit == "pet"
+                        castByMatches = (castBy == "me" and castByMe) or (castBy == "others" and not castByMe)
+                    elseif not castByMatches and F.IsValueNonSecret(auraInfo.isFromPlayerOrPlayerPet) then
+                        -- 12.1: sourceUnit often secret in combat; this flag stays readable
+                        local fromPlayer = auraInfo.isFromPlayerOrPlayerPet
+                        castByMatches = (castBy == "me" and fromPlayer) or (castBy == "others" and not fromPlayer)
+                    end
+                    if castByMatches then
+                        consumedSpell = spell
+                        break
+                    end
+                end
+        end
+    end
+
+    -- Pass 2: process all indicators (Healers skips consumed spells)
+    for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
+        if indicatorName and enabledIndicators[indicatorName] and unitButton.indicators[indicatorName]
+            and not (I.ShouldSkipLegacyHealers and I.ShouldSkipLegacyHealers(indicatorTable)) then
             local spell  --* trackByName
             if indicatorTable["trackByName"] then
                 spell = auraInfo.name
@@ -290,20 +390,40 @@ function I.UpdateCustomIndicators(unitButton, auraInfo)
                 spell = auraInfo.spellId
             end
 
-            -- Midnight 12.0.0+: spell (name or spellId) may be secret; cannot use as table key
-            if spell and F.IsValueNonSecret(spell) and indicatorTable["auras"][spell] or (indicatorTable["auras"][0] and duration ~= 0) then -- is in indicator spell list
-                -- check caster
-                local castBy = indicatorTable["castBy"]
-                local castByMatches = castBy == "anyone"
-                if not castByMatches and F.IsValueNonSecret(sourceUnit) then
-                    local castByMe = sourceUnit == "player" or sourceUnit == "pet"
-                    castByMatches = (castBy == "me" and castByMe) or (castBy == "others" and not castByMe)
+            -- Healers indicator: skip spells already consumed by another custom indicator
+            if indicatorTable["name"] == "Healers" and consumedSpell and F.IsValueNonSecret(spell)
+                and consumedSpell == spell then
+                -- consumed by another indicator — skip from Healers
+            else
+                -- Midnight 12.0.0+: spell (name or spellId) may be secret; cannot use as table key
+                local matchedAura = spell and F.IsValueNonSecret(spell) and indicatorTable["auras"][spell]
+                -- Midnight: si spellId es secreto, probamos con el name lookup (trackByName=false)
+                if not matchedAura and not indicatorTable["trackByName"] and Cell.isMidnight
+                    and not F.IsValueNonSecret(auraInfo.spellId)
+                    and auraInfo.name and F.IsValueNonSecret(auraInfo.name) then
+                    matchedAura = indicatorTable["_nameLookup"] and indicatorTable["_nameLookup"][auraInfo.name]
+                    if matchedAura then spell = auraInfo.name end
                 end
-                if castByMatches then
-                    if auraType == "buff" then
-                        Update(unitButton.indicators[indicatorName], indicatorTable, unit, spell, start, duration, debuffType, icon, count, auraInfo.refreshing)
-                    else -- debuff
-                        Update(unitButton.indicators[indicatorName], indicatorTable, unit, spell, start, duration, debuffType, icon, count, auraInfo.refreshing)
+                -- Midnight: secret auras may have duration zeroed for Lua safety, but
+                -- user wildcard custom indicators should still see the live aura.
+                if matchedAura or (indicatorTable["auras"][0] and (duration ~= 0 or auraInfo._hasSecrets)) then -- is in indicator spell list
+                    -- check caster
+                    local castBy = indicatorTable["castBy"]
+                    local castByMatches = castBy == "anyone"
+                    if not castByMatches and F.IsValueNonSecret(sourceUnit) then
+                        local castByMe = sourceUnit == "player" or sourceUnit == "pet"
+                        castByMatches = (castBy == "me" and castByMe) or (castBy == "others" and not castByMe)
+                    elseif not castByMatches and F.IsValueNonSecret(auraInfo.isFromPlayerOrPlayerPet) then
+                        -- 12.1: sourceUnit often secret in combat; this flag stays readable
+                        local fromPlayer = auraInfo.isFromPlayerOrPlayerPet
+                        castByMatches = (castBy == "me" and fromPlayer) or (castBy == "others" and not fromPlayer)
+                    end
+                    if castByMatches then
+                        if auraType == "buff" then
+                            Update(unitButton.indicators[indicatorName], indicatorTable, unit, spell, start, duration, debuffType, icon, count, auraInfo.refreshing)
+                        else -- debuff
+                            Update(unitButton.indicators[indicatorName], indicatorTable, unit, spell, start, duration, debuffType, icon, count, auraInfo.refreshing)
+                        end
                     end
                 end
             end
@@ -316,11 +436,12 @@ end
 -------------------------------------------------
 local sort = table.sort
 local function comparator(a, b)
+    if not a then return false end
+    if not b then return true end
     if a[1] and b[1] then
         return a[1] < b[1]
-    else
-        return a[2] <= b[2]
     end
+    return (a[2] or 0) <= (b[2] or 0)
 end
 
 function I.ShowCustomIndicators(unitButton, auraType)
@@ -329,10 +450,11 @@ function I.ShowCustomIndicators(unitButton, auraType)
     local unit = unitButton.states.displayedUnit
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
         local indicator = unitButton.indicators[indicatorName]
-        if indicator and enabledIndicators[indicatorName] then
+        if indicator and enabledIndicators[indicatorName]
+            and not (I.ShouldSkipLegacyHealers and I.ShouldSkipLegacyHealers(indicatorTable)) then
             if indicatorTable["num"] then
                 local t = indicatorTable["found"][unit]
-                if t[1] then
+                if t and t[1] then
                     sort(t, comparator)
                     for i = 1, indicatorTable["num"] do
                         if not t[i] then break end

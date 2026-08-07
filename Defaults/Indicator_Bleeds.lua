@@ -1,12 +1,11 @@
 local _, Cell = ...
 local I = Cell.iFuncs
-local F = Cell.funcs
 
 local bleedList
 
 function I.CheckDebuffType(debuffType, spellId)
     -- Midnight 12.0.0+: debuffType and spellId may be secret — can't compare or use as table key
-    if not F.IsValueNonSecret(spellId) or not F.IsValueNonSecret(debuffType) then
+    if issecretvalue and (issecretvalue(spellId) or issecretvalue(debuffType)) then
         return debuffType
     end
     if (not debuffType or debuffType == "") and bleedList[spellId] then

@@ -1,192 +1,263 @@
 local _, Cell = ...
-local L = Cell.L
 ---@type CellFuncs
 local F = Cell.funcs
 ---@class CellIndicatorFuncs
 local I = Cell.iFuncs
 local LCG = LibStub("LibCustomGlow-1.0")
 
-local UnitIsVisible = UnitIsVisible
+--[[
+    Targeted Spells (party only)
+
+    Resolve cast targets via class / role / race / sex fingerprinting when
+    UnitIsUnit(nameplateXtarget, partyN) is unreliable. Show only when exactly
+    one party member matches. Disabled in raid.
+]]
+
 local UnitExists = UnitExists
-local UnitGUID = UnitGUID
-local UnitIsUnit = UnitIsUnit
-local UnitIsEnemy = UnitIsEnemy
+local UnitCanAttack = UnitCanAttack
 local UnitCastingInfo = UnitCastingInfo
 local UnitChannelInfo = UnitChannelInfo
--- issecretvalue polyfill removed; use F.IsValueNonSecret() instead
+local UnitClass = UnitClass
+local UnitRace = UnitRace
+local UnitSex = UnitSex
+local UnitGroupRolesAssigned = UnitGroupRolesAssigned
+local IsInRaid = IsInRaid
+local IsInGroup = IsInGroup
+local GetTime = GetTime
 local C_Spell = C_Spell
+local issecret = issecretvalue or function() return false end
 
-local casts = {}
-local castsOnUnit, sortedCastsOnUnit = {}, {}
-local recheck = {}
-local maxIcons, showAllSpells
-local displayMode = "Both" -- "Icons", "Border", "Both"
-local useSecretPath = false -- set true when UnitIsUnit returns secrets
+local PARTY_UNITS = { "player", "party1", "party2", "party3", "party4" }
+local PICKUP_DELAY = 0.1
+local VERIFY_DELAY = 0.15
+local RETARGET_DELAY = 0.05
+
+local maxIcons = 1
+local showAllSpells = false
+local displayMode = "Both" -- "None", "Icons", "Border", "Both"
+local enabled = false
+local SWIPE_COLOR = { 0.95, 0.95, 0.32, 1 }
+local targetedSpellsByName = {}
+
+
 local eventFrame = CreateFrame("Frame")
+eventFrame:Hide()
 
--- Secret-safe UnitIsUnit — returns false when result is secret
--- UnitIsUnit is C-level and accepts secrets; no pcall needed.
-local function SafeUnitIsUnit(a, b)
-    local result = UnitIsUnit(a, b)
-    if not F.IsValueNonSecret(result) then return false end
-    return result
-end
+-- cast tracking
+local casts = {} -- sourceUnit -> castInfo
+local castsOnUnit, sortedCastsOnUnit = {}, {}
+local gen = {} -- sourceUnit -> generation (stale timer guard)
+local plateTokens = {}
 
--- Try to resolve target unit ID (non-secret path)
-local function GetTargetUnitID_Safe(target, sourceUnit)
-    local resolved
+-- roster fingerprint cache (party only)
+local rosterByClass = {}
+local rosterRole, rosterRace, rosterSex = {}, {}, {}
+local lastRosterSync = 0
+local matchBuf = {}
 
-    if SafeUnitIsUnit(target, "player") then return "player", false end
-    if SafeUnitIsUnit(target, "pet") then return "pet", false end
-
-    for unit in F.IterateGroupMembers() do
-        if SafeUnitIsUnit(target, unit) then return unit, false end
-    end
-
-    for unit in F.IterateGroupPets() do
-        if SafeUnitIsUnit(target, unit) then return unit, false end
-    end
-
-    -- Check if UnitIsUnit is returning secrets (not just nil/no target)
-    if Cell.isMidnight and UnitExists(target) then
-        local result = UnitIsUnit(target, "player")
-        if not F.IsValueNonSecret(result) then
-            return nil, true -- target exists but results are secret
-        end
-    end
-
-    return nil, false
-end
-
-local allActiveCasts -- forward declaration for Reset()
-
-local function Reset()
-    wipe(recheck)
+local function WipeCastTables()
     wipe(casts)
     wipe(castsOnUnit)
     wipe(sortedCastsOnUnit)
-    if allActiveCasts then wipe(allActiveCasts) end
+    wipe(gen)
+end
+
+local function IsPartyContext()
+    if IsInRaid() then return false end
+    return true -- solo + party
 end
 
 -------------------------------------------------
--- show / hide
+-- roster / classify
 -------------------------------------------------
+local function RebuildRoster()
+    wipe(rosterByClass)
+    wipe(rosterRole)
+    wipe(rosterRace)
+    wipe(rosterSex)
+    for i = 1, #PARTY_UNITS do
+        local u = PARTY_UNITS[i]
+        local ex = UnitExists(u)
+        if not issecret(ex) and ex == true then
+            local _, token = UnitClass(u)
+            if not issecret(token) and type(token) == "string" then
+                local list = rosterByClass[token]
+                if not list then
+                    list = {}
+                    rosterByClass[token] = list
+                end
+                list[#list + 1] = u
+            end
+            local role = UnitGroupRolesAssigned(u)
+            if not issecret(role) and type(role) == "string" and role ~= "NONE" then
+                rosterRole[u] = role
+            end
+            local _, raceToken = UnitRace(u)
+            if not issecret(raceToken) and type(raceToken) == "string" then
+                rosterRace[u] = raceToken
+            end
+            local sex = UnitSex(u)
+            if not issecret(sex) and type(sex) == "number" then
+                rosterSex[u] = sex
+            end
+        end
+    end
+    lastRosterSync = GetTime()
+end
+
+local function Narrow(targetVal, rosterMap)
+    if targetVal == nil or #matchBuf <= 1 then return end
+    local exact = 0
+    for i = 1, #matchBuf do
+        if rosterMap[matchBuf[i]] == targetVal then
+            exact = exact + 1
+        end
+    end
+    if exact == 0 then return end
+    for i = #matchBuf, 1, -1 do
+        if rosterMap[matchBuf[i]] ~= targetVal then
+            tremove(matchBuf, i)
+        end
+    end
+end
+
+local function Classify(caster)
+    local tgt = caster .. "target"
+    local _, cls = UnitClass(tgt)
+    if issecret(cls) or type(cls) ~= "string" then return nil end
+
+    wipe(matchBuf)
+    local cands = rosterByClass[cls]
+    if cands then
+        for i = 1, #cands do
+            matchBuf[i] = cands[i]
+        end
+    end
+    if #matchBuf == 0 then
+        if GetTime() - lastRosterSync > 1 then
+            RebuildRoster()
+            cands = rosterByClass[cls]
+            if cands then
+                for i = 1, #cands do
+                    matchBuf[i] = cands[i]
+                end
+            end
+        end
+        if #matchBuf == 0 then return nil end
+    end
+
+    local role = UnitGroupRolesAssigned(tgt)
+    if issecret(role) or role == "NONE" then role = nil end
+    Narrow(role, rosterRole)
+
+    local okR, _, raceToken = pcall(UnitRace, tgt)
+    if not okR or issecret(raceToken) or type(raceToken) ~= "string" then
+        raceToken = nil
+    end
+    Narrow(raceToken, rosterRace)
+
+    local okS, sex = pcall(UnitSex, tgt)
+    if not okS or issecret(sex) or type(sex) ~= "number" then
+        sex = nil
+    end
+    Narrow(sex, rosterSex)
+
+    if #matchBuf ~= 1 then return nil end
+    return matchBuf[1]
+end
+
+-------------------------------------------------
+-- show / hide (Cell visuals)
+-------------------------------------------------
+local function GetGlowOptions()
+    local glow = Cell.vars and Cell.vars.targetedSpellsGlow
+    if type(glow) ~= "table" or not glow[1] or glow[1] == "None" then
+        return I.GetDefaultTargetedSpellsGlow()
+    end
+    return glow
+end
+
+local function GetSwipeColor()
+    local glow = GetGlowOptions()
+    if type(glow[2]) == "table" then
+        return glow[2]
+    end
+    return SWIPE_COLOR
+end
+
+local function EnsureTsGlowFrame(frame)
+    local glowFrame = frame.tsGlowFrame
+    if not glowFrame then
+        local button = frame:GetParent()
+        while button and not button.widgets do
+            button = button:GetParent()
+        end
+        if button and button.widgets then
+            if not button.widgets.tsGlowFrame then
+                glowFrame = CreateFrame("Frame", button:GetName().."TSGlowFrame", button)
+                button.widgets.tsGlowFrame = glowFrame
+                glowFrame:SetFrameLevel(button:GetFrameLevel() + 200)
+                glowFrame:SetAllPoints(button)
+            end
+            frame.tsGlowFrame = button.widgets.tsGlowFrame
+            glowFrame = frame.tsGlowFrame
+        end
+    end
+    if glowFrame then
+        glowFrame:Show()
+        glowFrame:SetAlpha(1)
+        local parent = glowFrame:GetParent()
+        if parent then
+            local w, h = parent:GetWidth(), parent:GetHeight()
+            if w > 0 and h > 0 and (glowFrame:GetWidth() == 0 or glowFrame:GetHeight() == 0) then
+                glowFrame:SetSize(w, h)
+                glowFrame:ClearAllPoints()
+                glowFrame:SetAllPoints(parent)
+            end
+        end
+    end
+    return glowFrame
+end
+
 local function HideCasts(b)
-    local ts = b.indicators.targetedSpells
-    if displayMode ~= "Border" then
-        ts:UpdateSize(0)
-    end
+    local ts = b.indicators and b.indicators.targetedSpells
+    if not ts then return end
+    ts:UpdateSize(0)
     ts:HideGlow()
-    -- Reset glow frame alpha in case SetShown was used
-    if ts.tsGlowFrame then
-        ts.tsGlowFrame:SetAlpha(1)
-        ts.tsGlowFrame:Show()
-    end
+    EnsureTsGlowFrame(ts)
 end
 
 local function ShowCasts(b, showGlow, sortedCasts, num)
-    local ts = b.indicators.targetedSpells
+    local ts = b.indicators and b.indicators.targetedSpells
+    if not ts then return end
 
-    -- Show icons in Icons and Both modes
+    ts:Show()
+
+    if displayMode == "None" then
+        ts:UpdateSize(0)
+        ts:HideGlow()
+        return
+    end
+
     if displayMode ~= "Border" then
         num = min(maxIcons, num)
         for i = 1, num do
             local cast = sortedCasts[i]
             ts[i].cooldown:SetReverse(not cast.isChanneling)
-            ts[i]:SetCooldown(cast.startTime, cast.endTime-cast.startTime, cast.icon, cast.count)
+            ts[i]:SetCooldown(cast.startTime, cast.endTime - cast.startTime, cast.icon, cast.count)
         end
         ts:UpdateSize(num)
+    else
+        ts:UpdateSize(0)
     end
 
-    -- Show glow in Border and Both modes only
-    if displayMode ~= "Icons" then
-        ts:ShowGlow(unpack(Cell.vars.targetedSpellsGlow))
+    if displayMode ~= "Icons" and (showGlow or showAllSpells) then
+        ts:ShowGlow(unpack(GetGlowOptions()))
     else
         ts:HideGlow()
     end
 end
 
--------------------------------------------------
--- Midnight secret-value display path
--- Uses SetShown() with secret booleans from UnitIsUnit
--- so the C-level API handles visibility without Lua boolean tests
--------------------------------------------------
-allActiveCasts = {}
-
-local function GetAllActiveCasts()
-    wipe(allActiveCasts)
-    local now = GetTime()
-    for sourceKey, castInfo in pairs(casts) do
-        if castInfo["endTime"] > now then
-            tinsert(allActiveCasts, castInfo)
-        else
-            casts[sourceKey] = nil
-        end
-    end
-    return allActiveCasts
-end
-
-local function ShowCastsSecret(b, activeCasts, numCasts)
-    local ts = b.indicators.targetedSpells
-    local unit = b.states.displayedUnit or b.states.unit
-    if not unit then return end
-
-    -- Icons: set up each icon slot, use SetAlphaFromBoolean for secret-safe visibility
-    -- SetAlphaFromBoolean is AllowedWhenTainted (works from addon code)
-    if displayMode ~= "Border" then
-        local num = min(maxIcons, numCasts)
-        for i = 1, num do
-            local cast = activeCasts[i]
-            ts[i].cooldown:SetReverse(not cast.isChanneling)
-            ts[i].duration:Hide()
-            if cast.count and cast.count ~= 1 then
-                ts[i].stack:Show()
-                ts[i].stack:SetText(cast.count)
-            else
-                ts[i].stack:Hide()
-            end
-            ts[i].border:Show()
-            ts[i].cooldown:Show()
-            ts[i].cooldown:SetSwipeColor(unpack(Cell.vars.targetedSpellsGlow[2]))
-            ts[i].cooldown:SetCooldown(cast.startTime, cast.endTime - cast.startTime)
-            ts[i].icon:SetTexture(cast.icon)
-            ts[i]:Show()
-            -- SetAlphaFromBoolean: alpha 1 if targeted, alpha 0 if not (C-level, accepts secrets)
-            ts[i]:SetAlphaFromBoolean(UnitIsUnit(cast.sourceUnit .. "target", unit))
-        end
-        -- Hide unused slots
-        for i = numCasts + 1, #ts do
-            ts[i]:Hide()
-        end
-        ts:UpdateSize(num)
-    end
-
-    -- Glow: start the glow effect, use SetAlphaFromBoolean on tsGlowFrame
-    if displayMode ~= "Icons" and numCasts > 0 then
-        ts:ShowGlow(unpack(Cell.vars.targetedSpellsGlow))
-        ts.tsGlowFrame:SetAlphaFromBoolean(UnitIsUnit(activeCasts[1].sourceUnit .. "target", unit))
-    else
-        ts:HideGlow()
-    end
-end
-
-local function UpdateAllButtonsCasts()
-    local activeCasts = GetAllActiveCasts()
-    local numCasts = #activeCasts
-
-    if numCasts == 0 then
-        F.IterateAllUnitButtons(HideCasts, true)
-        return
-    end
-
-    F.IterateAllUnitButtons(function(b)
-        ShowCastsSecret(b, activeCasts, numCasts)
-    end, true)
-end
-
--------------------------------------------------
--- update casts for unit (non-secret path)
--------------------------------------------------
 local function GetCastsOnUnit(targetUnit)
     if castsOnUnit[targetUnit] then
         wipe(castsOnUnit[targetUnit])
@@ -196,28 +267,29 @@ local function GetCastsOnUnit(targetUnit)
         sortedCastsOnUnit[targetUnit] = {}
     end
 
-    local inListFound
     local castIndex = 0
+    local inListFound
+    local now = GetTime()
     for sourceKey, castInfo in pairs(casts) do
-        if targetUnit == castInfo["targetUnit"] then
-            if castInfo["endTime"] > GetTime() then -- not expired
-                -- On Midnight, spellId may be secret — can't use as table key.
-                -- Use a numeric index instead to group casts.
+        if targetUnit == castInfo.targetUnit then
+            if castInfo.endTime > now then
                 castIndex = castIndex + 1
-                local key = castInfo["nonSecretSpellId"] or castIndex
-                if not castsOnUnit[targetUnit][key] then
-                    castsOnUnit[targetUnit][key] = {["count"] = 0}
+                local key = castInfo.nonSecretSpellId or castIndex
+                local bucket = castsOnUnit[targetUnit][key]
+                if not bucket then
+                    bucket = { count = 0 }
+                    castsOnUnit[targetUnit][key] = bucket
                 end
-                if not castsOnUnit[targetUnit][key]["endTime"] or castsOnUnit[targetUnit][key]["endTime"] > castInfo["endTime"] then --! shorter duration
-                    castsOnUnit[targetUnit][key]["startTime"] = castInfo["startTime"]
-                    castsOnUnit[targetUnit][key]["endTime"] = castInfo["endTime"]
-                    castsOnUnit[targetUnit][key]["icon"] = castInfo["icon"]
-                    castsOnUnit[targetUnit][key]["isChanneling"] = castInfo["isChanneling"]
+                if not bucket.endTime or bucket.endTime > castInfo.endTime then
+                    bucket.startTime = castInfo.startTime
+                    bucket.endTime = castInfo.endTime
+                    bucket.icon = castInfo.icon
+                    bucket.isChanneling = castInfo.isChanneling
+                    bucket.inList = castInfo.inList
                 end
-                castsOnUnit[targetUnit][key]["count"] = castsOnUnit[targetUnit][key]["count"] + 1
-
-                if castInfo["inList"] then
-                    castsOnUnit[targetUnit][key]["inList"] = true
+                bucket.count = bucket.count + 1
+                if castInfo.inList then
+                    bucket.inList = true
                     inListFound = true
                 end
             else
@@ -225,7 +297,6 @@ local function GetCastsOnUnit(targetUnit)
             end
         end
     end
-
     return castsOnUnit[targetUnit], inListFound
 end
 
@@ -238,15 +309,11 @@ end
 
 local function UpdateCastsOnUnit(targetUnit)
     if not targetUnit then return end
-
     local t, showGlow = GetCastsOnUnit(targetUnit)
-
-    for key, castInfo in pairs(t) do
+    for _, castInfo in pairs(t) do
         tinsert(sortedCastsOnUnit[targetUnit], castInfo)
     end
-
     local n = #sortedCastsOnUnit[targetUnit]
-
     if n == 0 then
         F.HandleUnitButton("unit", targetUnit, HideCasts)
     else
@@ -255,247 +322,291 @@ local function UpdateCastsOnUnit(targetUnit)
     end
 end
 
--------------------------------------------------
--- check if sourceUnit is casting
--------------------------------------------------
-local function CheckUnitCast(sourceUnit, isRecheck)
-    if not UnitIsEnemy("player", sourceUnit) then return end
+local function HideAll()
+    F.IterateAllUnitButtons(HideCasts, true)
+end
 
-    -- Use sourceUnit as tracking key (e.g., "nameplate1", "target").
-    -- UnitGUID can be secret on Midnight — sourceUnit strings are always safe.
-    local sourceKey = sourceUnit
-    local previousTarget, isChanneling
-
-    if casts[sourceKey] then
-        previousTarget = casts[sourceKey]["targetUnit"]
-        if casts[sourceKey]["endTime"] <= GetTime() then
-            --! expired
-            casts[sourceKey] = nil
-            if useSecretPath then
-                UpdateAllButtonsCasts()
-            else
-                UpdateCastsOnUnit(previousTarget)
-            end
-            previousTarget = nil
+local function RefreshAllShown()
+    local seen = {}
+    for _, castInfo in pairs(casts) do
+        local u = castInfo.targetUnit
+        if u and not seen[u] then
+            seen[u] = true
+            UpdateCastsOnUnit(u)
         end
-    end
-
-    -- name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellId
-    local name, _, texture, startTimeMS, endTimeMS, _, _, notInterruptible, spellId = UnitCastingInfo(sourceUnit)
-    if not name then
-        -- name, text, texture, startTimeMS, endTimeMS, isTradeSkill, notInterruptible, spellId
-        name, _, texture, startTimeMS, endTimeMS, _, notInterruptible, spellId = UnitChannelInfo(sourceUnit)
-        isChanneling = true
-    end
-
-    if not spellId then return end
-
-    -- Determine if spellId is secret
-    local spellIdIsSecret = not F.IsValueNonSecret(spellId)
-    local nonSecretSpellId -- used for grouping and list lookup when available
-
-    if not spellIdIsSecret then
-        nonSecretSpellId = spellId
-    end
-
-    -- Get icon: C_Spell.GetSpellTexture is C-level and accepts secret spellId
-    if Cell.isMidnight and C_Spell and C_Spell.GetSpellTexture then
-        local tex = C_Spell.GetSpellTexture(spellId)
-        if tex then texture = tex end
-    end
-
-    -- Determine if this spell should be tracked
-    local inList = false
-    local shouldTrack = false
-
-    if nonSecretSpellId then
-        -- Non-secret: use normal list lookup
-        if Cell.vars.targetedSpellsList[nonSecretSpellId] then
-            inList = true
-            shouldTrack = true
-        elseif showAllSpells then
-            shouldTrack = true
-        end
-    else
-        -- Secret spellId: can't look up in list.
-        -- Use C_Spell.IsSpellImportant as a proxy for "dangerous/boss spell"
-        if C_Spell and C_Spell.IsSpellImportant then
-            local important = C_Spell.IsSpellImportant(spellId)
-            if not F.IsValueNonSecret(important) then
-                -- Secret boolean — treat as important (safe assumption for enemy casts)
-                inList = true
-                shouldTrack = true
-            elseif important then
-                inList = true
-                shouldTrack = true
-            end
-        end
-        -- In showAllSpells mode, show all enemy casts even if secret
-        if showAllSpells then
-            shouldTrack = true
-        end
-    end
-
-    -- In Border or Both mode, track all enemy casts targeting group members
-    -- (glow always shows regardless of spell list)
-    if not shouldTrack and displayMode ~= "Icons" then
-        shouldTrack = true
-    end
-
-    if not shouldTrack then return end
-
-    -- Time values may be secret on Midnight — guard with F.IsValueNonSecret
-    local startTime, endTime
-    if F.IsValueNonSecret(startTimeMS) and F.IsValueNonSecret(endTimeMS) then
-        startTime = startTimeMS / 1000
-        endTime = endTimeMS / 1000
-    else
-        -- Fallback: use current time + reasonable estimate
-        startTime = GetTime()
-        endTime = GetTime() + 3
-    end
-
-    if casts[sourceKey] then
-        casts[sourceKey]["startTime"] = startTime
-        casts[sourceKey]["endTime"] = endTime
-        casts[sourceKey]["spellId"] = spellId
-        casts[sourceKey]["nonSecretSpellId"] = nonSecretSpellId
-        casts[sourceKey]["icon"] = texture
-        casts[sourceKey]["inList"] = inList
-        casts[sourceKey]["sourceUnit"] = sourceUnit
-    else
-        casts[sourceKey] = {
-            ["startTime"] = startTime,
-            ["endTime"] = endTime,
-            ["spellId"] = spellId,
-            ["nonSecretSpellId"] = nonSecretSpellId,
-            ["icon"] = texture,
-            ["isChanneling"] = isChanneling,
-            ["inList"] = inList,
-            ["sourceUnit"] = sourceUnit,
-            ["recheck"] = 0,
-        }
-    end
-
-    -- Resolve target
-    local targetUnit, isSecret = GetTargetUnitID_Safe(sourceUnit.."target", sourceUnit)
-
-    if isSecret then
-        -- UnitIsUnit returns secrets — use broadcast path with SetShown
-        useSecretPath = true
-        casts[sourceKey]["targetUnit"] = nil
-        casts[sourceKey]["nonNameplate"] = not strfind(sourceUnit, "^nameplate")
-        UpdateAllButtonsCasts()
-    else
-        -- Normal path — resolved target
-        casts[sourceKey]["targetUnit"] = targetUnit
-        casts[sourceKey]["nonNameplate"] = not strfind(sourceUnit, "^nameplate")
-        UpdateCastsOnUnit(targetUnit)
-    end
-
-    if not isRecheck then
-        if not recheck[sourceKey] or not (strfind(sourceUnit, "target$") or strfind(sourceUnit, "^nameplate")) then
-            recheck[sourceKey] = sourceUnit
-        end
-        eventFrame:Show()
-    end
-
-    if not useSecretPath and previousTarget and previousTarget ~= targetUnit then
-        UpdateCastsOnUnit(previousTarget)
     end
 end
 
 -------------------------------------------------
--- recheck
+-- cast resolve
 -------------------------------------------------
-eventFrame:Hide()
-eventFrame:SetScript("OnUpdate", function(self, elapsed)
-    self.elapsed = (self.elapsed or 0) + elapsed
-    if self.elapsed >= 0.1 then
-        self.elapsed = 0
-
-        local empty = true
-
-        for sourceKey, unit in pairs(recheck) do
-            if casts[sourceKey] then
-                casts[sourceKey]["recheck"] = casts[sourceKey]["recheck"] + 1
-                if casts[sourceKey]["recheck"] >= 6 then
-                    recheck[sourceKey] = nil
-                else
-                    empty = false
-                    if useSecretPath then
-                        -- On secret path, just recheck cast and broadcast
-                        CheckUnitCast(unit, true)
-                    else
-                        local recheckRequired
-                        if not casts[sourceKey]["targetUnit"] then
-                            recheckRequired = UnitExists(unit.."target")
-                        else
-                            recheckRequired = not SafeUnitIsUnit(unit.."target", casts[sourceKey]["targetUnit"])
-                        end
-                        if recheckRequired then
-                            CheckUnitCast(unit, true)
-                        end
-                    end
-                end
-            else
-                recheck[sourceKey] = nil
+local function RebuildNameIndex()
+    wipe(targetedSpellsByName)
+    local list = Cell.vars and Cell.vars.targetedSpellsList
+    if type(list) ~= "table" then return end
+    for spellId in pairs(list) do
+        if type(spellId) == "number" then
+            local name = F.GetSpellInfo and F.GetSpellInfo(spellId)
+            if type(name) == "string" and name ~= "" then
+                targetedSpellsByName[name] = spellId
             end
         end
+    end
+end
 
-        if empty then
-            eventFrame:Hide()
+local function ShouldTrackSpell(spellId, castName)
+    local nonSecretId = (spellId ~= nil and F.IsValueNonSecret(spellId)) and spellId or nil
+    local nonSecretName = (type(castName) == "string" and F.IsValueNonSecret(castName)) and castName or nil
+
+    local list = Cell.vars and Cell.vars.targetedSpellsList
+    local inList = false
+    local resolvedId = nonSecretId
+
+    if nonSecretId and list and list[nonSecretId] then
+        inList = true
+    elseif nonSecretName and targetedSpellsByName[nonSecretName] then
+        inList = true
+        resolvedId = resolvedId or targetedSpellsByName[nonSecretName]
+    elseif not nonSecretId and not nonSecretName then
+        if displayMode == "None" then
+            return false, false, nil
+        end
+        return true, true, nil
+    end
+
+    if inList then
+        return true, true, resolvedId
+    end
+    if showAllSpells then
+        return true, false, resolvedId
+    end
+    if displayMode == "Icons" then
+        if C_Spell and C_Spell.IsSpellImportant and spellId ~= nil then
+            local important = C_Spell.IsSpellImportant(spellId)
+            if not F.IsValueNonSecret(important) or important then
+                return true, true, resolvedId
+            end
+        end
+        return false, false, resolvedId
+    end
+    if displayMode == "Border" or displayMode == "Both" then
+        return true, false, resolvedId
+    end
+    return false, false, resolvedId
+end
+
+local function Resolve(sourceUnit, myGen)
+    if not enabled or not IsPartyContext() then return end
+    if gen[sourceUnit] ~= myGen then return end
+
+    local name, _, texture, startMS, endMS, _, _, _, spellId = UnitCastingInfo(sourceUnit)
+    local isChanneling = false
+    if type(name) == "nil" then
+        name, _, texture, startMS, endMS, _, _, spellId = UnitChannelInfo(sourceUnit)
+        isChanneling = true
+    end
+    if type(name) == "nil" then return end
+
+    local shouldTrack, inList, nonSecretSpellId = ShouldTrackSpell(spellId, name)
+    if not shouldTrack then return end
+
+    if Cell.isMidnight and C_Spell and C_Spell.GetSpellTexture and nonSecretSpellId then
+        local tex = C_Spell.GetSpellTexture(nonSecretSpellId)
+        if tex then texture = tex end
+    elseif Cell.isMidnight and C_Spell and C_Spell.GetSpellTexture and spellId and F.IsValueNonSecret(spellId) then
+        local tex = C_Spell.GetSpellTexture(spellId)
+        if tex then texture = tex end
+    end
+
+    local startTime, endTime
+    if F.IsValueNonSecret(startMS) and F.IsValueNonSecret(endMS) then
+        startTime = startMS / 1000
+        endTime = endMS / 1000
+    else
+        startTime = GetTime()
+        endTime = GetTime() + 3
+    end
+
+    local previousTarget = casts[sourceUnit] and casts[sourceUnit].targetUnit
+    if GetTime() - lastRosterSync > 2 then
+        RebuildRoster()
+    end
+    local targetUnit = Classify(sourceUnit)
+
+    if not targetUnit then
+        if casts[sourceUnit] then
+            casts[sourceUnit] = nil
+            if previousTarget then
+                UpdateCastsOnUnit(previousTarget)
+            end
+        end
+        return
+    end
+
+    casts[sourceUnit] = {
+        startTime = startTime,
+        endTime = endTime,
+        spellId = spellId,
+        nonSecretSpellId = nonSecretSpellId,
+        icon = texture or "Interface\\Icons\\INV_Misc_QuestionMark",
+        isChanneling = isChanneling,
+        inList = inList,
+        sourceUnit = sourceUnit,
+        targetUnit = targetUnit,
+        nonNameplate = not strfind(sourceUnit, "^nameplate"),
+    }
+
+    if previousTarget and previousTarget ~= targetUnit then
+        UpdateCastsOnUnit(previousTarget)
+    end
+    UpdateCastsOnUnit(targetUnit)
+end
+
+local function OnCastStart(sourceUnit)
+    if not enabled or not IsPartyContext() then return end
+    if type(sourceUnit) ~= "string" then return end
+
+    local hostile = UnitCanAttack("player", sourceUnit)
+    if not issecret(hostile) and hostile ~= true then return end
+
+    gen[sourceUnit] = (gen[sourceUnit] or 0) + 1
+    local myGen = gen[sourceUnit]
+    local prev = casts[sourceUnit]
+    if prev then
+        local previousTarget = prev.targetUnit
+        casts[sourceUnit] = nil
+        if previousTarget then
+            UpdateCastsOnUnit(previousTarget)
         end
     end
-end)
+
+    C_Timer.After(PICKUP_DELAY, function()
+        Resolve(sourceUnit, myGen)
+    end)
+    C_Timer.After(PICKUP_DELAY + VERIFY_DELAY, function()
+        Resolve(sourceUnit, myGen)
+    end)
+end
+
+local function OnCastStop(sourceUnit)
+    if not sourceUnit then return end
+    gen[sourceUnit] = (gen[sourceUnit] or 0) + 1
+    local prev = casts[sourceUnit]
+    if not prev then return end
+    local previousTarget = prev.targetUnit
+    casts[sourceUnit] = nil
+    if previousTarget then
+        UpdateCastsOnUnit(previousTarget)
+    end
+end
+
+local function OnRetarget(sourceUnit)
+    if not enabled or not IsPartyContext() then return end
+    if not casts[sourceUnit] and not plateTokens[sourceUnit] then return end
+    gen[sourceUnit] = (gen[sourceUnit] or 0) + 1
+    local myGen = gen[sourceUnit]
+    C_Timer.After(RETARGET_DELAY, function()
+        Resolve(sourceUnit, myGen)
+    end)
+    C_Timer.After(RETARGET_DELAY + VERIFY_DELAY, function()
+        Resolve(sourceUnit, myGen)
+    end)
+end
+
+local function ClearEverything()
+    WipeCastTables()
+    HideAll()
+end
+
+local function AdoptPlateCast(unit)
+    local castName = UnitCastingInfo(unit)
+    if type(castName) == "nil" then
+        castName = UnitChannelInfo(unit)
+    end
+    if type(castName) ~= "nil" then
+        OnCastStart(unit)
+    end
+end
 
 -------------------------------------------------
 -- events
 -------------------------------------------------
-eventFrame:SetScript("OnEvent", function(_, event, sourceUnit)
-    if event == "ENCOUNTER_END" or event == "PLAYER_REGEN_ENABLED" then
-        Reset()
-        F.IterateAllUnitButtons(HideCasts, true)
+eventFrame:SetScript("OnEvent", function(_, event, unit, ...)
+    if event == "PLAYER_REGEN_ENABLED" or event == "ENCOUNTER_END" then
+        ClearEverything()
         return
     end
 
-    if sourceUnit and strfind(sourceUnit, "^soft") then return end
+    if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
+        if not IsPartyContext() then
+            ClearEverything()
+            return
+        end
+        RebuildRoster()
+        return
+    end
 
-    if event == "PLAYER_TARGET_CHANGED" then
-        CheckUnitCast("target")
+    if not enabled or not IsPartyContext() then return end
 
-    elseif event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START" or event == "UNIT_SPELLCAST_DELAYED" or event == "UNIT_SPELLCAST_CHANNEL_UPDATE" or event == "NAME_PLATE_UNIT_ADDED" then
-        CheckUnitCast(sourceUnit)
+    if event == "NAME_PLATE_UNIT_ADDED" then
+        if type(unit) == "string" then
+            plateTokens[unit] = true
+            AdoptPlateCast(unit)
+        end
+        return
+    end
 
-    elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_CHANNEL_STOP" then
-        -- Use sourceUnit as key (secret-safe, unlike UnitGUID)
-        local sourceKey = sourceUnit
-        if casts[sourceKey] then
-            local previousTarget = casts[sourceKey]["targetUnit"]
-            casts[sourceKey] = nil
-            if useSecretPath then
-                UpdateAllButtonsCasts()
-            else
-                UpdateCastsOnUnit(previousTarget)
+    if event == "NAME_PLATE_UNIT_REMOVED" then
+        if type(unit) == "string" then
+            plateTokens[unit] = nil
+            local cast = casts[unit]
+            if cast and not cast.nonNameplate then
+                OnCastStop(unit)
             end
         end
+        return
+    end
 
-    elseif event == "NAME_PLATE_UNIT_REMOVED" then
-        local sourceKey = sourceUnit
-        if casts[sourceKey] and not casts[sourceKey]["nonNameplate"] then
-            local previousTarget = casts[sourceKey]["targetUnit"]
-            casts[sourceKey] = nil
-            if useSecretPath then
-                UpdateAllButtonsCasts()
-            else
-                UpdateCastsOnUnit(previousTarget)
-            end
+    if unit and strfind(unit, "^soft") then return end
+
+    local isPlate = unit and plateTokens[unit]
+    local isTarget = unit == "target"
+
+    if event == "UNIT_SPELLCAST_START"
+        or event == "UNIT_SPELLCAST_CHANNEL_START"
+        or event == "UNIT_SPELLCAST_EMPOWER_START"
+    then
+        if isPlate or isTarget then
+            OnCastStart(unit)
         end
+    elseif event == "UNIT_SPELLCAST_STOP"
+        or event == "UNIT_SPELLCAST_INTERRUPTED"
+        or event == "UNIT_SPELLCAST_FAILED"
+        or event == "UNIT_SPELLCAST_FAILED_QUIET"
+        or event == "UNIT_SPELLCAST_CHANNEL_STOP"
+        or event == "UNIT_SPELLCAST_EMPOWER_STOP"
+    then
+        if isPlate or isTarget or casts[unit] then
+            OnCastStop(unit)
+        end
+    elseif event == "UNIT_SPELLCAST_DELAYED"
+        or event == "UNIT_SPELLCAST_CHANNEL_UPDATE"
+        or event == "UNIT_SPELLCAST_EMPOWER_UPDATE"
+    then
+        if casts[unit] then
+            OnRetarget(unit)
+        end
+    elseif event == "UNIT_TARGET" then
+        if casts[unit] or isPlate then
+            OnRetarget(unit)
+        end
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        AdoptPlateCast("target")
     end
 end)
 
 -------------------------------------------------
--- create
+-- create (Cell look)
 -------------------------------------------------
 local function SetCooldown(frame, start, duration, icon, count)
     frame.duration:Hide()
@@ -509,7 +620,7 @@ local function SetCooldown(frame, start, duration, icon, count)
 
     frame.border:Show()
     frame.cooldown:Show()
-    frame.cooldown:SetSwipeColor(unpack(Cell.vars.targetedSpellsGlow[2]))
+    frame.cooldown:SetSwipeColor(unpack(GetSwipeColor()))
     frame.cooldown:SetCooldown(start, duration)
     frame.icon:SetTexture(icon)
     frame:Show()
@@ -521,16 +632,81 @@ local function SetFont(frame, ...)
     end
 end
 
-local function ShowGlowPreview(frame)
-    -- Show/hide icon previews based on display mode
+local function IgnoreGlowParentAlpha(glowFrame)
+    if not glowFrame then return end
+    for _, suffix in ipairs({ "_PixelGlow", "_ButtonGlow", "_AutoCastGlow", "_ProcGlow" }) do
+        local child = glowFrame[suffix]
+        if child then
+            child:SetIgnoreParentAlpha(true)
+        end
+    end
+end
+
+local function ShowGlow(frame, glowType, color, arg1, arg2, arg3, arg4)
+    local glowFrame = EnsureTsGlowFrame(frame)
+    if not glowFrame then return end
+
+    if glowType == "None" or not glowType then
+        glowType, color, arg1, arg2, arg3, arg4 = unpack(I.GetDefaultTargetedSpellsGlow())
+    end
+
+    if glowType == "Normal" then
+        LCG.PixelGlow_Stop(glowFrame)
+        LCG.AutoCastGlow_Stop(glowFrame)
+        LCG.ProcGlow_Stop(glowFrame)
+        LCG.ButtonGlow_Start(glowFrame, color)
+    elseif glowType == "Pixel" then
+        LCG.ButtonGlow_Stop(glowFrame)
+        LCG.AutoCastGlow_Stop(glowFrame)
+        LCG.ProcGlow_Stop(glowFrame)
+        LCG.PixelGlow_Start(glowFrame, color, arg1, arg2, arg3, arg4)
+    elseif glowType == "Shine" then
+        LCG.ButtonGlow_Stop(glowFrame)
+        LCG.PixelGlow_Stop(glowFrame)
+        LCG.ProcGlow_Stop(glowFrame)
+        LCG.AutoCastGlow_Start(glowFrame, color, arg1, arg2, arg3)
+    elseif glowType == "Proc" then
+        LCG.ButtonGlow_Stop(glowFrame)
+        LCG.PixelGlow_Stop(glowFrame)
+        LCG.AutoCastGlow_Stop(glowFrame)
+        LCG.ProcGlow_Start(glowFrame, { color = color, duration = arg1, startAnim = false })
+    else
+        LCG.ButtonGlow_Stop(glowFrame)
+        LCG.PixelGlow_Stop(glowFrame)
+        LCG.AutoCastGlow_Stop(glowFrame)
+        LCG.ProcGlow_Stop(glowFrame)
+        return
+    end
+    IgnoreGlowParentAlpha(glowFrame)
+end
+
+local function HideGlow(frame)
+    local glowFrame = frame.tsGlowFrame
+    if not glowFrame then return end
+    LCG.ButtonGlow_Stop(glowFrame)
+    LCG.PixelGlow_Stop(glowFrame)
+    LCG.AutoCastGlow_Stop(glowFrame)
+    LCG.ProcGlow_Stop(glowFrame)
+end
+
+local function ShowPreview(frame)
+    frame:Show()
+
+    if displayMode == "None" then
+        for i = 1, #frame do
+            frame[i]:Hide()
+        end
+        frame:UpdateSize(0)
+        frame:HideGlow()
+        return
+    end
+
     if displayMode == "Border" then
-        -- Border only: hide icons, show glow
         for i = 1, #frame do
             frame[i]:Hide()
         end
         frame:UpdateSize(0)
     else
-        -- Icons or Both: show preview icons (OnShow hooks handle icon/cooldown)
         local num = min(maxIcons or 1, #frame)
         for i = 1, num do
             frame[i]:Show()
@@ -538,51 +714,19 @@ local function ShowGlowPreview(frame)
         frame:UpdateSize(num)
     end
 
-    -- Show glow in Border and Both modes; hide in Icons mode
     if displayMode == "Icons" then
         frame:HideGlow()
     else
-        frame:ShowGlow(unpack(Cell.vars.targetedSpellsGlow))
+        frame:ShowGlow(unpack(GetGlowOptions()))
     end
 end
 
-local function ShowGlow(frame, glowType, color, arg1, arg2, arg3, arg4)
-    if glowType == "Normal" then
-        LCG.PixelGlow_Stop(frame.tsGlowFrame)
-        LCG.AutoCastGlow_Stop(frame.tsGlowFrame)
-        LCG.ProcGlow_Stop(frame.tsGlowFrame)
-        LCG.ButtonGlow_Start(frame.tsGlowFrame, color)
-    elseif glowType == "Pixel" then
-        LCG.ButtonGlow_Stop(frame.tsGlowFrame)
-        LCG.AutoCastGlow_Stop(frame.tsGlowFrame)
-        LCG.ProcGlow_Stop(frame.tsGlowFrame)
-        -- color, N, frequency, length, thickness
-        LCG.PixelGlow_Start(frame.tsGlowFrame, color, arg1, arg2, arg3, arg4)
-    elseif glowType == "Shine" then
-        LCG.ButtonGlow_Stop(frame.tsGlowFrame)
-        LCG.PixelGlow_Stop(frame.tsGlowFrame)
-        LCG.ProcGlow_Stop(frame.tsGlowFrame)
-        -- color, N, frequency, scale
-        LCG.AutoCastGlow_Start(frame.tsGlowFrame, color, arg1, arg2, arg3)
-    elseif glowType == "Proc" then
-        LCG.ButtonGlow_Stop(frame.tsGlowFrame)
-        LCG.PixelGlow_Stop(frame.tsGlowFrame)
-        LCG.AutoCastGlow_Stop(frame.tsGlowFrame)
-        -- color, duration
-        LCG.ProcGlow_Start(frame.tsGlowFrame, {color=color, duration=arg1, startAnim=false})
-    else
-        LCG.ButtonGlow_Stop(frame.tsGlowFrame)
-        LCG.PixelGlow_Stop(frame.tsGlowFrame)
-        LCG.AutoCastGlow_Stop(frame.tsGlowFrame)
-        LCG.ProcGlow_Stop(frame.tsGlowFrame)
+local function HidePreview(frame)
+    for i = 1, #frame do
+        frame[i]:Hide()
     end
-end
-
-local function HideGlow(frame)
-    LCG.ButtonGlow_Stop(frame.tsGlowFrame)
-    LCG.PixelGlow_Stop(frame.tsGlowFrame)
-    LCG.AutoCastGlow_Stop(frame.tsGlowFrame)
-    LCG.ProcGlow_Stop(frame.tsGlowFrame)
+    frame:UpdateSize(0)
+    frame:HideGlow()
 end
 
 function I.CreateTargetedSpells(parent)
@@ -596,18 +740,16 @@ function I.CreateTargetedSpells(parent)
     targetedSpells.SetBorder = I.Cooldowns_SetBorder
     targetedSpells.UpdateSize = I.Cooldowns_UpdateSize_WithSpacing
     targetedSpells.SetOrientation = I.Cooldowns_SetOrientation_WithSpacing
+    targetedSpells.SetFont = SetFont
     targetedSpells.ShowGlow = ShowGlow
     targetedSpells.HideGlow = HideGlow
-    targetedSpells.SetFont = SetFont
-    targetedSpells.ShowGlowPreview = ShowGlowPreview
-    targetedSpells.HideGlowPreview = HideGlow
+    targetedSpells.ShowGlowPreview = ShowPreview
+    targetedSpells.HideGlowPreview = HidePreview
 
     for i = 1, 3 do
         local frame = I.CreateAura_BorderIcon(parent:GetName().."TargetedSpells"..i, targetedSpells, 2)
         tinsert(targetedSpells, frame)
         frame.SetCooldown = SetCooldown
-        -- frame:SetScript("OnShow", targetedSpells.UpdateSize)
-        -- frame:SetScript("OnHide", targetedSpells.UpdateSize)
         frame.cooldown:SetScript("OnCooldownDone", function()
             frame:Hide()
         end)
@@ -615,35 +757,78 @@ function I.CreateTargetedSpells(parent)
 end
 
 -------------------------------------------------
--- functions
+-- enable / config
 -------------------------------------------------
--- NOTE: in case there's a casting spell, hide!
-local function EnterLeaveInstance()
-    Reset()
-    useSecretPath = false
-    F.IterateAllUnitButtons(HideCasts, true)
+local function RegisterEvents()
+    eventFrame:UnregisterAllEvents()
+    eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    eventFrame:RegisterEvent("ENCOUNTER_END")
+    eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    eventFrame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
+    eventFrame:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
+    eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+    eventFrame:RegisterEvent("UNIT_SPELLCAST_START")
+    eventFrame:RegisterEvent("UNIT_SPELLCAST_STOP")
+    eventFrame:RegisterEvent("UNIT_SPELLCAST_FAILED")
+    eventFrame:RegisterEvent("UNIT_SPELLCAST_FAILED_QUIET")
+    eventFrame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
+    eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
+    eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
+    eventFrame:RegisterEvent("UNIT_SPELLCAST_DELAYED")
+    eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_UPDATE")
+    eventFrame:RegisterEvent("UNIT_TARGET")
+    if Cell.isRetail then
+        eventFrame:RegisterEvent("UNIT_SPELLCAST_EMPOWER_START")
+        eventFrame:RegisterEvent("UNIT_SPELLCAST_EMPOWER_STOP")
+        eventFrame:RegisterEvent("UNIT_SPELLCAST_EMPOWER_UPDATE")
+    end
+    eventFrame:Show()
 end
 
-local targetedSpellsDisabledNoticeShown
-function I.EnableTargetedSpells(enabled)
-    -- Disabled internally due to Blizzard restrictions causing unstable
-    -- behavior/LUA errors in modern clients.
-    Reset()
-    useSecretPath = false
-    eventFrame:Hide()
-    eventFrame:UnregisterAllEvents()
+function I.EnableTargetedSpells(enable)
+    enabled = not not enable
+    ClearEverything()
+    wipe(plateTokens)
 
-    Cell.UnregisterCallback("EnterInstance", "TargetedSpells_EnterInstance")
-    Cell.UnregisterCallback("LeaveInstance", "TargetedSpells_LeaveInstance")
+    if not enabled then
+        eventFrame:Hide()
+        eventFrame:UnregisterAllEvents()
+        F.IterateAllUnitButtons(function(b)
+            local ts = b.indicators and b.indicators.targetedSpells
+            if ts then
+                ts:HideGlow()
+                ts:Hide()
+            end
+        end, true)
+        return
+    end
 
+    RebuildNameIndex()
+    RegisterEvents()
     F.IterateAllUnitButtons(function(b)
-        HideCasts(b)
-        b.indicators.targetedSpells:Hide()
+        local ts = b.indicators and b.indicators.targetedSpells
+        if ts then
+            ts:Show()
+        end
     end, true)
 
-    if enabled and not targetedSpellsDisabledNoticeShown then
-        targetedSpellsDisabledNoticeShown = true
-        F.Print("Targeted Spells has been disabled internally due to Blizzard restrictions to prevent LUA errors.")
+    if IsPartyContext() then
+        RebuildRoster()
+        if C_NamePlate and C_NamePlate.GetNamePlates then
+            local plates = C_NamePlate.GetNamePlates()
+            if type(plates) == "table" then
+                for i = 1, #plates do
+                    local plate = plates[i]
+                    local u = plate and plate.namePlateUnitToken
+                    if type(u) == "string" then
+                        plateTokens[u] = true
+                        AdoptPlateCast(u)
+                    end
+                end
+            end
+        end
+        AdoptPlateCast("target")
     end
 end
 
@@ -651,10 +836,27 @@ function I.ShowAllTargetedSpells(showAll)
     showAllSpells = showAll
 end
 
+function I.RefreshTargetedSpellsList()
+    RebuildNameIndex()
+end
+
 function I.UpdateTargetedSpellsNum(num)
-    maxIcons = num
+    maxIcons = num or 1
+    RefreshAllShown()
 end
 
 function I.UpdateTargetedSpellsDisplayMode(mode)
-    displayMode = mode or "Both"
+    if mode == "None" or mode == "Icons" or mode == "Border" or mode == "Both" then
+        displayMode = mode
+    else
+        displayMode = "Both"
+    end
+    local seen = {}
+    for _, castInfo in pairs(casts) do
+        local u = castInfo.targetUnit
+        if u and not seen[u] then
+            seen[u] = true
+            UpdateCastsOnUnit(u)
+        end
+    end
 end

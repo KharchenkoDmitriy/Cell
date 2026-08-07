@@ -376,6 +376,12 @@ local function UpdateMetatable(obj)
 end
 
 local obj = CreateFrame("Frame")
-UpdateMetatable(CreateFrame("StatusBar"))
+-- Midnight+: do not hook the shared StatusBar metatable. Those hooks run on
+-- Blizzard party/raid health bars too and taint secret HP OnValueChanged paths.
+local build = select(4, GetBuildInfo())
+local skipStatusBarHooks = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE) and build and build >= 120000
+if not skipStatusBarHooks then
+    UpdateMetatable(CreateFrame("StatusBar"))
+end
 UpdateMetatable(obj:CreateTexture())
 UpdateMetatable(obj:CreateMaskTexture())

@@ -150,6 +150,8 @@ if Cell.isRetail then
         stamina = true,
         versatility = true,
         mastery = true,
+        intellect = true,
+        attackPower = true,
         movement = true,
     }
 
@@ -371,8 +373,7 @@ local enabled
 local myUnit = ""
 local hasBuffProvider
 
--- Danders-like behavior: hide Evoker movement buff (Blessing of the Bronze)
--- during combat to avoid noisy/unstable tracking.
+-- Hide Evoker movement buff (Blessing of the Bronze) during combat.
 local function IsTemporarilyHiddenBuff(buff)
     return buff == "movement" and InCombatLockdown()
 end

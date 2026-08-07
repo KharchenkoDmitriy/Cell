@@ -19,22 +19,6 @@ Cell 不轻量，也并非全能，其目标是提供相比以往更好的用户
 
 &nbsp;
 
-## 安装说明
-
-请从 GitHub Releases 的正式发布附件、CurseForge 或 Wago 安装 Cell。
-
-不要直接安装 GitHub 的 `Source code (zip)` 或 `Source code (tar.gz)`。这类源码压缩包不会包含 [`.pkgmeta`](./.pkgmeta) 里声明的内嵌库，比如 `LibCustomGlow-1.0`、`LibDeflate`、`LibSerialize`、`LibSharedMedia-3.0` 等。
-
-如果你解压后看到 `.gitignore`、`.pkgmeta`、`.github`、`.release` 这类仓库文件，基本可以确定你下载的是源码包，而不是可直接安装的插件包。
-
-维护者可以用下面的命令验证一个解压后的包是否正常：
-
-```bash
-./.release/validate_package.sh <path-to-extracted-addon>
-```
-
-&nbsp;
-
 ## 特性与功能
 
 - __布局:__ 按队伍类型/职责/专精自动切换布局，支持小队、团队、战场、竞技场。

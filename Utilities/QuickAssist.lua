@@ -298,7 +298,7 @@ end
 local function QuickAssist_UpdateCasts(self, spellId)
     if not self.unit then return end
     -- Midnight 12.0.0+: spellId from UNIT_SPELLCAST_SUCCEEDED is secret during restricted contexts
-    if not F.IsValueNonSecret(spellId) then return end
+    if Cell.isMidnight and issecretvalue and issecretvalue(spellId) then return end
     if not offensiveCasts[spellId] then return end
 
     self._casts[spellId] = GetTime()
@@ -401,12 +401,14 @@ end
 
 local function QuickAssist_UpdateHealthMax(self)
     if not self.unit then return end
+    -- StatusBar:SetMinMaxValues accepts secret-wrapped values on Midnight (see UnitButton.lua:2398).
     self.healthBar:SetMinMaxValues(0, UnitHealthMax(self.unit))
 end
 
 local function QuickAssist_UpdateHealth(self)
     if not self.unit then return end
 
+    -- StatusBar:SetValue accepts secret-wrapped values on Midnight.
     self.healthBar:SetValue(UnitHealth(self.unit))
 
     if UnitIsDeadOrGhost(self.unit) then

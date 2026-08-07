@@ -10,6 +10,13 @@ local GetRaidRosterInfo = GetRaidRosterInfo
 local SwapRaidSubgroup = SwapRaidSubgroup
 local SetRaidSubgroup = SetRaidSubgroup
 
+-- 12.0.7+: party roster APIs moved to C_PartyInfo (keep legacy fallback for older Classic clients)
+local SetEveryoneIsAssistant = (C_PartyInfo and C_PartyInfo.SetEveryoneIsAssistant) or _G.SetEveryoneIsAssistant
+local UninviteUnit = (C_PartyInfo and C_PartyInfo.UninviteUnit) or _G.UninviteUnit
+local DemoteAssistant = (C_PartyInfo and C_PartyInfo.DemoteAssistant) or _G.DemoteAssistant
+local PromoteToAssistant = (C_PartyInfo and C_PartyInfo.PromoteToAssistant) or _G.PromoteToAssistant
+local IsEveryoneAssistant = (C_PartyInfo and C_PartyInfo.IsEveryoneAssistant) or _G.IsEveryoneAssistant
+
 local LoadRoster, UpdateRoster
 local UpdateMode
 local PremadeSwap, PremadeSet, PremadeApply, ProcessNext
@@ -80,7 +87,9 @@ local function CreateWidgets()
 
     -- SetEveryoneIsAssistant
     assistantCB = Cell.CreateCheckButton(raidRosterFrame, "|TInterface\\GroupFrame\\UI-Group-AssistantIcon:16:16|t", function(checked)
-        SetEveryoneIsAssistant(checked)
+        if SetEveryoneIsAssistant then
+            SetEveryoneIsAssistant(checked)
+        end
     end)
     assistantCB:SetPoint("BOTTOMRIGHT", -25, 5)
 
@@ -327,16 +336,22 @@ local function CreateRaidRosterGrid(parent, index)
     grid:RegisterForClicks("RightButtonDown")
     grid:SetScript("OnClick", function()
         if IsAltKeyDown() then
-            UninviteUnit(grid.name)
+            if UninviteUnit then
+                UninviteUnit(grid.name)
+            end
         else
             if not UnitIsGroupLeader("player") then return end
 
             if UnitIsGroupLeader(grid.unit) then return end
 
             if UnitIsGroupAssistant(grid.unit) then
-                DemoteAssistant(grid.unit)
+                if DemoteAssistant then
+                    DemoteAssistant(grid.unit)
+                end
             else
-                PromoteToAssistant(grid.unit)
+                if PromoteToAssistant then
+                    PromoteToAssistant(grid.unit)
+                end
             end
         end
     end)
@@ -583,14 +598,14 @@ end
 raidRosterFrame:SetScript("OnEvent", function()
     LoadRoster()
     CheckPermission()
-    assistantCB:SetChecked(IsEveryoneAssistant())
+    assistantCB:SetChecked(IsEveryoneAssistant and IsEveryoneAssistant())
 end)
 
 raidRosterFrame:SetScript("OnShow", function()
     raidRosterFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
     LoadRoster()
     CheckPermission()
-    assistantCB:SetChecked(IsEveryoneAssistant())
+    assistantCB:SetChecked(IsEveryoneAssistant and IsEveryoneAssistant())
 end)
 
 raidRosterFrame:SetScript("OnHide", function()

@@ -12,21 +12,9 @@ local isImport, imported, exported = false, {}, ""
 local importExportFrame, importBtn, title, textArea
 
 local function DoImport()
-    local backup, backupState = F.CreateAutoBackup("Auto backup before Quick Assist import", {
-        ["tag"] = "Quick Assist",
-        ["type"] = "quickassist_import",
-        ["signature"] = "quickassist_import:" .. tostring(Cell.vars.playerSpecID),
-    })
-
     CellDB["quickAssist"][Cell.vars.playerSpecID] = imported
     Cell.Fire("UpdateQuickAssist")
     Cell.Fire("ReloadQuickAssist")
-    local backupText = F.GetBackupNotificationText(backup, backupState)
-    local message = "Spec " .. tostring(Cell.vars.playerSpecID)
-    if backupText then
-        message = message .. "\n" .. backupText
-    end
-    F.AddAddonNotification("import", "Quick Assist Imported", message)
     importExportFrame:Hide()
 end
 

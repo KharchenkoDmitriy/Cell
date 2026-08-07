@@ -587,6 +587,23 @@ function eventFrame:ADDON_LOADED(arg1)
         if type(CellDB["defensives"]) ~= "table" then CellDB["defensives"] = {["disabled"]={}, ["custom"]={}} end
         if type(CellDB["externals"]) ~= "table" then CellDB["externals"] = {["disabled"]={}, ["custom"]={}} end
 
+        -- auraBlacklist --------------------------------------------------------------------------
+        if type(CellDB["auraBlacklist"]) ~= "table" then CellDB["auraBlacklist"] = {["buffs"]={}, ["debuffs"]={}} end
+
+        -- debuffBlacklist → auraBlacklist.debuffs migration (Retail/Midnight)
+        if Cell.isRetail and type(CellDB["debuffBlacklist"]) == "table" then
+            local target = CellDB["auraBlacklist"]["debuffs"]
+            for _, sid in ipairs(CellDB["debuffBlacklist"]) do
+                if type(sid) == "number" and not target[sid] then
+                    target[sid] = { combat = true, ooc = true }
+                end
+            end
+            -- Clear old array after migration: on Retail, auraBlacklist.debuffs is the source of truth.
+            -- Without this, every login re-adds entries the user already removed from the AuraBlacklist UI.
+            CellDB["debuffBlacklist"] = {}
+            Cell.vars.debuffBlacklist = {}
+        end
+
         -- raid debuffs ---------------------------------------------------------------------------
         if type(CellDB["raidDebuffs"]) ~= "table" then CellDB["raidDebuffs"] = {} end
         if type(CellDB["raidDebuffsCuration"]) ~= "table" then CellDB["raidDebuffsCuration"] = {} end
@@ -616,6 +633,9 @@ function eventFrame:ADDON_LOADED(arg1)
 
         if type(CellDB["targetedSpellsGlow"]) ~= "table" then
             CellDB["targetedSpellsGlow"] = I.GetDefaultTargetedSpellsGlow()
+        elseif CellDB["targetedSpellsGlow"][1] == "None" then
+            -- Glow Type panel removed; "None" would make Border/Both look broken.
+            CellDB["targetedSpellsGlow"] = I.GetDefaultTargetedSpellsGlow()
         end
         Cell.vars.targetedSpellsGlow = CellDB["targetedSpellsGlow"]
 
@@ -626,13 +646,21 @@ function eventFrame:ADDON_LOADED(arg1)
         if type(CellDB["actions"]) ~= "table" then
             CellDB["actions"] = I.GetDefaultActions()
         end
-        Cell.vars.actions = I.ConvertActions(CellDB["actions"])
 
         -- misc -----------------------------------------------------------------------------------
-        Cell.version = GetAddOnMetadata("Cell", "version")
-        Cell.versionNum = tonumber(string.match(Cell.version, "%d+"))
+        F.InitAddonVersion()
         if not CellDB["revise"] then CellDB["firstRun"] = true end
+
+        -- krysio: warn non-Midnight users ------------------------------------------------
+        if not Cell.isMidnight and Cell.version and strfind(Cell.version, "krysio") then
+            F.Print("|cffFFAA00WARNING|r This is a custom Cell build focused on WoW Retail Midnight (12.0).")
+            F.Print("If you play on MoP, Cata, Wrath, TBC or Vanilla, use the official |cff00FF00r276-beta|r release by Enderneko instead.")
+            F.Print("Download: |cff00BFFFhttps://www.curseforge.com/wow/addons/cell|r")
+            F.Print("You can also update via CurseForge or Wago.")
+        end
+
         F.Revise()
+        Cell.vars.actions = I.ConvertActions(CellDB["actions"])
         F.CheckWhatsNew()
         F.RunSnippets()
 

@@ -27,10 +27,10 @@ local function ShowSpellOptions(index)
 
     if responseType == "all" then
         srMacroText:SetText(L["Macro"])
-        macroText = "/run Cell.funcs.SendRequestAddonMessage(\"CELL_REQ_S\",\""..spellId.."\")"
+        macroText = "/run C_ChatInfo.SendAddonMessage(\"CELL_REQ_S\",\""..spellId.."\",\"RAID\")"
     elseif responseType == "me" then
         srMacroText:SetText(L["Macro"])
-        macroText = "/run Cell.funcs.SendRequestAddonMessage(\"CELL_REQ_S\",\""..spellId..":"..GetUnitName("player").."\")"
+        macroText = "/run C_ChatInfo.SendAddonMessage(\"CELL_REQ_S\",\""..spellId..":"..GetUnitName("player").."\",\"RAID\")"
     else -- whisper
         srMacroText:SetText(L["Contains"])
         keywords = CellDB["spellRequest"]["spells"][index]["keywords"]

@@ -94,7 +94,29 @@ local function CreateIndicatorsImportFrame()
                 CellDB[k] = v
 
                 if k == "debuffBlacklist" then
-                    Cell.vars.debuffBlacklist = F.ConvertTable(CellDB[k])
+                    if Cell.isRetail then
+                        -- Migrate imported old-format data to new system
+                        if type(CellDB[k]) == "table" then
+                            local target = CellDB["auraBlacklist"]["debuffs"]
+                            for _, sid in ipairs(CellDB[k]) do
+                                if type(sid) == "number" and not target[sid] then
+                                    target[sid] = { combat = true, ooc = true }
+                                end
+                            end
+                        end
+                    else
+                        Cell.vars.debuffBlacklist = F.ConvertTable(CellDB[k])
+                    end
+                elseif k == "auraBlacklist_debuffs" then
+                    -- Merge imported auraBlacklist debuffs into existing (don't overwrite the whole table)
+                    if Cell.isRetail and type(v) == "table" then
+                        local target = CellDB["auraBlacklist"]["debuffs"]
+                        for sid, entry in pairs(v) do
+                            if type(sid) == "number" and not target[sid] then
+                                target[sid] = { combat = entry.combat, ooc = entry.ooc }
+                            end
+                        end
+                    end
                 elseif k == "bigDebuffs" then
                     Cell.vars.bigDebuffs = F.ConvertTable(CellDB[k])
                 elseif k == "aoeHealings" then

@@ -1,4 +1,4 @@
----------------------------------------------------------------------
+﻿---------------------------------------------------------------------
 -- File: RaidDebuffs_Midnight.lua
 -- Author: enderneko (enderneko-dev@outlook.com)
 -- Created : 2026-03-09
@@ -174,6 +174,7 @@ local debuffs = {
             1237844, -- Umbral Tether
             1238672, -- Coalesced Form
             1233526, -- Corrupting Essence
+            1241520, -- Corrupting Essence
             1255378, -- Bursting Emptiness
             1261165, -- Empowering Darkness
         },
@@ -226,6 +227,7 @@ local debuffs = {
             1273158, -- Death's Requiem
             1249609, -- Dark Rune
             1249584, -- Dissonance
+            1295191, -- Dissonance
             1249796, -- Shattered Sky
             1284931, -- Termination Prism
             1284934, -- Terminate
@@ -532,6 +534,29 @@ local debuffs = {
     },
 
     -- ====================================================================
+    -- Sporefall (Raid)
+    -- ====================================================================
+    [1305] = { -- Sporefall / Sporenfall
+        ["general"] = {
+        },
+        [2711] = { -- Rotmire / Rottmoor
+            1221781, -- Putrid Fist
+            1222088, -- Festering Vines
+            1222129, -- Writhing Vines
+            1221637, -- Fungal Bloom
+            1222176, -- Rotting Pustules
+            1221787, -- Bursting Pustules
+            1221714, -- Poison Burst
+            1221717, -- Blightshot
+            1222495, -- Bursting Doom Shroom
+            1221622, -- Awaken Fungi
+            1221965, -- Bursting Shrooms
+            1221644, -- Fungal Frenzy
+            1222684, -- Cross Fertilization
+        },
+    },
+
+    -- ====================================================================
     -- The Blinding Vale (Dungeon)
     -- ====================================================================
     [1309] = {
@@ -664,7 +689,7 @@ local debuffs = {
     },
 
     -- ====================================================================
-    -- The Dreamrift (Dungeon)
+    -- The Dreamrift (Raid)
     -- ====================================================================
     [1314] = {
         ["general"] = {
@@ -829,6 +854,365 @@ local debuffs = {
             1235134, -- Erupting Roots
         },
     },
+
+
+    -- ====================================================================
+    -- Altar of Fangs (Dungeon) - Season 2
+    -- ====================================================================
+    [1322] = {
+        ["general"] = {
+        },
+        [2878] = { -- Rav'i
+            1298221, -- Ssscavenging
+            1297876, -- Triple Shot
+            1296069, -- Regurgitate
+            1298683, -- Hydrastrike
+            1306345, -- Messy Eater
+            1307700, -- Carrion Burst
+            1307765, -- Feeding Frenzy
+            1307703, -- Fresh Meat
+            1307915, -- Ravenous Stomp
+            1310378, -- Scent of Blood
+        },
+        [2879] = { -- The Writhing Coil
+            1299053, -- Death Rattle
+            1299940, -- Vindictive Onslaught
+            1300083, -- Burrowing Charge
+            1300044, -- Venom Jet
+            1300503, -- Spiteful Hunt
+            1298949, -- Tail Scythe
+            1299189, -- Synchronized Venom
+            1287811, -- Uncoil
+            1305393, -- Undermining
+            1287798, -- Vine Grip
+            1310357, -- Toxic Barrage
+            1310974, -- Toxic Atrophy
+            1300612, -- Uncoiled
+        },
+        [2880] = { -- Zul'jan
+            1300876, -- Ritual of the Fang
+            1300888, -- Fang Empowered
+            1300894, -- Ritual Venom
+            1301111, -- Axegrinder
+            1301217, -- Bloodletting
+            1301350, -- Chop Down
+            1301413, -- Boneslicer
+        },
+    },
+
+    -- ====================================================================
+    -- The Tidebound Grotto (Lair) - Season 2
+    -- ====================================================================
+    [1317] = {
+        ["general"] = {
+        },
+        [2849] = { -- Nymrissa Wavecaller
+            1258668, -- Swirling Whirlpools
+            1282937, -- Iceblade Flurry
+            1257717, -- Alluring Bubble
+            1258150, -- Pop!
+            1258894, -- Pulsing Tides
+            1258901, -- Water Jet
+            1273091, -- Waterfog Shield
+            1277386, -- Wavecaller's Might
+            1260837, -- Abyssal Rain
+            1294867, -- Unending Tides
+            1313393, -- Chilling Frost
+            1313450, -- Frost Burst
+            1313402, -- Frost Orb
+            1313456, -- Shatter
+            1257654, -- Lingering Frost
+        },
+    },
+
+    -- ====================================================================
+    -- The Venomous Abyss (Raid) - Season 2
+    -- ====================================================================
+    [1320] = {
+        ["general"] = {
+        },
+        [2888] = { -- Nek'zali the Soulcoiler
+            1285681, -- Soulcoil Ignition
+            1284110, -- Hollowing Strikes
+            1290003, -- Uncoiling
+            1284034, -- Uncoiled Rage
+            1284103, -- Possession Barrage
+            1284033, -- Soulcoil Rite
+            1284032, -- Soulcoil Well
+            1290361, -- Soulcoiled
+            1297624, -- Ritual Burn
+            1287426, -- Essence Rend
+            1287198, -- Latent Cultist
+            1287533, -- Gravebound Advance
+            1294729, -- Corpse Blight
+            1299673, -- Invoke
+            1293497, -- Entwined Step
+            1293212, -- Grasping Depths
+            1300235, -- Soul Exhaustion
+            1300238, -- Soulcoiler's Curse
+            1300239, -- Swirling Spirit
+            1299988, -- Immortal Coil
+            1294846, -- Anguished Echoes
+            1289696, -- Tether of Awakening
+            1289855, -- Hungering Pyre
+            1294933, -- Slithering Flame
+            1292248, -- Soul Transfer
+            1295263, -- Vessel of Awakening
+            1289875, -- Cremation
+        },
+        [2874] = { -- Entombed Sentinels
+            1284590, -- Helical Toxins
+            1284458, -- Empowering Slam
+            1284487, -- Bloodvenom Injection
+            1284588, -- Vitriolic Stasis
+            1284251, -- Venom Coagulation
+            1284434, -- Toxic Droplets
+            1284471, -- Blighted Blood
+            1288232, -- Unstable Miasma
+            1284207, -- Living Venom
+            1284208, -- Blood Venom
+            1284494, -- Mark of Acid
+            1284503, -- Mark of Blood
+            1284941, -- Cultivated Burst
+            1284257, -- Contaminate
+            1284452, -- Noxious Blast
+            1288297, -- Clinging Murk
+            1290193, -- Ula'tek's Dominance
+            1296878, -- Shifting Protovenom
+            1296962, -- Protovenom Eruption
+        },
+        [2894] = { -- The Lost Explorers
+            1286921, -- Icebound Flames
+            1295854, -- Shredding Shards
+            1296025, -- Blink Nova
+            1295928, -- Burning Flames
+            1297649, -- Fire Patch
+            1295893, -- Frostfire Volley
+            1295954, -- Piercing Frost
+            1297648, -- Frost Patch
+            1296061, -- Shell Spin
+            1296092, -- Mighty Thud
+            1291930, -- Steady Strikes
+            1291933, -- Throw Junk
+            1292104, -- Mushroom Toss
+            1305618, -- Fungal Burst
+            1297625, -- Explosive Surprise
+            1296247, -- Concussive Blast
+            1297650, -- Spreading Flames
+            1295449, -- Malevolent Presence
+            1292780, -- Final Ascension
+            1295451, -- Dark Whispers
+            1297022, -- Mor'zahi's Command
+            1292388, -- Evil Eyes
+            1291390, -- Cataclysmic Invocation
+            1296227, -- Relentless Escalation
+            1296252, -- Smashing Shovel
+            1297646, -- United Defense
+            1305844, -- Blast Wave
+            1308853, -- Splinters
+            1310027, -- Relic Rupture
+            1310500, -- Aftershock
+            1312868, -- Splinters
+            1295952, -- Elemental Explosion
+            1299855, -- Bounce
+            1313126, -- Dark Unity
+            1313303, -- Fishy Feedback
+            1313690, -- Aftershock
+        },
+        [2882] = { -- Vashnik the Malignant
+            1282525, -- Malignant Catalyst
+            1282601, -- Catalytic Bile
+            1282117, -- Adaptive Infection
+            1299941, -- Siphoning Infection
+            1295173, -- Exploding Infection
+            1294994, -- Stygian Infection
+            1281907, -- Plague Froth
+            1280935, -- Dripping Fangs
+            1283164, -- Imbibe
+            1280189, -- Malignant Burst
+            1286631, -- Splitting Clot
+            1286737, -- Umbral Ejection
+            1285979, -- Caustic Surge
+            1295798, -- Plague Wave
+            1295209, -- Caustic Explosion
+            1302489, -- Stygian Burst
+            1295229, -- Siphon Blood
+            1291530, -- Sanguineous Fortitude
+            1293969, -- Blood Infusion
+            1298582, -- Hemo Expulsion
+            1293968, -- Shadow Infusion
+            1298583, -- Gloom Expulsion
+            1293971, -- Flame Infusion
+            1298587, -- Conflagrating Expulsion
+            1304459, -- Malignance
+            1305902, -- Burning Presence
+            1312366, -- Miasmic Coating
+            1284561, -- Toxic Vapor
+        },
+        [2871] = { -- Sszorak
+            1277002, -- Ravage
+            1277025, -- Apex Predator
+            1277027, -- Mutilate
+            1282869, -- Corroding Venom
+            1287072, -- Tempest
+            1285419, -- Raging Crosswinds
+            1285447, -- Turbulent Gusts
+            1305959, -- Venomous Surge
+            1287008, -- Viscous Cyst
+            1285732, -- Howling Maelstrom
+            1285961, -- Ula'tek's Presence
+            1286033, -- Dig In
+            1297367, -- Serpent's Fury
+            1296898, -- Unbound Ferocity
+            1297414, -- To the Slaughter
+            1297707, -- Virulence
+            1305998, -- Caustic Claws
+            1296602, -- Caustic Residue
+            1277051, -- Mutilated Gash
+        },
+        [2887] = { -- The Twin Fangs
+            1288538, -- Stone Breaker
+            1289192, -- Caustic Deluge
+            1289993, -- Caustic Globule
+            1290516, -- Ravenous Feast
+            1290336, -- Eternal Venom
+            1290956, -- Stir the Depths
+            1290809, -- Coiling Ichor
+            1291404, -- Venomous Emergence
+            1292505, -- Congealed Gore
+            1294293, -- Vile Flood
+            1306872, -- Sanguine Storm
+            1291478, -- Corrosive Spit
+            1295049, -- Toxic Fumes
+            1295107, -- Concentrated Spittle
+            1295115, -- Clotted Bolt
+            1306922, -- Congealed Gore
+            1303230, -- Blood Torrent
+            1303378, -- Barbed Bulwark
+            1308356, -- Rouse the Brood
+            1308385, -- Visceral Burst
+            1308583, -- Uncoiled Wrath
+            1308556, -- Submerge
+            1309471, -- Noxious Slick
+            1310096, -- Feasted
+            1310099, -- Tainted Blood
+            1310105, -- Tainted Burst
+            1310360, -- Envenomed
+        },
+        [2883] = { -- The Coiled Altar
+            1285643, -- Dreadmarch
+            1283631, -- Widow's Touch
+            1286895, -- Gloombomb
+            1285911, -- Unnerving Fixation
+            1286441, -- Spiritcackle
+            1286399, -- Wail of Terror
+            1286620, -- Soul Sever
+            1286918, -- Eternal Nightfall
+            1286912, -- Veil of Twilight
+            1286947, -- Suffocating Darkness
+            1287722, -- Spirit Erasure
+            1304032, -- Soulbinding
+            1282487, -- Fangs of the Coiled Altar
+            1300322, -- Twinfang Toxin
+            1283290, -- Noxious Ground
+            1283489, -- Guillotine
+            1283623, -- Widow's Kiss
+            1282287, -- Venomfang
+            1283832, -- Axegrinder
+            1307184, -- Dread Bolt
+            1287718, -- Reclaim Essence
+            1307009, -- Despair
+            1298381, -- Defilement of the Coiled Altar
+            1298591, -- Defiled Ground
+            1298795, -- Corrupted Toxin
+            1299267, -- Grim Guillotine
+            1299396, -- Death's Embrace
+            1299401, -- Death's Whisper
+            1299680, -- Sever
+            1299960, -- Toxic Deluge
+            1307279, -- Blighted Sever
+            1310882, -- Gloombomb
+            1286837, -- Gravebound
+            1282419, -- Volatile Venom
+            1282403, -- Coalesced Venom
+            1299838, -- Venom Rupture
+            1304033, -- Ghastly Regeneration
+            1288624, -- Dreadful Presence
+            1309944, -- Guillotined
+            1309940, -- Guillotined
+            1308323, -- Retaliatory Malice
+            1304028, -- Deathguard
+            1309105, -- Spirit Shield
+            1309174, -- Caustic Secretion
+            1310544, -- Virulent Mutation
+            1310498, -- Mutagenic Venom
+            1310013, -- Tainted Blood
+            1310732, -- Malevolent Resonance
+            1283606, -- Execution
+            1299301, -- Grim Execution
+            1309987, -- Soulbound
+            1313196, -- Soulbound
+        },
+        [2895] = { -- Ula'tek
+            1286834, -- Necrotic Vapors
+            1286860, -- Rage of the Shackled
+            1289962, -- Blightscale Clutch
+            1292403, -- Caustic Waves
+            1287265, -- Spectral Coils
+            1286945, -- Unchecked Rage
+            1298367, -- Mother's Wrath
+            1298417, -- Stone Venom
+            1299206, -- Rattler Slam
+            1296301, -- Mephitic Thrash
+            1299526, -- Venomous Heart
+            1302982, -- Virulent Spit
+            1290990, -- Writhing Gestation
+            1300312, -- Doomscale Shell
+            1286905, -- Fury Unleashed
+            1290779, -- Malice
+            1301213, -- Shadow Molt
+            1304012, -- Call of the Serpent
+            1301117, -- Grasping Fangs
+            1300751, -- Call of the Serpent
+            1301510, -- Circling Prey
+            1301268, -- Putrid Membrane
+            1302505, -- Ula'tek's Bond
+            1301800, -- Acidic Burst
+            1303414, -- Petrifying Sting
+            1303410, -- Defect: Weakened
+            1305650, -- Anguished Cry
+            1305709, -- Desperate Thrash
+            1305775, -- Dread Roar
+            1295905, -- Serpent's Bite
+            1306119, -- Calcified Corpse
+            1306086, -- Volatile Purge
+            1306862, -- Hatching Doom
+            1287036, -- Poisonous Bite
+            1286885, -- Falling Debris
+            1299650, -- Hardened
+            1307612, -- Noxious Shell
+            1307635, -- Noxious Splash
+            1308038, -- Mass Gestation
+            1295360, -- Malignant Shell
+            1306858, -- Warden's Protection
+            1300685, -- Soul Constrictor
+            1307941, -- Revenge
+            1310738, -- Toxic Womb
+            1299757, -- Toxic Incubation
+            1299764, -- Mother's Boon
+            1302842, -- Toxic Burn
+            1310763, -- Fester Burst
+            1311600, -- Blight Vein
+            1311609, -- Blight Vein
+            1312150, -- Rancid Yolk
+            1300938, -- Hobbled
+            1313355, -- Doomscale Cauldron
+            1313531, -- Acidic Expulsion
+            1310764, -- Vicious Echoes
+            1313757, -- Boiling Venom
+        },
+    },
+
 
 }
 

@@ -256,6 +256,9 @@ local externals = { -- true: track by name, false: track by id
 
     ["MONK"] = {
         [116849] = true, -- 作茧缚命 - Life Cocoon
+        [406139] = true, -- 真气之茧 - Chi Cocoon (Yu'lon)
+        [406220] = true, -- 真气之茧 - Chi Cocoon (Chi-Ji)
+        [116841] = true, -- 迅如猛虎 - Tiger's Lust
         [202248] = false, -- 偏转冥想 - Guided Meditation
     },
 
@@ -267,6 +270,8 @@ local externals = { -- true: track by name, false: track by id
         [31821] = true, -- 光环掌握 - Aura Mastery
         [210256] = true, -- 庇护祝福 - Blessing of Sanctuary
         [228050] = false, -- 圣盾术 (被遗忘的女王护卫) - Divine Shield
+        [432496] = true, -- 圣洁壁垒 - Holy Bulwark (Holy Armaments shield variant)
+        [432502] = true, -- 圣洁武器 - Holy Armaments (Sacred Weapon variant)
         -- [211210] = true, -- 提尔的保护
         -- [216328] = true, -- 光之优雅
     },
@@ -344,6 +349,8 @@ function I.UpdateExternals(t)
         -- end
         customExternals[id] = true
     end
+    Cell.vars.builtInExternals = builtInExternals
+    Cell.vars.customExternals = customExternals
 end
 
 local UnitIsUnit = UnitIsUnit
@@ -428,14 +435,16 @@ local defensives = { -- true: track by name, false: track by id
     },
 
     ["PALADIN"] = {
-        [498] = true, -- 圣佑术 - Divine Protection
+        [498] = true, -- 圣佑术 - Divine Protection (Holy/Protection)
+        [403876] = true, -- Protección Divina (cast de Retribution en TWW+, el 498 ya no funciona para Ret)
         [642] = true, -- 圣盾术 - Divine Shield
         [31850] = true, -- 炽热防御者 - Ardent Defender
         [86659] = true, -- 远古列王守卫 - Guardian of Ancient Kings (base buff)
         [212641] = true, -- 远古列王守卫 - Guardian of Ancient Kings
         [205191] = true, -- 以眼还眼 - Eye for an Eye
         [389539] = true, -- 戒卫 - Sentinel
-        [184662] = true, -- 复仇之盾 - Shield of Vengeance
+        [184662] = true, -- 复仇之盾 - Shield of Vengeance (legacy ID)
+        [1261562] = true, -- Escudo de Venganza (buff ID de TWW+, el 184662 ya no funciona en Midnight)
     },
 
     ["PRIEST"] = {
@@ -508,6 +517,8 @@ function I.UpdateDefensives(t)
         -- end
         customDefensives[id] = true
     end
+    Cell.vars.builtInDefensives = builtInDefensives
+    Cell.vars.customDefensives = customDefensives
 end
 
 function I.IsDefensiveCooldown(name, id)
@@ -784,6 +795,7 @@ local spells =  {
     145205, -- 百花齐放 - Efflorescence
     383193, -- 林地护理 - Grove Tending
     439530, -- 共生绽华 - Symbiotic Blooms
+    474754, -- 共生关系 - Symbiotic Relationship
     -- 429224, -- 次级塞纳里奥结界 - Minor Cenarion Ward (removed in 12.0, Durability of Nature redesigned)
 
     -- evoker
@@ -829,15 +841,17 @@ local spells =  {
     287280, -- 圣光闪烁 - Glimmer of Light
     156322, -- 永恒之火 - Eternal Flame
     431381, -- 晨光 - Dawnlight
-    388013, -- 阳春祝福 - Blessing of Spring
-    388007, -- 仲夏祝福 - Blessing of Summer
-    388010, -- 暮秋祝福 - Blessing of Autumn
-    388011, -- 凛冬祝福 - Blessing of Winter
+    -- 388013, -- 阳春祝福 - Blessing of Spring, removed in 12.0
+    -- 388007, -- 仲夏祝福 - Blessing of Summer, removed in 12.0
+    -- 388010, -- 暮秋祝福 - Blessing of Autumn, removed in 12.0
+    -- 388011, -- 凛冬祝福 - Blessing of Winter, removed in 12.0
     200654, -- 提尔的拯救 - Tyr's Deliverance
     1244893, -- 救世主道标 - Beacon of the Savior
+    432496, -- 圣洁壁垒 - Holy Bulwark (Holy Armaments shield variant)
+    432502, -- 圣洁武器 - Holy Armaments (Sacred Weapon variant)
 
     -- priest
-    -- 139, -- 恢复 - Renew (removed in 12.0)
+    139, -- 恢复 - Renew (removed in 12.0)
     200829, -- 恳求 - Plea (added in 12.0, Disc)
     41635, -- 愈合祷言 - Prayer of Mending
     17, -- 真言术：盾 - Power Word: Shield
@@ -853,12 +867,56 @@ local spells =  {
     61295, -- 激流 - Riptide
     382024, -- 大地生命武器 - Earthliving Weapon
     375986, -- 始源之潮 - Primordial Wave
+    207400, -- 先祖活力 - Ancestral Vigor
     444490, -- 源水气泡 - Hydrobubble
     -- 73920, -- 治疗之雨 - Healing Rain
     -- 456366, -- 治疗之雨 - Healing Rain
 }
 
 function F.FirstRun()
+    local currentLayoutTable = Cell.vars.currentLayoutTable
+
+    -- Check if Healers indicator already exists
+    for _, indicator in ipairs(currentLayoutTable["indicators"]) do
+        if indicator["name"] == "Healers" then
+            local existingAuras = indicator["auras"] or {}
+            local seen = {}
+            for _, id in ipairs(existingAuras) do seen[id] = true end
+
+            local missing = {}
+            for _, id in ipairs(spells) do
+                if not seen[id] then tinsert(missing, id) end
+            end
+
+            if #missing == 0 then
+                F.Print(L["Healers indicator is up to date."])
+                return
+            end
+
+            -- Build icon preview for missing spells
+            local icons = "\n\n"
+            for _, id in ipairs(missing) do
+                local icon = select(2, F.GetSpellInfo(id))
+                if icon then icons = icons .. "|T"..icon..":0|t" end
+            end
+
+            local popup = Cell.CreateConfirmPopup(Cell.frames.anchorFrame, 200,
+                string.format(L["Healers indicator already exists. Add new spells?"], #missing) .. icons,
+                function()
+                    for _, id in ipairs(missing) do
+                        tinsert(indicator["auras"], id)
+                    end
+                    Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, indicator["indicatorName"], "auras", "buff", indicator["auras"])
+                    F.ReloadIndicatorList()
+                end
+            )
+            popup:SetPoint("TOPLEFT")
+            popup:Show()
+            return
+        end
+    end
+
+    -- No Healers found → create one
     local icons = "\n\n"
     for i, id in pairs(spells) do
         local icon = select(2, F.GetSpellInfo(id))
@@ -871,8 +929,6 @@ function F.FirstRun()
     end
 
     local popup = Cell.CreateConfirmPopup(Cell.frames.anchorFrame, 200, L["Would you like Cell to create a \"Healers\" indicator (icons)?"]..icons, function(self)
-        local currentLayoutTable = Cell.vars.currentLayoutTable
-
         local last = #currentLayoutTable["indicators"]
         if currentLayoutTable["indicators"][last]["type"] == "built-in" then
             indicatorName = "indicator1"
@@ -937,198 +993,147 @@ end
 -- targetedSpells
 -------------------------------------------------
 local targetedSpells = {
-    -- Cataclysm -------------------
-    -- 格瑞姆巴托
-    451971, -- 熔岩之拳
-    451224, -- 暗影烈焰笼罩
-    451364, -- 残忍打击
-    451261, -- 大地之箭
-    449444, -- 熔火乱舞
-    450100, -- 碾碎
+    -- Altar of Fangs --------------
+    1296220, -- Triple Shot
+    1296050, -- Regurgitate
+    1296058, -- Regurgitate
+    1300503, -- Spiteful Hunt
+    1299130, -- Burrowing Charge
+    1300044, -- Venom Jet
+    1301413, -- Boneslicer
+    1294567, -- Paralyzing Shots
+    1289416, -- Envenom
+    1308865, -- Infest
+    1294557, -- Piercing Hiss
+    1306381, -- Fetid Spit (Stinkender Auswurf)
+    1308862, -- Fetid Spit
+    1294432, -- Septic Spatter
+    1306232, -- Septic Spatter
+    1305637, -- Septic Spatter
+    1306235, -- Septic Spatter
+    1306129, -- Septic Spatter
+    1305641, -- Septic Spatter
+    1294934, -- Noxious Spray
+    1294859, -- Rattle
+    1294197, -- Experimental Toxin
+    1293985, -- Experimental Toxin
+    1293983, -- Experimental Toxin
 
-    -- Mists of Pandaria -----------
-    -- 青龙寺 - Temple of the Jade Serpent
-    106823, -- 翔龙猛袭 - Serpent Strike
-    106841, -- 青龙猛袭 - Jade Serpent Strike
+    -- Murder Row ------------------
+    1214357, -- Fire Bomb
+    1214637, -- Axe Toss
+    474478, -- Killing Spree
+    474765, -- Same-Day Delivery
+    474766, -- Same-Day Delivery
+    1222795, -- Envenom
+    473898, -- Legion Strike
+    474375, -- Chaos Bolt
+    1217633, -- Corroding Spittle
+    1217973, -- Curse of Doom
+    1216954, -- Eye Beam
+    1215872, -- Fel Beam
+    1216570, -- Fel Missiles
+    1201554, -- Seduction
+    1217881, -- Shadow Bite
+    1293101, -- Shadow Bite
 
-    -- Legion ----------------------
-    -- 群星庭院 - Court of Stars
-    211473, -- 暗影鞭笞 - Shadow Slash
-    -- 英灵殿 - Halls of Valor
-    193092, -- 放血扫击 - Bloodletting Sweep
-    193659, -- 邪炽冲刺 - Felblaze Rush
-    192018, -- 光明之盾 - Shield of Light
-    196838, -- 血之气息 - Scent of Blood
+    -- Den of Nalorakk -------------
+    1243569, -- Overwhelming Onslaught
+    1242860, -- Echoing Maul
+    1242976, -- Echoing Maul
+    1241226, -- Bloodrush
+    1241214, -- Earth Bolt
+    1246687, -- Lightning Bolt
+    1241217, -- Shredding Claws
+    1246847, -- Shoot
+    1238439, -- Razor Dive
+    1232012, -- Serrated Fists
 
-    -- Battle for Azeroth ----------
-    -- 围攻伯拉勒斯
-    454438, -- 艾泽里特炸药
-    272571, -- 窒息之水
-    257063, -- 盐渍飞弹
-    256709, -- 钢刃之歌
-    -- 暴富矿区！！
-    263628, -- 充能护盾
-    -- 麦卡贡行动
-    1215411, -- 刺破
-    291928, -- 巨力震击
-    292264, -- 巨力震击
-    285152, -- 索敌击飞
+    -- The Blinding Vale -----------
+    1237090, -- Bloodthirsty Gaze
+    1235640, -- Thornblade
+    1238066, -- Thornblade
+    1234850, -- Lightsower Dash
+    1235564, -- Lightblossom Beam
+    1239824, -- Lightfire
+    1241058, -- Grievous Thrash
+    1242135, -- Grievous Gash
+    1247685, -- Thornspike
+    1246607, -- Concentrated Lightbeam
+    1237855, -- Earthrupture Strike
+    1238063, -- Light Bolt
+    1238368, -- Lightmaw Beams
+    1250829, -- Potad-Toss
+    1238232, -- Seed Shot
+    1250100, -- Tongue Toss
 
-    -- Shadowlands -----------------
-    -- 通灵战潮 - Necrotic Wake
-    320788, -- 冻结之缚 - Frozen Binds
-    320596, -- 深重呕吐 - Heaving Retch
-    338606, -- 病态凝视 - Morbid Fixation
-    343556, -- 病态凝视 - Morbid Fixation
-    333479, -- 吐疫
-    -- 奈萨里奥的巢穴 - Castle Nathria
-    344496, -- 震荡爆发 - Reverberating Eruption
-    -- 赎罪大厅 - Halls of Atonement
-    319941, -- 碎石之跃 - Stone Shattering Leap
-    325535, -- 射击
-    326829, -- 邪恶箭矢
-    338003, -- 邪恶箭矢
-    1235766, -- 致死打击
-    1237071, -- 石拳
-    322936, -- 粉碎砸击
-    -- Mists of Tirna Scithe
-    323057, -- 灵魂之箭
-    321828, -- 拍手手
-    322614, -- 心灵连接 - Mind Link
-    463248, -- 排斥
-    463217, -- 心能挥砍
-    -- 彼界 - De Other Side
-    320132, -- 暗影之怒 - Shadowfury
-    332234, -- 挥发精油 - Essential Oil
-    -- Spires of Ascenscion
-    334053, -- 净化冲击波 - Purifying Blast
-    317963, -- 知识烦扰 - Burden of Knowledge
-    -- Sanguine Depths
-    319713, -- 巨兽奔袭 - Juggernaut Rush
-    -- 伤逝剧场 - Theater of Pain
-    324079, -- 收割之镰 - Reaping Scythe
-    333861, -- 回旋利刃 - Ricocheting Blade
-    342675, -- 骨矛
-    320644, -- 残酷连击
-    323515, -- 仇恨打击
-    1217138, -- 通灵箭
-    -- Plaguefall
-    -- 328429, -- 窒息勒压
-    356924, -- 屠戮 - Carnage
-    356666, -- 刺骨之寒 - Biting Cold
-    -- 塔扎维什：琳彩天街
-    352796, -- 代理打击
-    357512, -- 狂暴冲锋
-    347903, -- 垃圾邮件
-    354297, -- 凌光箭
-    353836, -- 凌光箭
-    1240912, -- 穿刺
-    350916, -- 安保猛击
-    350101, -- 诅咒锁链
-    355477, -- 强力脚踢
-    -- 塔扎维什：索·莉亚的宏图
-    355225, -- 水箭
-    356843, -- 盐渍飞弹
+    -- Voidscar Arena --------------
+    1222098, -- Nether Dash
+    1222100, -- Nether Dash
+    1227264, -- Cosmic Crash
+    1222642, -- Hulking Claw
+    1226120, -- Poison Splash
+    1249236, -- Fire Spit
+    1228176, -- Lava Bolt
+    1233472, -- Rip and Slice
+    1239855, -- Sky Strike
+    1234890, -- Smashing Charge
+    1250640, -- Venomous Spit
+    1227020, -- Dimensional Shred
 
-    -- Dragonflight ----------------
-    -- 化身巨龙牢窟 - Vault of the Incarnates
-    375870, -- 致死石爪 - Mortal Stoneclaws
-    395906, -- 电化之颌 - Electrified Jaws
-    372158, -- 破甲一击 - Sundering Strike
-    372056, -- 碾压 - Crush
-    375580, -- 西风猛击 - Zephyr Slam
-    376276, -- 震荡猛击 - Concussive Slam
-    -- 亚贝鲁斯，焰影熔炉 - Aberrus, the Shadowed Crucible
-    401022, -- 灾祸掠击 - Calamitous Strike
-    407790, -- 身影碎离 - Sunder Shadow
-    -- 阿梅达希尔，梦境之愿 - Amirdrassil, the Dream's Hope
-    418637, -- 狂怒冲锋 - Furious Charge
-    -- 红玉新生法池 - Ruby Life Pools
-    372858, -- 灼热打击 - Searing Blows
-    381512, -- 风暴猛击 - Stormslam
-    -- 奈萨鲁斯 - Neltharus
-    374533, -- 炽热挥舞 - Heated Swings
-    377018, -- 熔火真金 - Molten Gold
-    -- 蕨皮山谷 - Brackenhid Hollow
-    381444, -- 野蛮冲撞 - Savage Charge
-    373912, -- 腐朽打击 - Decaystrike
-    -- 碧蓝魔馆 - Azure Vault
-    374789, -- 注能打击 - Infused Strike
-    372222, -- 奥术顺劈 - Arcane Cleave
-    384978, -- 巨龙打击 - Dragon Strike
-    391136, -- 肩部猛击 - Shoulder Slam
-    -- 诺库德阻击战 - The Nokhud Offensive
-    376827, -- 传导打击 - Conductive Strike
-    376829, -- 雷霆打击 - Thunder Strike
-    375937, -- 撕裂猛击 - Rending Strike
-    375929, -- 野蛮打击 - Savage Strike
-    376644, -- 钢铁之矛 - Iron Spear
-    376865, -- 静电之矛 - Static Spear
-    382836, -- 残杀 - Brutalize
+    -- Kings' Rest -----------------
+    265773, -- Spit Gold
+    268932, -- Quaking Leap
+    1303327, -- Quaking Leap
+    1303115, -- Aerial Smash
+    266951, -- Barrel Through
+    266231, -- Severing Axe
+    267618, -- Drain Fluids
+    267702, -- Entomb
+    271555, -- Entomb
+    268586, -- Blade Combo
+    1303488, -- Savage Maul
+    270506, -- Deadeye Shot
+    270507, -- Poison Barrage
+    270492, -- Hex
+    270284, -- Purification Beam
+    270482, -- Blooded Leap
+    270503, -- Hunting Leap
+    269230, -- Hunting Leap
+    269231, -- Hunting Leap
+    270928, -- Bladestorm
+    270891, -- Channel Lightning
+    270920, -- Seduction
+    270865, -- Hidden Blade
+    271640, -- Dark Revelation
+    270931, -- Darkshot
 
-    -- The War Within --------------
-    -- 圣焰隐修院
-    424420, -- 余烬冲击
-    424414, -- 贯穿护甲
-    427583, -- 忏悔
-    447270, -- 掷矛
-    448515, -- 神圣审判
-    424421, -- 火球术
-    444743, -- 连珠火球
-    427357, -- 神圣惩击
-    462859, -- 随意射击
-    -- 艾拉-卡拉，回响之城
-    439506, -- 钻地冲击
-    434786, -- 蛛网箭
-    438471, -- 贪食撕咬
-    -- 矶石宝库
-    429545, -- 噤声齿轮
-    424888, -- 震地猛击
-    459210, -- 暗影爪击
-    428711, -- 火成岩锤
-    -- 破晨号
-    431491, -- 污邪斩击
-    451119, -- 深渊轰击
-    431303, -- 暗夜箭
-    431333, -- 折磨射线
-    451107, -- 迸发虫茧
-    -- 尼鲁巴尔王宫
-    459524, -- 致命之箭
-    -- 暗焰裂口
-    421277, -- 暗焰之锄
-    427011, -- 暗影冲击
-    422245, -- 穿岩凿
-    422116, -- 鲁莽冲锋
-    -- 燧酿酒庄
-    432229, -- 醉酿投
-    439031, -- 干杯勾拳
-    436592, -- 点钞大炮
-    440134, -- 蜂蜜料汁
-    -- 驭雷栖巢
-    445457, -- 湮灭波
-    430109, -- 闪电箭
-    430238, -- 虚空箭
-    474031, -- 虚空碾压
-    430805, -- 弧形虚空
-    -- 水闸行动
-    1213805, -- 射钉枪
-    465595, -- 闪电箭
-    468631, -- 鱼叉
-    459779, -- 滚桶冲锋
-    459799, -- 重击
-    473690, -- 动能胶质炸药
-    473351, -- 电气重碾
-    469478, -- 淤泥之爪
-    466190, -- 雷霆重拳
-    1214468, -- 特技射击
-    -- 奥尔达尼生态圆顶
-    1229474, -- 啃噬
-    1235368, -- 奥术猛袭
-    1229510, -- 弧光震击
-    1222815, -- 奥术箭
-    1221483, -- 电弧能量
-    1219482, -- 裂隙利爪
-    1226111, -- 不稳定的喷发
+    -- Temple of Sethraliss --------
+    264574, -- Power Shot
+    268008, -- Snake Charm
+    267237, -- Drain
+    263309, -- Cyclone Strike
+    263958, -- A Knot of Snakes
+    1290029, -- A Knot of Snakes
+    1289109, -- Thunder Spit
+    1289059, -- Gale Force
+    1288864, -- Tempest Winds
+    1288428, -- Overload
+
+    -- Ruby Life Pools -------------
+    372858, -- Searing Blows
+    381512, -- Stormslam
+    372107, -- Molten Boulder
+    372863, -- Ritual of Blazebinding
+    372851, -- Chillstorm
+    1307308, -- Chillstorm
+    381862, -- Inferno Spit
+    381602, -- Flamespit
+    372087, -- Blazing Rush
+    372047, -- Steel Barrage
+    392640, -- Rolling Thunder
+    392451, -- Flashfire
+    373693, -- Living Bomb
 }
 
 function I.GetDefaultTargetedSpellsList()
@@ -1148,11 +1153,11 @@ local actions = {
         {"A", {0.4, 1, 0}},
     },
     {
-        431416, -- 阿加治疗药水 - Algari Healing Potion
+        1234768, -- 银月治疗药水 - Silvermoon Health Potion
         {"A", {1, 0.1, 0.1}},
     },
     {
-        431932, -- 淬火药水 - Tempered Potion
+        1236616, -- 圣光潜能 - Light's Potential
         {"C3", {1, 1, 0}},
     },
 }

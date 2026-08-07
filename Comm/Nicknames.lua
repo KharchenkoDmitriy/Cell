@@ -6,6 +6,20 @@ local LBW = LibStub:GetLibrary("LibBadWords")
 local Comm = LibStub:GetLibrary("AceComm-3.0")
 
 -----------------------------------------
+-- shared
+-----------------------------------------
+local sendChannel
+local function UpdateSendChannel()
+    if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+        sendChannel = "INSTANCE_CHAT"
+    elseif IsInRaid() then
+        sendChannel = "RAID"
+    else
+        sendChannel = "PARTY"
+    end
+end
+
+-----------------------------------------
 -- nickname
 -----------------------------------------
 Cell.vars.nicknames = {}
@@ -58,10 +72,13 @@ local function CheckNicknames()
         if CellDB["nicknames"]["sync"] then
             if nic_check then nic_check:Cancel() end
             nic_check = C_Timer.NewTimer(random(3), function()
-                local sendChannel = F.GetGroupCommChannel()
-                if sendChannel then
-                    F.TrySendCommMessage("CELL_CNIC", "chk", sendChannel, nil, "ALERT")
+                UpdateSendChannel()
+                -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
+                if Cell.isMidnight and F.IsCommRestricted and F.IsCommRestricted() then
+                    F.Debug("Cell: Comm suppressed - restricted context (CELL_CNIC)")
+                    return
                 end
+                Comm:SendCommMessage("CELL_CNIC", "chk", sendChannel, nil, "ALERT")
             end)
         end
     end
@@ -147,12 +164,12 @@ local function UpdateNicknames(which, value1, value2)
 
             if nic_check then nic_check:Cancel() end
             -- disabled, notify others
-            local sendChannel = F.GetGroupCommChannel()
-            if sendChannel then
-                F.TrySendCommMessage("CELL_NIC", "CELL_NONE", sendChannel, nil, nil, nil, {
-                    queue = false,
-                    queueKey = "CELL_NIC:"..sendChannel,
-                })
+            UpdateSendChannel()
+            -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
+            if Cell.isMidnight and F.IsCommRestricted and F.IsCommRestricted() then
+                F.Debug("Cell: Comm suppressed - restricted context (CELL_NIC sync-off)")
+            else
+                Comm:SendCommMessage("CELL_NIC", "CELL_NONE", sendChannel)
             end
 
             -- update all
@@ -170,11 +187,12 @@ local function UpdateNicknames(which, value1, value2)
 
         -- notify others
         if IsInGroup() and CellDB["nicknames"]["sync"] then
-            local sendChannel = F.GetGroupCommChannel()
-            if sendChannel then
-                F.TrySendCommMessage("CELL_NIC", Cell.vars.playerNickname or "CELL_NONE", sendChannel, nil, nil, nil, {
-                    queueKey = "CELL_NIC:"..sendChannel,
-                })
+            UpdateSendChannel()
+            -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
+            if Cell.isMidnight and F.IsCommRestricted and F.IsCommRestricted() then
+                F.Debug("Cell: Comm suppressed - restricted context (CELL_NIC mine)")
+            else
+                Comm:SendCommMessage("CELL_NIC", Cell.vars.playerNickname or "CELL_NONE", sendChannel)
             end
         end
 
@@ -214,17 +232,16 @@ Comm:RegisterComm("CELL_CNIC", function(prefix, message, channel, sender)
 
     if nic_send then nic_send:Cancel() end
     nic_send = C_Timer.NewTimer(3, function()
-        local sendChannel = F.GetGroupCommChannel()
-        if not sendChannel then return end
+        UpdateSendChannel()
+        -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
+        if Cell.isMidnight and F.IsCommRestricted and F.IsCommRestricted() then
+            F.Debug("Cell: Comm suppressed - restricted context (CELL_NIC nic_send)")
+            return
+        end
         if CellDB["nicknames"]["sync"] then
-            F.TrySendCommMessage("CELL_NIC", Cell.vars.playerNickname or "CELL_NONE", sendChannel, nil, nil, nil, {
-                queueKey = "CELL_NIC:"..sendChannel,
-            })
+            Comm:SendCommMessage("CELL_NIC", Cell.vars.playerNickname or "CELL_NONE", sendChannel)
         else
-            F.TrySendCommMessage("CELL_NIC", "CELL_NONE", sendChannel, nil, nil, nil, {
-                queue = false,
-                queueKey = "CELL_NIC:"..sendChannel,
-            })
+            Comm:SendCommMessage("CELL_NIC", "CELL_NONE", sendChannel)
         end
     end)
 end)

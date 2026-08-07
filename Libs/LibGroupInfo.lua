@@ -23,15 +23,6 @@ local IS_RETAIL = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
 local IS_WRATH = WOW_PROJECT_ID == WOW_PROJECT_WRATH_CLASSIC
 local IS_MISTS = WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC
 
--- Cell addon integration: check for secret values on Midnight 12.0.0+
--- issecretvalue is cached at file scope for library independence;
--- Cell files should use F.IsValueNonSecret() instead.
-local _issecretvalue = rawget(_G, "issecretvalue")
-local function IsValueSecret(val)
-    if _issecretvalue and _issecretvalue(val) then return true end
-    return false
-end
-
 local debugMode = false
 local function Print(...)
     if debugMode then
@@ -213,7 +204,7 @@ end)
 -- end
 
 local function UpdateBaseInfo(unit, guid)
-    if not guid or IsValueSecret(guid) then return end
+    if not guid then return end
 
     if not cache[guid] then cache[guid] = {} end
     if IS_WRATH then
@@ -245,7 +236,7 @@ local function BuildAndNotify(unit)
     Print("|cffff7777LGI:BuildAndNotify|r", unit)
 
     local guid = UnitGUID(unit)
-    if not guid or IsValueSecret(guid) then return end
+    if not guid then return end
 
     UpdateBaseInfo(unit, guid)
 
@@ -289,7 +280,6 @@ local function BuildAndNotify_Wrath(unit)
     Print("|cffff7777LGI:BuildAndNotify_Wrath|r", unit)
 
     local guid = UnitGUID(unit)
-    if not guid or IsValueSecret(guid) then return end
     UpdateBaseInfo(unit, guid)
 
     -- spec
@@ -455,9 +445,18 @@ frame:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 local function AddToQueue(unit, guid)
-    if not guid or IsValueSecret(guid) then return end
     if IS_WRATH or IS_MISTS then
-        if not UnitIsConnected(unit) or not CheckInteractDistance(unit, 1) or not CanInspect(unit) then
+        if not UnitIsConnected(unit) or not CanInspect(unit) then
+            UpdateBaseInfo(unit, guid)
+            return
+        end
+        -- MoP 5.5.x: CheckInteractDistance is protected in combat (ADDON_ACTION_BLOCKED).
+        -- Skip the distance check while locked down; Wrath/Classic OOC path unchanged.
+        if IS_MISTS and InCombatLockdown() then
+            UpdateBaseInfo(unit, guid)
+            return
+        end
+        if not CheckInteractDistance(unit, 1) then
             UpdateBaseInfo(unit, guid)
             return
         end
@@ -487,7 +486,6 @@ end
 -- INSPECT_READY: ready to query
 ---------------------------------------------------------------------
 function frame:INSPECT_READY(guid)
-    if not guid or IsValueSecret(guid) then return end
     if queueGUIDs[guid] then
         Print("|cffffff33LGI:INSPECT_READY|r", guid, queueGUIDs[guid].unit)
         lib.callbacks:Fire(QUEUE_EVENT, guid, queueGUIDs[guid].unit, "INSPECT_READY")
@@ -510,11 +508,9 @@ local function IterateAllUnits()
         for i = 1, GetNumGroupMembers() do
             local unit = "raid"..i
             local guid = UnitGUID(unit)
-            if guid and not IsValueSecret(guid) then
-                currentMembers[guid] = true
-                if not (UnitIsUnit(unit, "player") or (cache[guid] and cache[guid].inspected) or queueGUIDs[guid]) then
-                    AddToQueue(unit, guid)
-                end
+            currentMembers[guid] = true
+            if not (UnitIsUnit(unit, "player") or (cache[guid] and cache[guid].inspected) or queueGUIDs[guid]) then
+                AddToQueue(unit, guid)
             end
         end
         cache[PLAYER_GUID].unit = "raid"..UnitInRaid("player")
@@ -524,11 +520,9 @@ local function IterateAllUnits()
         for i = 1, GetNumGroupMembers()-1 do
             local unit = "party"..i
             local guid = UnitGUID(unit)
-            if guid and not IsValueSecret(guid) then
-                currentMembers[guid] = true
-                if not ((cache[guid] and cache[guid].inspected) or queueGUIDs[guid]) then
-                    AddToQueue(unit, guid)
-                end
+            currentMembers[guid] = true
+            if not ((cache[guid] and cache[guid].inspected) or queueGUIDs[guid]) then
+                AddToQueue(unit, guid)
             end
         end
 
@@ -589,7 +583,6 @@ function frame:PLAYER_SPECIALIZATION_CHANGED(unit)
         Query(unit)
     else
         local guid = UnitGUID(unit)
-        if not guid or IsValueSecret(guid) then return end
         if cache[guid] then
             cache[guid].inspected = nil
         end
@@ -616,7 +609,7 @@ end
 function frame:UNIT_LEVEL(unit)
     local guid = UnitGUID(unit)
     -- Midnight 12.0.0+: nameplate GUIDs may be secret; cannot use as table key
-    if not guid or IsValueSecret(guid) then return end
+    if not guid or (issecretvalue and issecretvalue(guid)) then return end
     if cache[guid] then
         cache[guid].level = UnitLevel(unit)
     end

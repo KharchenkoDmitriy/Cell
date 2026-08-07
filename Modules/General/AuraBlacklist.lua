@@ -1,0 +1,6 @@
+-- ============================================================
+-- AuraBlacklist UI has been moved to the Indicators tab.
+-- See Indicators.lua and Widgets_IndicatorSettings.lua.
+-- This file is intentionally empty — kept to avoid loader
+-- issues if the XML entry is mistakenly uncommented.
+-- ============================================================

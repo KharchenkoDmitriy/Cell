@@ -77,7 +77,7 @@ else
             local guid = UnitGUID(unit)
             if not guid then return end
             -- Midnight 12.0.0+: UnitGUID may return secret strings for non-group units
-            if not F.IsValueNonSecret(guid) then return end
+            if issecretvalue and issecretvalue(guid) then return end
             -- Check if soulstone buff is now absent but was present
             -- (simple: after UNIT_AURA fires, see if unit still has it)
             local hasSoulstone = F.FindAuraByName and F.FindAuraByName(unit, "BUFF", SOULSTONE)
@@ -95,7 +95,7 @@ else
             local guid = UnitGUID(unit)
             if not guid then return end
             -- Midnight 12.0.0+: UnitGUID may return secret strings for non-group units
-            if not F.IsValueNonSecret(guid) then return end
+            if issecretvalue and issecretvalue(guid) then return end
             if UnitIsDeadOrGhost(unit) then
                 if soulstones[guid] then
                     F.HandleUnitButton("unit", unit, DiedWithSoulstone)
@@ -178,11 +178,7 @@ function I.CreateStatusIcon(parent)
     function resurrectionIcon:SetTimer(start, duration)
         resurrectionIcon:Hide() -- pause OnUpdate
         bar:SetMinMaxValues(0, duration + 13) -- NOTE: texture gap (texcoord 0,1,0,1)
-        if F.IsValueNonSecret(start) and F.IsValueNonSecret(duration) then
-            bar:SetValue(GetTime()-start)
-        else
-            bar:SetValue(0)
-        end
+        bar:SetValue(GetTime()-start)
         resurrectionIcon:Show()
     end
 
@@ -244,16 +240,10 @@ function I.UpdateStatusIcon_Resurrection(button, start, duration)
     resurrectionIcon:SetTimer(start, duration)
     -- timer
     if resurrectionIcon.timer then resurrectionIcon.timer:Cancel() end
-    local timeToStart = 0
-    if F.IsValueNonSecret(start) and F.IsValueNonSecret(duration) then
-        timeToStart = start + duration - GetTime()
-    end
-    if timeToStart > 0 then
-        resurrectionIcon.timer = C_Timer.NewTimer(timeToStart, function()
-            rez[guid] = nil
-            resurrectionIcon:Hide()
-        end)
-    end
+    resurrectionIcon.timer = C_Timer.NewTimer(start + duration - GetTime(), function()
+        rez[guid] = nil
+        resurrectionIcon:Hide()
+    end)
 end
 
 -------------------------------------------------
@@ -406,9 +396,7 @@ function I.EnableStatusIcon(enabled)
         end
     else
         eventFrame:UnregisterAllEvents()
-        if CombatLogGetCurrentEventInfo then
-            cleuFrame:UnregisterAllEvents()
-        end
+        cleuFrame:UnregisterAllEvents()
         F.IterateAllUnitButtons(function(b)
             b.indicators.statusIcon:Hide()
             b.indicators.resurrectionIcon:Hide()

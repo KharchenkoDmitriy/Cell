@@ -37,17 +37,9 @@ local function CreateTooltip(name, hasIcon)
     end
 
     if Cell.isRetail then
-        -- Only listen for TOOLTIP_DATA_UPDATE while the tooltip is visible.
-        -- Prevents stale tainted data from causing RefreshData crashes in combat
-        -- when the tooltip isn't even shown (Midnight secret value taint).
-        tooltip:HookScript("OnShow", function()
-            tooltip:RegisterEvent("TOOLTIP_DATA_UPDATE")
-        end)
-        tooltip:HookScript("OnHide", function()
-            tooltip:UnregisterEvent("TOOLTIP_DATA_UPDATE")
-        end)
+        tooltip:RegisterEvent("TOOLTIP_DATA_UPDATE")
         tooltip:SetScript("OnEvent", function()
-            if Cell.isMidnight and InCombatLockdown() then return end
+            -- Interface\FrameXML\GameTooltip.lua line924
             tooltip:RefreshData()
         end)
     end

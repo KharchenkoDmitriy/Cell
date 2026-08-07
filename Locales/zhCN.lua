@@ -577,12 +577,6 @@ L["showGroupNumber"] = "显示队伍编号"
 L["showTimer"] = "显示计时器"
 L["showBackground"] = "显示背景"
 L["dispellableByMe"] = "只显示我能驱散的减益"
-L["Private Dispel Overlay"] = "私有驱散覆盖层"
-L["Show private dispel overlay"] = "显示私有驱散覆盖层"
-L["Only dispellable by me"] = "仅我能驱散"
-L["Overlay Alpha"] = "覆盖层透明度"
-L["Overlay Frame Level"] = "覆盖层层级"
-L["Overlay Inset"] = "覆盖层内缩"
 L["castByMe"] = "只显示我施放的增益"
 L["buffByMe"] = "只显示我能施放的增益"
 L["trackByName"] = "匹配法术名称"
@@ -887,6 +881,21 @@ L["CHANGELOGS"] = [[
     <h2>更新后如果有各种问题，先排查代码片段。</h2>
     <br/>
 
+    <h1>各位 Cell 的用户，感谢你们一直以来的支持！</h1>
+    <p>虽然现在才说有些晚了，但我仍想向大家致歉——我没能如约在上个月推出适配正式服的 Cell 新版本。</p>
+    <p>从二月底至今，我一直被工作压得喘不过气，完全没有时间和精力继续推进项目重构。</p>
+    <p>幸运的是，优秀的代码贡献者们为 Cell 带来了修复，让这个项目得以继续延续生命，对此我由衷地感激。</p>
+    <p>我也希望能尽快回归，为大家带来更好的作品。</p>
+    <p>感谢你们的支持与发电。</p>
+    <p>为了艾泽拉斯！</p>
+    <p>— enderneko</p>
+    <br/>
+
+    <p><a href="older">]]..L["Click to view older changelogs"]..[[</a></p>
+    <br/>
+]]
+
+L["OLDER_CHANGELOGS"] = [[
     <h1>r274-release (2026-01-22 19:07 GMT+8)</h1>
     <p>* 更新熔火之心的减益列表（感谢 露露缇娅）。</p>
     <p>* 修复导致 LibGetFrame 无法获取敌对首领框体的异常。</p>
@@ -1165,11 +1174,6 @@ L["CHANGELOGS"] = [[
     <p>+ 更新本地化：德语、法语、葡萄牙语、俄语、繁中。</p>
     <br/>
 
-    <p><a href="older">]]..L["Click to view older changelogs"]..[[</a></p>
-    <br/>
-]]
-
-L["OLDER_CHANGELOGS"] = [[
     <h1>r238-release (Aug 7, 2024, 15:25 GMT+8)</h1>
     <p>* 修复可能缺失的指示器。</p>
     <p>* 更新本地化。</p>

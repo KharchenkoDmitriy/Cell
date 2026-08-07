@@ -405,7 +405,6 @@ Cell.defaults.layout = {
             ["size"] = {{13, 13}, {17, 17}},
             ["showDuration"] = false,
             ["showAnimation"] = true,
-            ["showStack"] = true,
             ["showTooltip"] = false,
             ["enableBlacklistShortcut"] = false,
             ["num"] = 3,

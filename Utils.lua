@@ -22,6 +22,21 @@ Cell.isCata = WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC
 Cell.isMists = WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC
 Cell.isTWW = LE_EXPANSION_LEVEL_CURRENT == LE_EXPANSION_WAR_WITHIN
 
+local CELL_VERSION_FALLBACK = "r277.9"
+
+function F.InitAddonVersion()
+    local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+    local version
+    if getMeta then
+        version = getMeta("Cell", "Version") or getMeta("Cell", "version")
+    end
+    if type(version) ~= "string" or version == "" then
+        version = CELL_VERSION_FALLBACK
+    end
+    Cell.version = version
+    Cell.versionNum = tonumber(string.match(version, "%d+")) or tonumber(string.match(CELL_VERSION_FALLBACK, "%d+")) or 0
+end
+
 -------------------------------------------------
 -- 12.0+ API compatibility shims
 -------------------------------------------------
@@ -1118,29 +1133,19 @@ function F.UpdateTextWidth(fs, text, width, relativeTo)
 
     if width[1] == "percentage" then
         local percent = width[2] or 0.75
-        local parentWidth = F.GetWidth(relativeTo)
-        if parentWidth == 0 then parentWidth = 100 end
-
-        local targetWidth = parentWidth * percent
-        fs:SetText(text)
-        
-        local fsWidth = F.GetWidth(fs)
-        if fsWidth > targetWidth then
-            -- Safe truncation with "..."
-            for i = #text - 1, 3, -1 do
-                local truncated = text:sub(1, i) .. "..."
-                fs:SetText(truncated)
-                if F.GetWidth(fs) <= targetWidth then
-                    break
-                end
+        local width = relativeTo:GetWidth() - 2
+        for i = string.utf8len(text), 0, -1 do
+            fs:SetText(string.utf8sub(text, 1, i))
+            if fs:GetWidth() / width <= percent then
+                break
             end
         end
-
     elseif width[1] == "length" then
-        local maxLen = width[2] or 20
-        fs:SetText(text:sub(1, maxLen))
-    else
-        fs:SetText(text)
+        if string.len(text) == string.utf8len(text) then -- en
+            fs:SetText(string.utf8sub(text, 1, width[2]))
+        else -- non-en
+            fs:SetText(string.utf8sub(text, 1, width[3]))
+        end
     end
 end
 
@@ -1199,8 +1204,54 @@ local UnitInPartyIsAI = UnitInPartyIsAI or function() end
 -- frame colors
 -------------------------------------------------
 local RAID_CLASS_COLORS = RAID_CLASS_COLORS
+local GetPlayerInfoByGUID = GetPlayerInfoByGUID
+
+-- Resolve a usable class file token for coloring. On Midnight, UnitClass can be
+-- secret (table-index throws / wrong paint). Prefer non-secret UnitClass, then
+-- GetPlayerInfoByGUID, then LibGroupInfo cache. Never index RAID_CLASS_COLORS with secrets.
+function F.ResolveUnitClassFile(unit, fallback)
+    if unit then
+        local classFile = select(2, UnitClass(unit))
+        if classFile and F.IsValueNonSecret(classFile) and RAID_CLASS_COLORS[classFile] then
+            return classFile
+        end
+        if UnitClassBase then
+            local base = UnitClassBase(unit)
+            if base and F.IsValueNonSecret(base) and RAID_CLASS_COLORS[base] then
+                return base
+            end
+        end
+        local guid = UnitGUID(unit)
+        if guid and F.IsValueNonSecret(guid) then
+            if GetPlayerInfoByGUID then
+                local ok, _, classFromGuid = pcall(GetPlayerInfoByGUID, guid)
+                if ok and classFromGuid and RAID_CLASS_COLORS[classFromGuid] then
+                    return classFromGuid
+                end
+            end
+            local LGI = LibStub and LibStub("LibGroupInfo", true)
+            if LGI and LGI.GetCachedInfo then
+                local info = LGI:GetCachedInfo(guid)
+                if info and info.class and F.IsValueNonSecret(info.class) and RAID_CLASS_COLORS[info.class] then
+                    return info.class
+                end
+            end
+        end
+    end
+    if fallback and F.IsValueNonSecret(fallback) and RAID_CLASS_COLORS[fallback] then
+        return fallback
+    end
+    return nil
+end
+
 function F.GetClassColor(class)
-    if class and class ~= "" and RAID_CLASS_COLORS[class] then
+    if not class or class == "" then
+        return 1, 1, 1
+    end
+    if not F.IsValueNonSecret(class) then
+        return 1, 1, 1
+    end
+    if RAID_CLASS_COLORS[class] then
         if CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[class] then
             return CUSTOM_CLASS_COLORS[class].r, CUSTOM_CLASS_COLORS[class].g, CUSTOM_CLASS_COLORS[class].b
         else
@@ -1212,7 +1263,10 @@ function F.GetClassColor(class)
 end
 
 function F.GetClassColorStr(class)
-    if class and class ~= "" and RAID_CLASS_COLORS[class] then
+    if not class or class == "" or not F.IsValueNonSecret(class) then
+        return "|cffffffff"
+    end
+    if RAID_CLASS_COLORS[class] then
         if CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[class] then
             return "|c"..CUSTOM_CLASS_COLORS[class].colorStr
         else
@@ -1224,7 +1278,7 @@ function F.GetClassColorStr(class)
 end
 
 function F.GetUnitClassColor(unit, class, guid)
-    class = class or select(2, UnitClass(unit))
+    class = F.ResolveUnitClassFile(unit, class) or class or select(2, UnitClass(unit))
     guid = guid or UnitGUID(unit)
 
     if UnitIsPlayer(unit) or IsTruthyOrSecret(UnitInPartyIsAI(unit)) then -- player
@@ -1646,28 +1700,26 @@ function F.GetBarTextureByName(name)
     return "Interface\\AddOns\\Cell\\Media\\statusbar.tga"
 end
 
+-- Helper: choose font based on locale and "Use Game Font" setting (shared with Widgets.lua)
+-- NOTE: Accidental_Presidency.ttf has incomplete Latin glyph coverage and causes []
+-- boxes for many names. Always use GameFontNormal which supports all scripts.
+local function GetOptionsFontInternal(useGameFont)
+    return GameFontNormal:GetFont()
+end
+
 function F.GetFont(font)
     if font and LSM:IsValid("font", font) then
         return LSM:Fetch("font", font)
-    elseif type(font) == "string" and strfind(strlower(font), ".ttf$") then
-        return font
-    else
-        if CellDB["appearance"]["useGameFont"] then
-            return GameFontNormal:GetFont()
-        else
-            return "Interface\\AddOns\\Cell\\Media\\Fonts\\Accidental_Presidency.ttf"
-        end
     end
+    -- Accidental_Presidency.ttf has incomplete Latin glyph coverage — redirect
+    -- all non-LSM fonts through locale-aware helper (currently always returns game font).
+    return GetOptionsFontInternal(CellDB["appearance"]["useGameFont"])
 end
 
 local defaultFontName = "Cell ".._G.DEFAULT
 local defaultFont
 function F.GetFontItems()
-    if CellDB["appearance"]["useGameFont"] then
-        defaultFont = GameFontNormal:GetFont()
-    else
-        defaultFont = "Interface\\AddOns\\Cell\\Media\\Fonts\\Accidental_Presidency.ttf"
-    end
+    defaultFont = GetOptionsFontInternal(CellDB["appearance"]["useGameFont"])
 
     local items = {}
     local fonts, fontNames
@@ -2255,8 +2307,9 @@ local UnitInRange = UnitInRange
 local UnitCanAssist = UnitCanAssist
 local UnitCanAttack = UnitCanAttack
 local UnitCanCooperate = UnitCanCooperate
-local IsSpellInRange = C_Spell.IsSpellInRange
-local IsItemInRange = C_Item.IsItemInRange
+local IsSpellInRangeAPI = C_Spell and C_Spell.IsSpellInRange
+local LegacyIsSpellInRange = _G.IsSpellInRange
+local IsItemInRange = C_Item and C_Item.IsItemInRange
 local CheckInteractDistance = CheckInteractDistance
 local UnitIsDead = UnitIsDead
 local IsSpellKnownOrOverridesKnown = IsSpellKnownOrOverridesKnown
@@ -2264,10 +2317,16 @@ local IsSpellKnownOrOverridesKnown = IsSpellKnownOrOverridesKnown
 -- local GetNumSpellTabs = GetNumSpellTabs
 -- local GetSpellBookItemName = GetSpellBookItemName
 -- local BOOKTYPE_SPELL = BOOKTYPE_SPELL
-local IsSpellBookKnown = C_SpellBook.IsSpellKnown
+local IsSpellBookKnown = C_SpellBook and C_SpellBook.IsSpellKnown
 
 local function IsSpellKnown(spellId)
-    return IsSpellKnownOrOverridesKnown(spellId) or IsSpellBookKnown(spellId)
+    if IsSpellKnownOrOverridesKnown and IsSpellKnownOrOverridesKnown(spellId) then
+        return true
+    end
+    if IsSpellBookKnown and IsSpellBookKnown(spellId) then
+        return true
+    end
+    return false
 end
 
 local UnitInSamePhase
@@ -2381,17 +2440,20 @@ local harmItems = {
 -- end
 
 local UnitInSpellRange
-if C_Spell and C_Spell.IsSpellInRange then
+if IsSpellInRangeAPI then
     UnitInSpellRange = function(spellName, unit)
-        local r = IsSpellInRange(spellName, unit)
+        local r = IsSpellInRangeAPI(spellName, unit)
         if not F.IsValueNonSecret(r) then return nil end
+        if r == true or r == 1 then return true end
+        if r == false or r == 0 then return false end
         return r and true or false
     end
 else
     UnitInSpellRange = function(spellName, unit)
-        local result = IsSpellInRange(spellName, unit)
+        if not LegacyIsSpellInRange then return nil end
+        local result = LegacyIsSpellInRange(spellName, unit)
         if not F.IsValueNonSecret(result) then return nil end
-        return result == 1
+        return result == 1 or result == true
     end
 end
 
@@ -2445,8 +2507,17 @@ end
 rc:SetScript("OnEvent", DELAYED_SPELLS_CHANGED)
 
 local function GetNonSecretBoolean(value, fallback)
+    if value == nil then
+        return fallback
+    end
     if not F.IsValueNonSecret(value) then
         return fallback
+    end
+    if value == true or value == 1 then
+        return true
+    end
+    if value == false or value == 0 then
+        return false
     end
     return value and true or false
 end
@@ -2485,13 +2556,16 @@ function F.IsInRange(unit, check)
         if checkedBool ~= true then
             return F.IsInRange(unit, true)
         end
-        return GetNonSecretBoolean(inRange, true)
+        return GetNonSecretRangeResult(inRange, true)
 
     else
         local canAssist = GetNonSecretBoolean(UnitCanAssist("player", unit), false)
         if canAssist then -- or UnitCanCooperate("player", unit)
             local isConnected = GetNonSecretBoolean(UnitIsConnected(unit), false)
-            local inSamePhase = GetNonSecretBoolean(UnitInSamePhase(unit), false)
+            local inSamePhase = true
+            if UnitInSamePhase then
+                inSamePhase = GetNonSecretBoolean(UnitInSamePhase(unit), true)
+            end
             if not (isConnected and inSamePhase) then
                 return false
             end
@@ -2516,7 +2590,7 @@ function F.IsInRange(unit, check)
             if checkedBool ~= true then
                 -- Skip, fall through to pet/interact checks below
             else
-                return GetNonSecretBoolean(inRange, true)
+                return GetNonSecretRangeResult(inRange, true)
             end
 
             local isPet = GetNonSecretBoolean(UnitIsUnit(unit, "pet"), false)
@@ -2544,9 +2618,11 @@ function F.IsInRange(unit, check)
                     end
                 end
 
-                local itemInRange = GetNonSecretRangeResult(IsItemInRange(harmItems[playerClass], unit), nil)
-                if itemInRange ~= nil then
-                    return itemInRange
+                if IsItemInRange then
+                    local itemInRange = GetNonSecretRangeResult(IsItemInRange(harmItems[playerClass], unit), nil)
+                    if itemInRange ~= nil then
+                        return itemInRange
+                    end
                 end
             end
         end
@@ -2561,6 +2637,45 @@ function F.IsInRange(unit, check)
 
         return true
     end
+end
+
+function F.IsSecretAuraUnitTrustworthy(unit, button)
+    if not unit then
+        return false
+    end
+
+    if GetNonSecretBoolean(UnitIsUnit("player", unit), false) then
+        return true
+    end
+
+    if UnitExists and not GetNonSecretBoolean(UnitExists(unit), false) then
+        return false
+    end
+
+    if UnitIsConnected and not GetNonSecretBoolean(UnitIsConnected(unit), false) then
+        return false
+    end
+
+    if UnitIsVisible and not GetNonSecretBoolean(UnitIsVisible(unit), false) then
+        return false
+    end
+
+    if UnitInSamePhase and not GetNonSecretBoolean(UnitInSamePhase(unit), true) then
+        return false
+    end
+
+    if UnitPhaseReason then
+        local phaseReason = UnitPhaseReason(unit)
+        if F.IsValueNonSecret(phaseReason) and phaseReason then
+            return false
+        end
+    end
+
+    if button and button.states and button.states.inRange == false then
+        return false
+    end
+
+    return true
 end
 
 -------------------------------------------------
@@ -2677,7 +2792,15 @@ end
 function F.IsAuraRestricted()
     if GetRestrictedActionStatus and Enum and Enum.RestrictedActionType then
         local isRestricted = GetRestrictedActionStatus(Enum.RestrictedActionType.SecretAuras)
-        return isRestricted == true
+        if isRestricted == true then
+            return true
+        end
+    end
+    -- 12.1+: GetAuraSlots errors while secret+tainted even when the enum flag
+    -- briefly reports false (combat / vehicles / encounters). Prefer no scan.
+    local build = select(4, GetBuildInfo())
+    if Cell.isRetail and build and build >= 120100 and InCombatLockdown() then
+        return true
     end
     return false
 end

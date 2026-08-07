@@ -204,12 +204,6 @@ L["DISPEL"] = "DISSIPER"
 --[[ L["Dispel Request"] = "Dispel Request"--]]
 L["Dispellable By Me"] = "Dissipable par moi"
 L["dispellableByMe"] = "Afficher uniquement les affaiblissements que je peux dissiper"
-L["Private Dispel Overlay"] = "Overlay de dissipation privé"
-L["Show private dispel overlay"] = "Afficher l'overlay de dissipation privé"
-L["Only dispellable by me"] = "Uniquement dissipable par moi"
-L["Overlay Alpha"] = "Alpha de l'overlay"
-L["Overlay Frame Level"] = "Niveau du cadre de l'overlay"
-L["Overlay Inset"] = "Marge de l'overlay"
 --[[Translation missing --]]
 --[[ L["Dispels"] = "Dispels"--]]
 L["Display a gradient texture when the unit receives a heal from your certain healing spells."] = "Affiche une texture dégradée lorsque l'unité reçoit un soin de certains de vos sorts de soins de zone."

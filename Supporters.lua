@@ -23,7 +23,7 @@ local supporters1 = { -- wowIDs
         "|cff00ffffVollmer-Ragnaros (EU)|r",
         "|cff00ffffVollmerto-Kazzak (EU)|r",
         "|cff00ffffVollmerfire-Ragnaros (EU)|r",
-    }, -- Vollmerino (CUF)
+    }, -- Vollmerino
     {
         "|cffff8000小兔姬-影之哀伤 (CN)|r",
         "|cffff8000渺渺-影之哀伤 (CN)|r"

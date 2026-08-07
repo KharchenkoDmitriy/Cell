@@ -15,6 +15,25 @@ local confirmationFrame
 local ignoredIndices = {}
 local pendingImportBackup, pendingImportBackupState
 
+local function SetImportStatus(ok, msg)
+    if ok then
+        title:SetText(L["Import"]..": "..msg)
+    else
+        title:SetText("|cffff2222"..msg)
+        F.Print("|cffff2222Import failed:|r "..msg
+            .." |cffaaaaaa[addon r"..tostring(Cell.versionNum).." min r"..tostring(Cell.MIN_VERSION).."]|r")
+    end
+end
+
+local function ParseImportText(raw)
+    local text = (raw or "")
+        :gsub("^\239\187\191", "")
+        :gsub("%s+", "")
+    local version, data = string.match(text, "^!CELL:(%d+):ALL!(.+)$")
+    version = tonumber(version)
+    return text, version, data
+end
+
 ---------------------------------------------------------------------
 -- do import
 ---------------------------------------------------------------------
@@ -120,7 +139,9 @@ local function DoImport(noReload)
     imported["characterDB"] = nil
 
     -- remove invalid spells
-    F.FilterInvalidSpells(imported["debuffBlacklist"])
+    if not Cell.isRetail then
+        F.FilterInvalidSpells(imported["debuffBlacklist"])
+    end
     F.FilterInvalidSpells(imported["bigDebuffs"])
     F.FilterInvalidSpells(imported["actions"])
     F.FilterInvalidSpells(imported["aoeHealings"] and imported["aoeHealings"]["custom"])
@@ -166,6 +187,16 @@ local function DoImport(noReload)
 
     for k, v in pairs(imported) do
         CellDB[k] = v
+    end
+
+    -- Migration: debuffBlacklist → auraBlacklist.debuffs (for profiles exported before auraBlacklist existed)
+    if Cell.isRetail and type(CellDB["debuffBlacklist"]) == "table" then
+        local target = CellDB["auraBlacklist"]["debuffs"]
+        for _, sid in ipairs(CellDB["debuffBlacklist"]) do
+            if type(sid) == "number" and not target[sid] then
+                target[sid] = { combat = true, ooc = true }
+            end
+        end
     end
 
     local backupText = F.GetBackupNotificationText(pendingImportBackup, pendingImportBackupState)
@@ -298,7 +329,9 @@ local function CreateImportConfirmationFrame()
         ignoredIndices["layouts"] = not checked
         ignoredIndices["layoutAutoSwitch"] = not checked
         ignoredIndices["dispelBlacklist"] = not checked
-        ignoredIndices["debuffBlacklist"] = not checked
+        if not Cell.isRetail then
+            ignoredIndices["debuffBlacklist"] = not checked
+        end
         ignoredIndices["bigDebuffs"] = not checked
         ignoredIndices["aoeHealings"] = not checked
         ignoredIndices["defensives"] = not checked
@@ -433,35 +466,58 @@ local function CreateImportExportFrame()
         if userChanged then
             if isImport then
                 imported = nil
-                local text = eb:GetText()
-                -- check
-                local version, data = string.match(text, "^!CELL:(%d+):ALL!(.+)$")
-                version = tonumber(version)
+                importBtn:SetEnabled(false)
 
-                if version and data then
-                    if version >= Cell.MIN_VERSION and version <= Cell.versionNum then
-                        local success
-                        data = LibDeflate:DecodeForPrint(data) -- decode
-                        success, data = pcall(LibDeflate.DecompressDeflate, LibDeflate, data) -- decompress
-                        success, data = Serializer:Deserialize(data) -- deserialize
+                local ok, err = pcall(function()
+                    local text, version, data = ParseImportText(eb:GetText())
+                    local textLen = #text
 
-                        if success and data then
-                            data["addonNotifications"] = nil
-                            data["systemTools"] = nil
-                            title:SetText(L["Import"]..": r"..version)
-                            importBtn:SetEnabled(true)
-                            imported = data
+                    if not version or not data then
+                        if string.find(text, "!CELL:%d+:LAYOUT:", 1, false) then
+                            SetImportStatus(false, "Wrong type: LAYOUT (use Layouts Import)")
+                        elseif string.find(text, "!CELL:", 1, true) then
+                            SetImportStatus(false, "Bad format (need !CELL:#:ALL!...) len="..textLen)
                         else
-                            title:SetText(L["Import"]..": |cffff2222"..L["Error"])
-                            importBtn:SetEnabled(false)
+                            SetImportStatus(false, "Not a Cell profile string len="..textLen)
                         end
-                    else -- incompatible version
-                        title:SetText(L["Import"]..": |cffff2222"..L["Incompatible Version"])
-                        importBtn:SetEnabled(false)
+                        return
                     end
-                else
-                    title:SetText(L["Import"]..": |cffff2222"..L["Error"])
-                    importBtn:SetEnabled(false)
+
+                    local minV = Cell.MIN_VERSION or 0
+                    local curV = tonumber(Cell.versionNum) or 0
+                    if version < minV or (curV > 0 and version > curV) then
+                        SetImportStatus(false, "Incompatible r"..version.." (min r"..minV..", cur r"..tostring(Cell.versionNum or "?")..")")
+                        return
+                    end
+
+                    local decoded = LibDeflate:DecodeForPrint(data)
+                    if not decoded then
+                        SetImportStatus(false, "Decode failed len="..textLen)
+                        return
+                    end
+
+                    local success, decompressed = pcall(LibDeflate.DecompressDeflate, LibDeflate, decoded)
+                    if not success or not decompressed then
+                        SetImportStatus(false, "Decompress failed (string truncated?) len="..textLen)
+                        return
+                    end
+
+                    success, data = Serializer:Deserialize(decompressed)
+                    if not success or not data then
+                        SetImportStatus(false, "Deserialize failed len="..textLen)
+                        return
+                    end
+
+                    data["addonNotifications"] = nil
+                    data["systemTools"] = nil
+                    SetImportStatus(true, "r"..version)
+                    importBtn:SetEnabled(true)
+                    imported = data
+                    F.Print("Import OK: r"..version.." (len="..textLen..")")
+                end)
+
+                if not ok then
+                    SetImportStatus(false, "Lua: "..tostring(err))
                 end
             else
                 eb:SetText(exported)
@@ -515,7 +571,8 @@ function F.ShowImportFrame()
     importBtn:SetEnabled(false)
 
     exported = ""
-    title:SetText(L["Import"])
+    title:SetText(L["Import"].." |cffaaaaaa(r"..tostring(Cell.versionNum)..")|r")
+    F.Print("Profile import ready (Cell r"..tostring(Cell.versionNum)..", min r"..tostring(Cell.MIN_VERSION)..")")
     textArea:SetText("")
     textArea.eb:SetFocus(true)
 
@@ -539,7 +596,7 @@ function F.ShowExportFrame()
     isImport = false
     importBtn:Hide()
 
-    title:SetText(L["Export"]..": "..Cell.version)
+    title:SetText(L["Export"]..": "..(Cell.version or "?"))
 
     exported = GetExportString(false)
 
@@ -566,11 +623,15 @@ end
 ---@return boolean success
 function Cell.ImportProfile(profileString, profileName, ignoredIndicesExternal)
     imported = nil
-    local version, data = string.match(profileString, "^!CELL:(%d+):ALL!(.+)$")
+    local text = (profileString or ""):gsub("%s+", "")
+    local version, data = string.match(text, "^!CELL:(%d+):ALL!(.+)$")
     version = tonumber(version)
+    local minV = Cell.MIN_VERSION or 0
+    local curV = tonumber(Cell.versionNum) or 0
 
     if version and data then
-        if version >= Cell.MIN_VERSION and version <= Cell.versionNum then
+        local versionOk = version >= minV and (curV <= 0 or version <= curV)
+        if versionOk then
             local success
             data = LibDeflate:DecodeForPrint(data) -- decode
             success, data = pcall(LibDeflate.DecompressDeflate, LibDeflate, data) -- decompress

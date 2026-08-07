@@ -385,8 +385,15 @@ local function CreatePreviewButtons()
             healthPercent = health / 100
             previewButton.perc = healthPercent
 
-            if CellDB["appearance"]["barAnimation"] == "Smooth" then
+            local anim = CellDB["appearance"]["barAnimation"]
+            if anim == "Legacy" or anim == "Old" then
                 previewButton.widgets.healthBar:SetSmoothedValue(health)
+            elseif anim == "Smooth" then
+                if Cell.isMidnight and Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.ExponentialEaseOut then
+                    previewButton.widgets.healthBar:SetValue(health, Enum.StatusBarInterpolation.ExponentialEaseOut)
+                else
+                    previewButton.widgets.healthBar:SetSmoothedValue(health)
+                end
             else
                 previewButton.widgets.healthBar:SetValue(health)
             end
@@ -1428,7 +1435,7 @@ local function CreateUnitButtonStylePane()
     -- bar animation
     barAnimationDropdown = Cell.CreateDropdown(unitButtonPane, 141)
     barAnimationDropdown:SetPoint("TOPLEFT", powerColorDropdown, "BOTTOMLEFT", 0, -30)
-    barAnimationDropdown:SetItems({
+    local barAnimationItems = {
         {
             ["text"] = L["Smooth"],
             ["onClick"] = function()
@@ -1436,14 +1443,25 @@ local function CreateUnitButtonStylePane()
                 Cell.Fire("UpdateAppearance", "animation")
             end,
         },
-        {
-            ["text"] = L["None"],
+    }
+    -- Retail only: "Legacy" = immediate bars on Midnight (Cell_beta-style) for comparison with Smooth
+    if Cell.isRetail then
+        tinsert(barAnimationItems, {
+            ["text"] = L["Legacy"],
             ["onClick"] = function()
-                CellDB["appearance"]["barAnimation"] = "None"
+                CellDB["appearance"]["barAnimation"] = "Legacy"
                 Cell.Fire("UpdateAppearance", "animation")
             end,
-        },
+        })
+    end
+    tinsert(barAnimationItems, {
+        ["text"] = L["None"],
+        ["onClick"] = function()
+            CellDB["appearance"]["barAnimation"] = "None"
+            Cell.Fire("UpdateAppearance", "animation")
+        end,
     })
+    barAnimationDropdown:SetItems(barAnimationItems)
 
     local barAnimationText = unitButtonPane:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
     barAnimationText:SetPoint("BOTTOMLEFT", barAnimationDropdown, "TOPLEFT", 0, 1)
@@ -1777,6 +1795,9 @@ LoadButtonStyle = function()
     powerColorDropdown:SetSelectedValue(CellDB["appearance"]["powerColor"][1])
     powerColorPicker:SetColor(CellDB["appearance"]["powerColor"][2])
 
+    if CellDB["appearance"]["barAnimation"] == "Old" then
+        CellDB["appearance"]["barAnimation"] = "Legacy"
+    end
     barAnimationDropdown:SetSelected(L[CellDB["appearance"]["barAnimation"]])
 
     LoadThresholdWidgets()
@@ -1885,7 +1906,15 @@ local function UpdateAppearance(which)
             end
             -- outOfRangeAlpha
             if which == "outOfRangeAlpha" or which == "reset" then
-                b.states.wasInRange = false
+                local alpha = CellDB["appearance"]["outOfRangeAlpha"]
+                local shouldFade = b.states.inRange == false
+                if not shouldFade and CELL_FADE_OUT_HEALTH_PERCENT and b.states.healthPercent and b.states.healthPercent >= CELL_FADE_OUT_HEALTH_PERCENT then
+                    shouldFade = true
+                end
+                if shouldFade then
+                    b:SetAlpha(alpha)
+                end
+                b.states.wasInRange = b.states.inRange
             end
             -- shields
             if not which or which == "shields" or which == "reset" then

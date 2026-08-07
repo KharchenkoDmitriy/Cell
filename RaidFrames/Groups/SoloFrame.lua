@@ -59,42 +59,27 @@ local function SoloFrame_UpdateLayout(layout, which)
 
     if not which or which == "main-arrangement" or which == "pet-arrangement" then
         petButton:ClearAllPoints()
+        local petSide = layout["pet"]["petSide"] or "right"
+        local petSpacingX = layout["pet"]["sameArrangementAsMain"] and layout["main"]["spacingX"] or layout["pet"]["spacingX"]
+        local petSpacingY = layout["pet"]["sameArrangementAsMain"] and layout["main"]["spacingY"] or layout["pet"]["spacingY"]
+        local anchor = layout["main"]["anchor"]
+        local v = anchor:find("^BOTTOM") and "BOTTOM" or "TOP"
+        local h = anchor:find("LEFT$") and "LEFT" or "RIGHT"
+
         if layout["main"]["orientation"] == "vertical" then
-            -- anchor
-            local point, anchorPoint
-            local petSpacing = layout["pet"]["sameArrangementAsMain"] and layout["main"]["spacingY"] or layout["pet"]["spacingY"]
-
-            if layout["main"]["anchor"] == "BOTTOMLEFT" then
-                point, anchorPoint = "BOTTOMLEFT", "TOPLEFT"
-            elseif layout["main"]["anchor"] == "BOTTOMRIGHT" then
-                point, anchorPoint = "BOTTOMRIGHT", "TOPRIGHT"
-            elseif layout["main"]["anchor"] == "TOPLEFT" then
-                point, anchorPoint = "TOPLEFT", "BOTTOMLEFT"
-                petSpacing = -petSpacing
-            elseif layout["main"]["anchor"] == "TOPRIGHT" then
-                point, anchorPoint = "TOPRIGHT", "BOTTOMRIGHT"
-                petSpacing = -petSpacing
+            -- Pet on LEFT or RIGHT side of owner
+            if petSide == "right" then
+                petButton:SetPoint(v.."LEFT", playerButton, v.."RIGHT", P.Scale(petSpacingX), 0)
+            else
+                petButton:SetPoint(v.."RIGHT", playerButton, v.."LEFT", P.Scale(-petSpacingX), 0)
             end
-
-            petButton:SetPoint(point, playerButton, anchorPoint, 0, P.Scale(petSpacing))
         else
-            -- anchor
-            local point, anchorPoint
-            local petSpacing = layout["pet"]["sameArrangementAsMain"] and layout["main"]["spacingX"] or layout["pet"]["spacingX"]
-
-            if layout["main"]["anchor"] == "BOTTOMLEFT" then
-                point, anchorPoint = "BOTTOMLEFT", "BOTTOMRIGHT"
-            elseif layout["main"]["anchor"] == "BOTTOMRIGHT" then
-                point, anchorPoint = "BOTTOMRIGHT", "BOTTOMLEFT"
-                petSpacing = -petSpacing
-            elseif layout["main"]["anchor"] == "TOPLEFT" then
-                point, anchorPoint = "TOPLEFT", "TOPRIGHT"
-            elseif layout["main"]["anchor"] == "TOPRIGHT" then
-                point, anchorPoint = "TOPRIGHT", "TOPLEFT"
-                petSpacing = -petSpacing
+            -- Pet on TOP or BOTTOM of owner
+            if petSide == "bottom" then
+                petButton:SetPoint("TOP"..h, playerButton, "BOTTOM"..h, 0, P.Scale(-petSpacingY))
+            else
+                petButton:SetPoint("BOTTOM"..h, playerButton, "TOP"..h, 0, P.Scale(petSpacingY))
             end
-
-            petButton:SetPoint(point, playerButton, anchorPoint, P.Scale(petSpacing), 0)
         end
     end
 

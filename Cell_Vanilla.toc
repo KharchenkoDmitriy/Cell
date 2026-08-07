@@ -1,11 +1,30 @@
-## Interface: 11508
+## Interface: 11508, 11509
 ## Title: Cell
-## Version: r277.7.3
-## Author: enderneko, Krysio
+## Version: r277.9
+## Author: enderneko, Krysio, NeRgY
 ## X-Flavor: Vanilla
 ## SavedVariables: CellDB, CellDBBackup
 ## LoadSavedVariablesFirst: 1
 ## SavedVariablesPerCharacter: CellCharacterDB
+## AddonCompartmentFunc: Cell_OnAddonCompartmentClick
+## IconTexture: Interface\AddOns\Cell\Media\icon.tga
+## Notes: Beautiful and customizable raid/party frames
+## Notes-deDE: Schone und anpassbare Raid-/Gruppenfenster
+## Category-enUS: Unit Frames
+## Category-deDE: Einheitenfenster
+## Category-esES: Marcos de unidades
+## Category-esMX: Marcos de unidades
+## Category-frFR: Portraits d'unités
+## Category-itIT: Riquadri unità
+## Category-koKR: 유닛 프레임
+## Category-ptBR: Quadros de unidade
+## Category-ruRU: Рамки юнитов
+## Category-zhCN: 单位框体
+## Category-zhTW: 單位框架
+
+## X-Curse-Project-ID: 409666
+## X-Wago-ID: qv63LLKb
+## X-WoWI-ID: 26244
 
 Locales\LoadLocales.xml
 
@@ -13,12 +32,13 @@ Libs\LoadLibs_Classic.xml
 
 Core_Vanilla.lua
 Utils.lua
+Utils_Auras.lua
 Revise.lua
 Comm\LoadComm.xml
 Widgets\LoadWidgets_Classic.xml
 Defaults\LoadDefaults_Vanilla.xml
 
-HideBlizzard.lua
+HideBlizzard_Classic.lua
 
 Indicators\Base.lua
 Indicators\Built-in.lua
@@ -38,6 +58,7 @@ Utilities\LoadUtilities_Classic.xml
 RaidDebuffs\LoadRaidDebuffs_Vanilla.xml
 
 RaidFrames\UnitButton_Vanilla.lua
+RaidFrames\HandleBuff.lua
 RaidFrames\UnitButton.xml
 RaidFrames\Groups\SoloFrame.lua
 RaidFrames\Groups\PartyFrame.lua

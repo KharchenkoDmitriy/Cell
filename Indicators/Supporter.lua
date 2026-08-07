@@ -132,10 +132,10 @@ local function Display(b)
     -- f:SetFrameLevel(b:GetFrameLevel()+200)
     f:SetPoint("CENTER", b, "BOTTOMLEFT")
 
-    local size = max(min(F.GetHeight(b), F.GetWidth(b)), 64)
+    local size = max(min(b:GetHeight(), b:GetWidth()), 64)
     f:SetSize(size, size)
 
-    f:Display(ceil(F.GetWidth(b)/2), ceil(F.GetHeight(b)/2))
+    f:Display(ceil(b:GetWidth()/2), ceil(b:GetHeight()/2))
     -- f:FadeIn()
     -- C_Timer.After(3, f.FadeOut)
 end

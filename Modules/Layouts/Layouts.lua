@@ -2114,6 +2114,25 @@ local function CreateRoleOrderWidget(parent)
 end
 
 local function CreateLayoutSetupPane()
+    local petSideDropdown  -- forward declaration
+    local function UpdatePetSideDropdown()
+        local orient = CellDB["layouts"][selectedLayout]["main"]["orientation"]
+        local items
+        if orient == "vertical" then
+            items = {
+                {text = L["Right"], value = "right", onClick = function() selectedLayoutTable["pet"]["petSide"] = "right"; UpdateArrangement() end},
+                {text = L["Left"],  value = "left",  onClick = function() selectedLayoutTable["pet"]["petSide"] = "left";  UpdateArrangement() end},
+            }
+        else
+            items = {
+                {text = L["Bottom"], value = "bottom", onClick = function() selectedLayoutTable["pet"]["petSide"] = "bottom"; UpdateArrangement() end},
+                {text = L["Top"],    value = "top",    onClick = function() selectedLayoutTable["pet"]["petSide"] = "top";    UpdateArrangement() end},
+            }
+        end
+        petSideDropdown:SetItems(items)
+        petSideDropdown:SetSelectedValue(selectedLayoutTable["pet"]["petSide"] or "right")
+    end
+
     local layoutSetupPane = Cell.CreateTitledPane(layoutsTab, L["Layout Setup"], 422, 290)
     layoutSetupPane:SetPoint("TOPLEFT", 5, -110)
 
@@ -2200,6 +2219,9 @@ local function CreateLayoutSetupPane()
 
                 if selectedPage == "main" then
                     UpdateSliderStatus()
+                    if petSideDropdown then
+                        UpdatePetSideDropdown()
+                    end
                 end
             end,
         },
@@ -2212,6 +2234,9 @@ local function CreateLayoutSetupPane()
 
                 if selectedPage == "main" then
                     UpdateSliderStatus()
+                    if petSideDropdown then
+                        UpdatePetSideDropdown()
+                    end
                 end
             end,
         },
@@ -2419,7 +2444,7 @@ local function CreateLayoutSetupPane()
             Cell.Fire("UpdateLayout", selectedLayout, "pet")
         end
     end, L["Detached"], L["Show pets in a separate frame"], L["You can move it in Preview mode"])
-    partyPetsDetachedCB:SetPoint("TOPLEFT", partyPetsCB, "TOPRIGHT", 203, 0)
+    partyPetsDetachedCB:SetPoint("TOPLEFT", partyPetsCB, "TOPRIGHT", 203, -22)
 
     raidPetsCB = Cell.CreateCheckButton(pages.pet, L["Show Raid Pets"], function(checked)
         selectedLayoutTable["pet"]["raidEnabled"] = checked
@@ -2435,6 +2460,13 @@ local function CreateLayoutSetupPane()
         end
     end, L["Show Raid Pets"], L["Show pets in a separate frame"], L["You can move it in Preview mode"])
     raidPetsCB:SetPoint("TOPLEFT", partyPetsCB, "BOTTOMLEFT", 0, -8)
+
+    -- pet side
+    petSideDropdown = Cell.CreateDropdown(pages.pet, 117)
+    petSideDropdown:SetPoint("TOPLEFT", pages.pet, "TOPLEFT", 200, -45)
+    local petSideText = petSideDropdown:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+    petSideText:SetPoint("BOTTOMLEFT", petSideDropdown, "TOPLEFT", 0, 1)
+    petSideText:SetText(L["Pet Side"])
 
     --* npc -------------------------------------
     pages.npc = CreateFrame("Frame", nil, layoutsTab)
@@ -2585,6 +2617,11 @@ local function CreateLayoutSetupPane()
             orientationDropdown:Hide()
         else
             orientationDropdown:Show()
+        end
+
+        -- update pet side dropdown
+        if tab == "pet" and petSideDropdown then
+            UpdatePetSideDropdown()
         end
 
         -- show & hide
@@ -2743,6 +2780,7 @@ LoadPageDB = function(page)
         spotlightOrientationDropdown:Hide()
         orientationDropdown:SetEnabled(not selectedLayoutTable[page]["sameArrangementAsMain"])
     end
+
 end
 
 LoadLayoutDB = function(layout, dontShowPreview)

@@ -12,10 +12,10 @@ generalTab:Hide()
 -------------------------------------------------
 -- visibility
 -------------------------------------------------
-local hideBlizzardPartyCB, hideBlizzardRaidCB, hideRaidManagerCB
+local hideBlizzardPartyCB, hideBlizzardRaidCB, hideRaidManagerCB, showMinimapButtonCB
 
 local function CreateVisibilityPane()
-    local visibilityPane = Cell.CreateTitledPane(generalTab, L["Visibility"], 205, 80)
+    local visibilityPane = Cell.CreateTitledPane(generalTab, L["Visibility"], 205, 105)
     visibilityPane:SetPoint("TOPLEFT", generalTab, "TOPLEFT", 5, -5)
 
     -- showSoloCB = Cell.CreateCheckButton(visibilityPane, L["Show Solo"], function(checked, self)
@@ -65,6 +65,14 @@ local function CreateVisibilityPane()
         popup:SetPoint("TOPLEFT", generalTab, 117, -77)
     end, L["Hide Blizzard Frames"], L["Require reload of the UI"])
     hideRaidManagerCB:SetPoint("TOPLEFT", hideBlizzardRaidCB, "BOTTOMLEFT", 0, -7)
+
+    showMinimapButtonCB = Cell.CreateCheckButton(visibilityPane, L["Show Minimap Button"], function(checked, self)
+        CellDB["general"]["showMinimapButton"] = checked
+        if F.UpdateMinimapButton then
+            F.UpdateMinimapButton()
+        end
+    end)
+    showMinimapButtonCB:SetPoint("TOPLEFT", hideRaidManagerCB, "BOTTOMLEFT", 0, -7)
 end
 
 -------------------------------------------------
@@ -304,7 +312,6 @@ end
 -- misc
 -------------------------------------------------
 local alwaysUpdateAurasCB, translitCB
-local languageDD
 
 local function CreateMiscPane()
     local miscPane = Cell.CreateTitledPane(generalTab, L["Misc"], 205, 105)
@@ -325,54 +332,6 @@ local function CreateMiscPane()
         Cell.Fire("TranslitNames")
     end)
     translitCB:SetPoint("TOPLEFT", alwaysUpdateAurasCB, "BOTTOMLEFT", 0, -9)
-end
-
--------------------------------------------------
--- language
--------------------------------------------------
-local function CreateLanguagePane()
-    local languagePane = Cell.CreateTitledPane(generalTab, L["Language"], 205, 88)
-    languagePane:SetPoint("TOPLEFT", generalTab, 222, -420)
-
-    languageDD = Cell.CreateDropdown(languagePane, 195)
-    languageDD:SetPoint("TOPLEFT", 5, -27)
-
-    local items = {
-        {
-            ["text"] = L["Auto"].." ("..(GetLocale() or "enUS")..")",
-            ["value"] = "auto",
-            ["onClick"] = function()
-                CellDB["general"]["localeOverride"] = "auto"
-                local popup = Cell.CreateConfirmPopup(generalTab, 220, L["A UI reload is required.\nDo it now?"], function()
-                    ReloadUI()
-                end, nil, true)
-                popup:SetPoint("TOPLEFT", generalTab, 117, -77)
-            end,
-        },
-        {["text"] = "English (enUS)", ["value"] = "enUS"},
-        {["text"] = "Deutsch (deDE)", ["value"] = "deDE"},
-        {["text"] = "Español (esES)", ["value"] = "esES"},
-        {["text"] = "Español (esMX)", ["value"] = "esMX"},
-        {["text"] = "Français (frFR)", ["value"] = "frFR"},
-        {["text"] = "Italiano (itIT)", ["value"] = "itIT"},
-        {["text"] = "한국어 (koKR)", ["value"] = "koKR"},
-        {["text"] = "Português (ptBR)", ["value"] = "ptBR"},
-        {["text"] = "Русский (ruRU)", ["value"] = "ruRU"},
-        {["text"] = "简体中文 (zhCN)", ["value"] = "zhCN"},
-        {["text"] = "繁體中文 (zhTW)", ["value"] = "zhTW"},
-    }
-
-    for i = 2, #items do
-        items[i]["onClick"] = function()
-            CellDB["general"]["localeOverride"] = items[i]["value"]
-            local popup = Cell.CreateConfirmPopup(generalTab, 220, L["A UI reload is required.\nDo it now?"], function()
-                ReloadUI()
-            end, nil, true)
-            popup:SetPoint("TOPLEFT", generalTab, 117, -77)
-        end
-    end
-
-    languageDD:SetItems(items)
 end
 
 -------------------------------------------------
@@ -467,7 +426,7 @@ end
 
 local function CreateLibGetFramePane()
     local miscPane = Cell.CreateTitledPane(generalTab, "LibGetFrame", 422, 80)
-    miscPane:SetPoint("TOPLEFT", generalTab, 5, -462)
+    miscPane:SetPoint("TOPLEFT", generalTab, 5, -450)
 
     framePriorityWidget = CreateFramePriorityWidget(miscPane)
     framePriorityWidget:SetPoint("TOPLEFT", 5, -45)
@@ -515,7 +474,6 @@ local function ShowTab(tab)
             CreatePositionPane()
             CreateNicknamePane()
             CreateMiscPane()
-            CreateLanguagePane()
             CreateLibGetFramePane()
 
             -- mask
@@ -556,6 +514,10 @@ local function ShowTab(tab)
         hideBlizzardPartyCB:SetChecked(CellDB["general"]["hideBlizzardParty"])
         hideBlizzardRaidCB:SetChecked(CellDB["general"]["hideBlizzardRaid"])
         hideRaidManagerCB:SetChecked(CellDB["general"]["hideBlizzardRaidManager"])
+        if CellDB["general"]["showMinimapButton"] == nil then
+            CellDB["general"]["showMinimapButton"] = true
+        end
+        showMinimapButtonCB:SetChecked(CellDB["general"]["showMinimapButton"])
 
         -- position
         lockCB:SetChecked(CellDB["general"]["locked"])
@@ -570,7 +532,6 @@ local function ShowTab(tab)
         alwaysUpdateAurasCB:SetChecked(CellDB["general"]["alwaysUpdateAuras"])
         framePriorityWidget:Load(CellDB["general"]["framePriority"])
         translitCB:SetChecked(CellDB["general"]["translit"])
-        languageDD:SetSelectedValue(CellDB["general"]["localeOverride"] or "auto")
 
     else
         generalTab:Hide()

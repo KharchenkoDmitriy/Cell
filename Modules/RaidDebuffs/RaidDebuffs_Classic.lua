@@ -76,6 +76,8 @@ end
 local unsortedDebuffs = {}
 function F.LoadBuiltInDebuffs(debuffs)
     for instanceId, iTable in pairs(debuffs) do
+        -- Last file wins per instanceId. Classic Naxx and TBC Karazhan both use 745
+        -- with different boss meanings for the same keys — merging would mix them.
         unsortedDebuffs[instanceId] = iTable
     end
 end

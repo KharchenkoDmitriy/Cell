@@ -171,14 +171,27 @@ local function PartyFrame_UpdateLayout(layout, which)
         header:SetAttribute("point", headerPoint)
 
         --! force update unitbutton's point
+        local petSide = layout["pet"]["petSide"] or "right"
+        local v = anchor:find("^BOTTOM") and "BOTTOM" or "TOP"
+        local h = anchor:find("LEFT$") and "LEFT" or "RIGHT"
         for j = 1, 5 do
             header[j]:ClearAllPoints()
             -- update petButton's point
             header[j].petButton:ClearAllPoints()
             if orientation == "vertical" then
-                header[j].petButton:SetPoint(point, header[j], petAnchorPoint, P.Scale(petSpacing), 0)
+                -- Pet on LEFT or RIGHT side of owner
+                if petSide == "right" then
+                    header[j].petButton:SetPoint(v.."LEFT", header[j], v.."RIGHT", P.Scale(petSpacingX), 0)
+                else
+                    header[j].petButton:SetPoint(v.."RIGHT", header[j], v.."LEFT", P.Scale(-petSpacingX), 0)
+                end
             else
-                header[j].petButton:SetPoint(point, header[j], petAnchorPoint, 0, P.Scale(petSpacing))
+                -- Pet on TOP or BOTTOM of owner
+                if petSide == "bottom" then
+                    header[j].petButton:SetPoint("TOP"..h, header[j], "BOTTOM"..h, 0, P.Scale(-petSpacingY))
+                else
+                    header[j].petButton:SetPoint("BOTTOM"..h, header[j], "TOP"..h, 0, P.Scale(petSpacingY))
+                end
             end
         end
         header:SetAttribute("unitsPerColumn", 5)

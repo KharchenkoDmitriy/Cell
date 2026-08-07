@@ -225,9 +225,13 @@ local myClass = UnitClassBase("player")
 
 do
     local function Handle(buff, t, k)
-        local name, icon = F.GetSpellInfo(t[k])
+        local spellId = t[k]
+        local name, icon = F.GetSpellInfo(spellId)
+        if not name then
+            name = "Spell#" .. tostring(spellId)
+        end
         t[k] = {
-            ["id"] = t[k],
+            ["id"] = spellId,
             ["name"] = name,
             ["icon"] = icon,
         }
@@ -595,20 +599,43 @@ end, unpack(fadeOuts))
 ---------------------------------------------------------------------
 -- find aura
 ---------------------------------------------------------------------
-local GetAuraDataBySpellName = C_UnitAuras.GetAuraDataBySpellName
+local GetAuraDataBySpellName = C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName
+local UnitBuff = UnitBuff
+
+local function FindHelpfulAura(unit, spellName)
+    if not spellName then return end
+
+    if GetAuraDataBySpellName then
+        return GetAuraDataBySpellName(unit, spellName, "HELPFUL")
+    end
+
+    -- Fallback for clients without C_UnitAuras.GetAuraDataBySpellName
+    for i = 1, 40 do
+        local name, _, _, _, _, _, source = UnitBuff(unit, i, "HELPFUL")
+        if not name then
+            break
+        end
+        if name == spellName then
+            return {
+                name = name,
+                sourceUnit = source,
+            }
+        end
+    end
+end
 
 local function UnitBuffExists(unit, buff)
-    local name = buffs[buff]["buff1"]["name"]
-    local aura
+    local buff1 = buffs[buff] and buffs[buff]["buff1"]
+    if not buff1 or not buff1["name"] then return end
 
-    aura = GetAuraDataBySpellName(unit, name, "HELPFUL")
+    local aura = FindHelpfulAura(unit, buff1["name"])
     if aura then
         return true, aura.sourceUnit == "player"
     end
 
-    if buffs[buff]["buff2"] then
-        name = buffs[buff]["buff2"]["name"]
-        aura = GetAuraDataBySpellName(unit, name, "HELPFUL")
+    local buff2 = buffs[buff]["buff2"]
+    if buff2 and buff2["name"] then
+        aura = FindHelpfulAura(unit, buff2["name"])
         if aura then
             return true, aura.sourceUnit == "player"
         end
@@ -659,18 +686,20 @@ local function CheckUnit(unit, updateBtn)
 
     if UnitIsConnected(unit) and UnitIsVisible(unit) and not UnitIsDeadOrGhost(unit) then
         local required = requiredBuffs[UnitClassBase(unit)]
-        for buff in pairs(available) do
-            if required[buff] then
-                local exists, providedByMe = UnitBuffExists(unit, buff)
-                if exists then
-                    unaffected[buff][unit] = nil
-                    if providedByMe then
-                        hasBuffFromMe[unit] = true
-                    end
-                else
-                    unaffected[buff][unit] = true
-                    if buffsProvidedByMe[buff] then
-                        UpdateMissingBuffs(unit, buff)
+        if required then
+            for buff in pairs(available) do
+                if required[buff] then
+                    local exists, providedByMe = UnitBuffExists(unit, buff)
+                    if exists then
+                        unaffected[buff][unit] = nil
+                        if providedByMe then
+                            hasBuffFromMe[unit] = true
+                        end
+                    else
+                        unaffected[buff][unit] = true
+                        if buffsProvidedByMe[buff] then
+                            UpdateMissingBuffs(unit, buff)
+                        end
                     end
                 end
             end

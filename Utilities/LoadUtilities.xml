@@ -19,4 +19,7 @@
     <Script file="QuickAssist_ImportExport.lua"/>
     <Script file="QuickCast.lua"/>
     <Script file="MidnightTools.lua"/>
+    <Script file="AuraBlacklist.lua"/>
+    <Script file="MinimapButton.lua"/>
+    <Script file="BlizzardOptions.lua"/>
 </Ui>

@@ -509,9 +509,17 @@ function eventFrame:ADDON_LOADED(arg1)
         Cell.vars.actions = I.ConvertActions(CellDB["actions"])
 
         -- misc -----------------------------------------------------------------------------------
-        Cell.version = GetAddOnMetadata("Cell", "version")
-        Cell.versionNum = tonumber(string.match(Cell.version, "%d+"))
+        F.InitAddonVersion()
         if not CellDB["revise"] then CellDB["firstRun"] = true end
+
+        -- krysio: warn non-Midnight users ------------------------------------------------
+        if not Cell.isMidnight and Cell.version and strfind(Cell.version, "krysio") then
+            F.Print("|cffFFAA00WARNING|r This is a custom Cell build focused on WoW Retail Midnight (12.0).")
+            F.Print("If you play on MoP, Cata, Wrath, TBC or Vanilla, use the official |cff00FF00r276-beta|r release by Enderneko instead.")
+            F.Print("Download: |cff00BFFFhttps://www.curseforge.com/wow/addons/cell|r")
+            F.Print("You can also update via CurseForge or Wago.")
+        end
+
         F.Revise()
         F.CheckWhatsNew()
         F.RunSnippets()

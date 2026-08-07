@@ -21,7 +21,6 @@ local instancesFrame, bossesFrame, debuffListFrame, detailsFrame
 local LoadExpansion, ShowInstances, ShowBosses, ShowDebuffs, ShowDetails, ShowInstanceImage, HideInstanceImage, ShowBossImage, HideBossImage, OpenEncounterJournal
 -- buttons
 local instanceButtons, bossButtons, debuffButtons = {}, {}, {}
-local curationReportFrame, curationReportTitle, curationReportContext, curationReportTextArea
 -------------------------------------------------
 -- prepare debuff list
 -------------------------------------------------
@@ -42,6 +41,10 @@ local encounterJournalList = {
     --     },
     -- },
 }
+--[==[@debug@
+Cell_DevExpansionData = encounterJournalList
+Cell_DevExpansionNames = {}
+--@end-debug@]==]
 
 -- used to GetInstanceInfo/GetRealZoneText --> instanceId
 local instanceNameMapping = {
@@ -113,6 +116,9 @@ local function LoadList()
     for tier = 1, num do
         local name = EJ_GetTierInfo(tier)
         encounterJournalList[name] = {}
+        --[==[@debug@
+        tinsert(Cell_DevExpansionNames, 1, name)
+        --@end-debug@]==]
 
         if tier ~= CURRENT_SEASON_INDEX then -- don't load raid for "Current Season"
             LoadInstanceList(tier, "raid", encounterJournalList[name])
@@ -165,6 +171,8 @@ end
 local unsortedDebuffs = {}
 function F.LoadBuiltInDebuffs(debuffs)
     for instanceId, iTable in pairs(debuffs) do
+        -- Last file wins per instanceId. Classic Naxx and TBC Karazhan both use 745
+        -- with different boss meanings for the same keys — merging would mix them.
         unsortedDebuffs[instanceId] = iTable
     end
 end
@@ -200,185 +208,6 @@ Cell.snippetVars.loadedDebuffs = loadedDebuffs
 -- }
 
 local indices = {"order", "trackByID", "condition", "glowType", "glowOptions", "glowCondition", "glowTarget", "useElapsedTime"}
-
-local curationStatusInfo = {
-    ["review"] = {
-        ["text"] = "Needs Review",
-        ["tag"] = "REV",
-        ["color"] = {1, 0.82, 0},
-    },
-    ["confirmed"] = {
-        ["text"] = "Confirmed",
-        ["tag"] = "OK",
-        ["color"] = {0.5, 1, 0},
-    },
-    ["trash"] = {
-        ["text"] = "Trash Mob",
-        ["tag"] = "TR",
-        ["color"] = {0, 0.8, 1},
-    },
-    ["non_debuff"] = {
-        ["text"] = "Non-Debuff",
-        ["tag"] = "ND",
-        ["color"] = {1, 0.3, 0.3},
-    },
-    ["ignore"] = {
-        ["text"] = "Ignore",
-        ["tag"] = "IG",
-        ["color"] = {0.7, 0.7, 0.7},
-    },
-}
-
-local function EnsureRaidDebuffsCurationDB()
-    CellDB["raidDebuffsCuration"] = CellDB["raidDebuffsCuration"] or {}
-    return CellDB["raidDebuffsCuration"]
-end
-
-local function NormalizeCurationBossId(instanceId, bossId)
-    if bossId == nil or bossId == instanceId or bossId == "general" then
-        return "general"
-    end
-
-    return bossId
-end
-
-local function GetRaidDebuffCurationEntry(instanceId, bossId, spellId, create)
-    local db = EnsureRaidDebuffsCurationDB()
-    local bossKey = NormalizeCurationBossId(instanceId, bossId)
-
-    if create then
-        db[instanceId] = db[instanceId] or {}
-        db[instanceId][bossKey] = db[instanceId][bossKey] or {}
-        db[instanceId][bossKey][spellId] = db[instanceId][bossKey][spellId] or {}
-        return db[instanceId][bossKey][spellId]
-    end
-
-    return db[instanceId] and db[instanceId][bossKey] and db[instanceId][bossKey][spellId]
-end
-
-local function GetRaidDebuffCurationData(instanceId, bossId, spellId)
-    local entry = GetRaidDebuffCurationEntry(instanceId, bossId, spellId)
-
-    return {
-        ["status"] = entry and entry["status"] or "review",
-        ["suggestedOrder"] = entry and entry["suggestedOrder"] or nil,
-        ["note"] = entry and entry["note"] or nil,
-        ["explicit"] = entry ~= nil,
-    }
-end
-
-local function CleanupRaidDebuffCuration(instanceId, bossId, spellId)
-    local db = EnsureRaidDebuffsCurationDB()
-    local bossKey = NormalizeCurationBossId(instanceId, bossId)
-    local entry = db[instanceId] and db[instanceId][bossKey] and db[instanceId][bossKey][spellId]
-    if not entry then return end
-
-    if (not entry["status"] or entry["status"] == "review") and not entry["suggestedOrder"] and not entry["note"] then
-        db[instanceId][bossKey][spellId] = nil
-
-        if not next(db[instanceId][bossKey]) then
-            db[instanceId][bossKey] = nil
-        end
-
-        if not next(db[instanceId]) then
-            db[instanceId] = nil
-        end
-    end
-end
-
-local function SetRaidDebuffCurationField(instanceId, bossId, spellId, key, value)
-    local shouldCreate = value ~= nil and value ~= "" and not (key == "status" and value == "review")
-    local entry = GetRaidDebuffCurationEntry(instanceId, bossId, spellId, shouldCreate)
-
-    if not entry then return GetRaidDebuffCurationData(instanceId, bossId, spellId) end
-
-    if key == "note" then
-        value = strtrim(tostring(value or ""))
-        entry[key] = value ~= "" and value or nil
-    elseif key == "suggestedOrder" then
-        value = tonumber(value)
-        entry[key] = value and value > 0 and floor(value) or nil
-    elseif key == "status" then
-        entry[key] = value ~= "review" and value or nil
-    else
-        entry[key] = value
-    end
-
-    CleanupRaidDebuffCuration(instanceId, bossId, spellId)
-    return GetRaidDebuffCurationData(instanceId, bossId, spellId)
-end
-
-local function GetRaidDebuffCurationStatusInfo(status)
-    return curationStatusInfo[status] or curationStatusInfo["review"]
-end
-
-local function GetSelectedBossKey()
-    return isGeneral and "general" or loadedBoss
-end
-
-local function BuildRaidDebuffCurationReport(instanceId, bossId)
-    local bossKey = NormalizeCurationBossId(instanceId, bossId)
-    local bossTable = loadedDebuffs[instanceId] and loadedDebuffs[instanceId][bossKey]
-    local instanceName = instanceIdToName[instanceId] or tostring(instanceId)
-    local bossName = bossKey == "general" and bossIdToName[0] or (bossIdToName[bossKey] or tostring(bossKey))
-
-    if not bossTable then
-        return ("Raid Debuff Curation Report\n\nInstance: %s\nBoss: %s\n\nNo debuffs loaded for this context."):format(instanceName, bossName)
-    end
-
-    local lines = {
-        "Raid Debuff Curation Report",
-        "",
-        "Instance: " .. instanceName,
-        "Boss: " .. bossName,
-        "",
-    }
-    local counts = {
-        ["review"] = 0,
-        ["confirmed"] = 0,
-        ["trash"] = 0,
-        ["non_debuff"] = 0,
-        ["ignore"] = 0,
-    }
-
-    local function AddSpellLine(spellId, order)
-        local data = GetRaidDebuffCurationData(instanceId, bossKey, spellId)
-        local info = GetRaidDebuffCurationStatusInfo(data["status"])
-        local spellName = F.GetSpellInfo(spellId) or tostring(spellId)
-        counts[data["status"]] = (counts[data["status"]] or 0) + 1
-
-        tinsert(lines, ("[%s] %s (%s)"):format(info["text"], spellName, spellId))
-        tinsert(lines, ("Current order: %s"):format(order > 0 and order or "disabled"))
-
-        if data["suggestedOrder"] then
-            tinsert(lines, ("Suggested order: %d"):format(data["suggestedOrder"]))
-        end
-
-        if data["note"] then
-            tinsert(lines, "Note: " .. data["note"])
-        end
-
-        tinsert(lines, "")
-    end
-
-    for _, spell in ipairs(bossTable["enabled"] or {}) do
-        AddSpellLine(spell["id"], spell["order"] or 0)
-    end
-
-    for _, spell in ipairs(bossTable["disabled"] or {}) do
-        AddSpellLine(spell["id"], 0)
-    end
-
-    table.insert(lines, 6, ("Review: %d  Confirmed: %d  Trash: %d  Non-Debuff: %d  Ignore: %d"):format(
-        counts["review"],
-        counts["confirmed"],
-        counts["trash"],
-        counts["non_debuff"],
-        counts["ignore"]
-    ))
-
-    return table.concat(lines, "\n")
-end
 
 local function LoadDB(instanceId, bossId, bossTable)
     if not loadedDebuffs[instanceId][bossId] then loadedDebuffs[instanceId][bossId] = {["enabled"]={}, ["disabled"]={}} end
@@ -489,33 +318,8 @@ local function LoadDebuffs()
     -- texplore(loadedDebuffs[477]) -- 悬槌堡
 end
 
--- Fill in instances from unsortedDebuffs that weren't found by the EJ API.
--- This can happen when new raids/dungeons aren't yet classified in the EJ.
-local function FillMissingInstances()
-    if not unsortedDebuffs then return end
-
-    local latestTierName = tierNames[#tierNames]
-    if not latestTierName or not encounterJournalList[latestTierName] then return end
-
-    for instanceId in pairs(unsortedDebuffs) do
-        if not instanceIdToName[instanceId] then
-            -- This instance wasn't loaded by EJ_GetInstanceByIndex; try direct lookup
-            local name, _, _, image = EJ_GetInstanceInfo(instanceId)
-            if name then
-                local instanceTable = {["name"]=name, ["id"]=instanceId, ["image"]=image, ["bosses"]={}}
-                LoadBossList(instanceId, instanceTable["bosses"])
-                tinsert(encounterJournalList[latestTierName], instanceTable)
-                local iIndex = #encounterJournalList[latestTierName]
-                instanceNameMapping[name] = latestTierName..":"..iIndex..":"..instanceId
-                instanceIdToName[instanceId] = name
-            end
-        end
-    end
-end
-
 local function UpdateRaidDebuffs()
     LoadList()
-    FillMissingInstances()
     -- LoadDungeonsForCurrentSeason()
     LoadDebuffs()
 end
@@ -525,66 +329,6 @@ Cell.RegisterCallback("UpdateRaidDebuffs", "RaidDebuffsTab_UpdateRaidDebuffs", U
 -- top widgets
 -------------------------------------------------
 local expansionDropdown, showCurrentBtn
-
-local function CreateCurationReportFrame()
-    curationReportFrame = CreateFrame("Frame", "CellOptionsFrame_RaidDebuffsCurationReport", Cell.frames.raidDebuffsTab, "BackdropTemplate")
-    curationReportFrame:Hide()
-    Cell.StylizeFrame(curationReportFrame, nil, Cell.GetAccentColorTable())
-    curationReportFrame:EnableMouse(true)
-    curationReportFrame:SetFrameLevel(Cell.frames.raidDebuffsTab:GetFrameLevel() + 50)
-    P.Size(curationReportFrame, 430, 250)
-    curationReportFrame:SetPoint("TOPLEFT", P.Scale(1), -100)
-
-    if not Cell.frames.raidDebuffsTab.mask then
-        Cell.CreateMask(Cell.frames.raidDebuffsTab, nil, {1, -1, -1, 1})
-        Cell.frames.raidDebuffsTab.mask:Hide()
-    end
-
-    curationReportFrame:SetScript("OnHide", function()
-        if Cell.frames.raidDebuffsTab.mask then
-            Cell.frames.raidDebuffsTab.mask:Hide()
-        end
-    end)
-
-    local closeBtn = Cell.CreateButton(curationReportFrame, "×", "red", {18, 18}, false, false, "CELL_FONT_SPECIAL", "CELL_FONT_SPECIAL")
-    closeBtn:SetPoint("TOPRIGHT", -5, -1)
-    closeBtn:SetScript("OnClick", function()
-        curationReportFrame:Hide()
-    end)
-
-    curationReportTitle = curationReportFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_CLASS")
-    curationReportTitle:SetPoint("TOPLEFT", 5, -5)
-    curationReportTitle:SetText("Raid Debuff Curation")
-
-    curationReportContext = curationReportFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
-    curationReportContext:SetPoint("TOPLEFT", curationReportTitle, "BOTTOMLEFT", 0, -5)
-    curationReportContext:SetPoint("TOPRIGHT", closeBtn, "TOPLEFT", -5, 0)
-    curationReportContext:SetJustifyH("LEFT")
-
-    curationReportTextArea = Cell.CreateScrollEditBox(curationReportFrame)
-    curationReportTextArea:SetPoint("TOPLEFT", 5, -45)
-    curationReportTextArea:SetPoint("BOTTOMRIGHT", -10, 5)
-    curationReportTextArea.eb:SetAutoFocus(false)
-end
-
-local function ShowRaidDebuffsCurationReport(instanceId, bossId)
-    if not instanceId then return end
-
-    if not curationReportFrame then
-        CreateCurationReportFrame()
-    end
-
-    local bossKey = NormalizeCurationBossId(instanceId, bossId)
-    local instanceName = instanceIdToName[instanceId] or tostring(instanceId)
-    local bossName = bossKey == "general" and bossIdToName[0] or (bossIdToName[bossKey] or tostring(bossKey))
-
-    Cell.frames.raidDebuffsTab.mask:Show()
-    curationReportContext:SetText(("Instance: %s\nBoss: %s"):format(instanceName, bossName))
-    curationReportTextArea.eb:SetText(BuildRaidDebuffCurationReport(instanceId, bossKey))
-    curationReportTextArea.eb:ClearFocus()
-    curationReportTextArea.scrollFrame:ResetScroll()
-    curationReportFrame:Show()
-end
 
 local function OpenInstanceBoss(instanceName, bossName)
     if not instanceName or not instanceNameMapping[instanceName] then return end
@@ -678,8 +422,8 @@ local function CreateWidgets()
         CellTooltip:SetOwner(helpBtn, "ANCHOR_NONE")
         CellTooltip:SetPoint("TOPLEFT", helpBtn, "TOPRIGHT", 6, 0)
         CellTooltip:AddLine(L["Want to help improve Raid Debuffs?"])
-        CellTooltip:AddLine("|cffffffffUse the curation fields to mark confirmed, trash, or non-debuff spells.")
-        CellTooltip:AddLine("|cffffffffOpen the curation report to review notes and suggested priorities for the current boss.")
+        CellTooltip:AddLine("|cffffffff"..L["Use %s addon"]:format("|cffff3030Instance Spell Collector|r"))
+        CellTooltip:AddLine("|cffffffff"..L["Then create a PR or submit a ticket on GitHub"])
         CellTooltip:Show()
     end)
     helpBtn:HookScript("OnLeave", function()
@@ -1322,35 +1066,6 @@ local function UnregisterForDrag(b)
     b:SetScript("OnDragStop", nil)
 end
 
-local function ApplyDebuffButtonCuration(button, sTable)
-    local curation = GetRaidDebuffCurationData(loadedInstance, GetSelectedBossKey(), sTable["id"])
-    local info = GetRaidDebuffCurationStatusInfo(curation["status"])
-    local r, g, b = unpack(info["color"])
-
-    button.curationData = curation
-
-    if curation["explicit"] then
-        button.curationTag:SetText(info["tag"])
-        button.curationTag:SetTextColor(r, g, b)
-    else
-        button.curationTag:SetText("")
-    end
-
-    if sTable["order"] == 0 then
-        button:SetTextColor(0.4, 0.4, 0.4)
-        UnregisterForDrag(button)
-        button.enabled = nil
-    else
-        if curation["explicit"] and curation["status"] ~= "review" then
-            button:SetTextColor(r, g, b)
-        else
-            button:SetTextColor(1, 1, 1)
-        end
-        RegisterForDrag(button)
-        button.enabled = true
-    end
-end
-
 local last
 local function CreateDebuffButton(i, sTable)
     if not debuffButtons[i] then
@@ -1364,9 +1079,7 @@ local function CreateDebuffButton(i, sTable)
         -- update text position
         debuffButtons[i]:GetFontString():ClearAllPoints()
         debuffButtons[i]:GetFontString():SetPoint("LEFT", debuffButtons[i].icon, "RIGHT", 2, 0)
-        debuffButtons[i].curationTag = debuffButtons[i]:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
-        debuffButtons[i].curationTag:SetPoint("RIGHT", -2, 0)
-        debuffButtons[i]:GetFontString():SetPoint("RIGHT", debuffButtons[i].curationTag, "LEFT", -2, 0)
+        debuffButtons[i]:GetFontString():SetPoint("RIGHT", -2, 0)
     end
 
     debuffButtons[i]:Show()
@@ -1384,7 +1097,15 @@ local function CreateDebuffButton(i, sTable)
 
     debuffButtons[i].spellId = sTable["id"]
     debuffButtons[i].spellTex = icon
-    ApplyDebuffButtonCuration(debuffButtons[i], sTable)
+    if sTable["order"] == 0 then
+        debuffButtons[i]:SetTextColor(0.4, 0.4, 0.4)
+        UnregisterForDrag(debuffButtons[i])
+        debuffButtons[i].enabled = nil
+    else
+        debuffButtons[i]:SetTextColor(1, 1, 1)
+        RegisterForDrag(debuffButtons[i])
+        debuffButtons[i].enabled = true
+    end
 
     debuffButtons[i].id = sTable["id"].."-"..i -- send spellId-buttonIndex to ShowDetails
 
@@ -1457,19 +1178,6 @@ ShowDebuffs = function(bossId, buttonIndex)
         CellSpellTooltip:SetOwner(b, "ANCHOR_NONE")
         CellSpellTooltip:SetPoint("TOPRIGHT", b, "TOPLEFT", -1, 0)
         CellSpellTooltip:SetSpellByID(b.spellId, b.spellTex)
-        local curation = GetRaidDebuffCurationData(loadedInstance, GetSelectedBossKey(), b.spellId)
-        local info = GetRaidDebuffCurationStatusInfo(curation["status"])
-        CellSpellTooltip:AddLine(" ")
-        CellSpellTooltip:AddLine("|cFFB2B2B2Midnight Curation|r")
-        CellSpellTooltip:AddLine(("Status: |cFFFFFFFF%s|r"):format(info["text"]))
-        if curation["suggestedOrder"] then
-            CellSpellTooltip:AddLine(("Suggested order: |cFFFFFFFF%d|r"):format(curation["suggestedOrder"]))
-        end
-        if curation["note"] then
-            CellSpellTooltip:AddLine("Note: |cFFFFFFFF" .. curation["note"] .. "|r")
-        elseif not curation["explicit"] then
-            CellSpellTooltip:AddLine("Note: |cFFB2B2B2No curation note yet|r")
-        end
         CellSpellTooltip:Show()
     end, function(b)
         debuffListFrame:GetScript("OnLeave")()
@@ -1586,7 +1294,6 @@ end
 -- debuff details frame
 -------------------------------------------------
 local spellIcon, spellNameText, spellIdText, enabledCB, trackByIdCB, useElapsedTimeCB
-local curationStatusDropdown, curationSuggestedOrder, curationCurrentOrderText, curationNoteEditBox
 local conditionDropDown, conditionFrame, conditionOperator, conditionValue
 local glowTypeText, glowTypeDropdown, glowTargetDropdown, glowOptionsFrame, glowConditionType, glowConditionOperator, glowConditionValue, glowColor, glowLines, glowParticles, glowDuration, glowFrequency, glowLength, glowThickness, glowScale
 
@@ -1594,12 +1301,6 @@ local LoadCondition, UpdateCondition
 local UpdateGlowType, LoadGlowOptions, LoadGlowCondition, ShowGlowPreview
 
 local conditionHeight, glowOptionsHeight, glowConditionHeight = 0, 0, 0
-local curationHeight = 80
-
-local function UpdateDetailsHeight()
-    detailsFrame.scrollFrame:SetContentHeight(225 + curationHeight + glowOptionsHeight + glowConditionHeight + conditionHeight)
-    detailsFrame.scrollFrame:ResetScroll()
-end
 
 local function CreateDetailsFrame()
     detailsFrame = Cell.CreateFrame("RaidDebuffsTab_DebuffDetails", debuffsTab)
@@ -1765,103 +1466,11 @@ local function CreateDetailsFrame()
     useElapsedTimeCB:SetPoint("TOPLEFT", trackByIdCB, "BOTTOMLEFT", 0, -10)
 
     --------------------------------------------------
-    -- midnight curation
-    --------------------------------------------------
-    local curationText = detailsContentFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
-    curationText:SetText("Midnight Curation")
-    curationText:SetPoint("TOPLEFT", useElapsedTimeCB, "BOTTOMLEFT", 0, -10)
-
-    curationStatusDropdown = Cell.CreateDropdown(detailsContentFrame, 117)
-    curationStatusDropdown:SetPoint("TOPLEFT", curationText, "BOTTOMLEFT", 0, -1)
-    curationStatusDropdown:SetItems({
-        {
-            ["text"] = "Needs Review",
-            ["value"] = "review",
-            ["onClick"] = function()
-                SetRaidDebuffCurationField(loadedInstance, GetSelectedBossKey(), selectedSpellId, "status", "review")
-                ApplyDebuffButtonCuration(debuffButtons[selectedButtonIndex], selectedButtonIndex <= #currentBossTable["enabled"] and currentBossTable["enabled"][selectedButtonIndex] or currentBossTable["disabled"][selectedButtonIndex-#currentBossTable["enabled"]])
-            end,
-        },
-        {
-            ["text"] = "Confirmed",
-            ["value"] = "confirmed",
-            ["onClick"] = function()
-                SetRaidDebuffCurationField(loadedInstance, GetSelectedBossKey(), selectedSpellId, "status", "confirmed")
-                ApplyDebuffButtonCuration(debuffButtons[selectedButtonIndex], selectedButtonIndex <= #currentBossTable["enabled"] and currentBossTable["enabled"][selectedButtonIndex] or currentBossTable["disabled"][selectedButtonIndex-#currentBossTable["enabled"]])
-            end,
-        },
-        {
-            ["text"] = "Trash Mob",
-            ["value"] = "trash",
-            ["onClick"] = function()
-                SetRaidDebuffCurationField(loadedInstance, GetSelectedBossKey(), selectedSpellId, "status", "trash")
-                ApplyDebuffButtonCuration(debuffButtons[selectedButtonIndex], selectedButtonIndex <= #currentBossTable["enabled"] and currentBossTable["enabled"][selectedButtonIndex] or currentBossTable["disabled"][selectedButtonIndex-#currentBossTable["enabled"]])
-            end,
-        },
-        {
-            ["text"] = "Non-Debuff",
-            ["value"] = "non_debuff",
-            ["onClick"] = function()
-                SetRaidDebuffCurationField(loadedInstance, GetSelectedBossKey(), selectedSpellId, "status", "non_debuff")
-                ApplyDebuffButtonCuration(debuffButtons[selectedButtonIndex], selectedButtonIndex <= #currentBossTable["enabled"] and currentBossTable["enabled"][selectedButtonIndex] or currentBossTable["disabled"][selectedButtonIndex-#currentBossTable["enabled"]])
-            end,
-        },
-        {
-            ["text"] = "Ignore",
-            ["value"] = "ignore",
-            ["onClick"] = function()
-                SetRaidDebuffCurationField(loadedInstance, GetSelectedBossKey(), selectedSpellId, "status", "ignore")
-                ApplyDebuffButtonCuration(debuffButtons[selectedButtonIndex], selectedButtonIndex <= #currentBossTable["enabled"] and currentBossTable["enabled"][selectedButtonIndex] or currentBossTable["disabled"][selectedButtonIndex-#currentBossTable["enabled"]])
-            end,
-        },
-    })
-
-    local curationReportBtn = Cell.CreateButton(detailsContentFrame, "Report", "accent", {54, 20}, nil, nil, "CELL_FONT_WIDGET_SMALL", "CELL_FONT_WIDGET_SMALL")
-    curationReportBtn:SetPoint("LEFT", curationStatusDropdown, "RIGHT", 6, 0)
-    curationReportBtn:SetScript("OnClick", function()
-        ShowRaidDebuffsCurationReport(loadedInstance, GetSelectedBossKey())
-    end)
-
-    local curationSuggestedText = detailsContentFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
-    curationSuggestedText:SetText("Suggested Order")
-    curationSuggestedText:SetPoint("TOPLEFT", curationStatusDropdown, "BOTTOMLEFT", 0, -8)
-
-    curationSuggestedOrder = Cell.CreateEditBox(detailsContentFrame, 45, 20, nil, nil, true)
-    curationSuggestedOrder:SetPoint("TOPLEFT", curationSuggestedText, "BOTTOMLEFT", 0, -1)
-    curationSuggestedOrder:SetMaxLetters(3)
-    curationSuggestedOrder:SetJustifyH("RIGHT")
-    curationSuggestedOrder:SetScript("OnTextChanged", function(self, userChanged)
-        if userChanged then
-            SetRaidDebuffCurationField(loadedInstance, GetSelectedBossKey(), selectedSpellId, "suggestedOrder", self:GetText())
-        end
-    end)
-
-    curationCurrentOrderText = detailsContentFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
-    curationCurrentOrderText:SetPoint("LEFT", curationSuggestedOrder, "RIGHT", 8, 0)
-    curationCurrentOrderText:SetPoint("RIGHT", -2, 0)
-    curationCurrentOrderText:SetJustifyH("LEFT")
-
-    local curationNoteText = detailsContentFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
-    curationNoteText:SetText("Note")
-    curationNoteText:SetPoint("TOPLEFT", curationSuggestedOrder, "BOTTOMLEFT", 0, -8)
-
-    curationNoteEditBox = Cell.CreateEditBox(detailsContentFrame, 177, 20)
-    curationNoteEditBox:SetPoint("TOPLEFT", curationNoteText, "BOTTOMLEFT", 0, -1)
-    curationNoteEditBox:SetPoint("RIGHT", -2, 0)
-    curationNoteEditBox:SetMaxLetters(120)
-    curationNoteEditBox:SetScript("OnTextChanged", function(self, userChanged)
-        if userChanged then
-            SetRaidDebuffCurationField(loadedInstance, GetSelectedBossKey(), selectedSpellId, "note", self:GetText())
-            ApplyDebuffButtonCuration(debuffButtons[selectedButtonIndex], selectedButtonIndex <= #currentBossTable["enabled"] and currentBossTable["enabled"][selectedButtonIndex] or currentBossTable["disabled"][selectedButtonIndex-#currentBossTable["enabled"]])
-        end
-    end)
-
-    --------------------------------------------------
     -- condition
     --------------------------------------------------
     local conditionText = detailsContentFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
     conditionText:SetText(L["Condition"])
-    conditionText:SetPoint("TOPLEFT", curationNoteEditBox, "BOTTOMLEFT", 0, -10)
+    conditionText:SetPoint("TOPLEFT", useElapsedTimeCB, "BOTTOMLEFT", 0, -10)
 
     -- conditionDropDown TODO: 同时持有另一个debuff
     conditionDropDown = Cell.CreateDropdown(detailsContentFrame, 117)
@@ -2235,7 +1844,8 @@ LoadCondition = function(condition)
     end
 
     -- update scroll
-    UpdateDetailsHeight()
+    detailsFrame.scrollFrame:SetContentHeight(225 + glowOptionsHeight + glowConditionHeight + conditionHeight)
+    detailsFrame.scrollFrame:ResetScroll()
 end
 
 -- glow
@@ -2426,7 +2036,8 @@ LoadGlowOptions = function(glowType, glowOptions)
         glowOptionsFrame:Hide()
         ShowGlowPreview("None")
         glowOptionsHeight = 0
-        UpdateDetailsHeight()
+        detailsFrame.scrollFrame:SetContentHeight(225 + conditionHeight)
+        detailsFrame.scrollFrame:ResetScroll()
         return
     end
 
@@ -2483,7 +2094,8 @@ LoadGlowOptions = function(glowType, glowOptions)
 
     glowOptionsFrame:Show()
 
-    UpdateDetailsHeight()
+    detailsFrame.scrollFrame:SetContentHeight(225 + glowOptionsHeight + glowConditionHeight + conditionHeight)
+    detailsFrame.scrollFrame:ResetScroll()
 end
 
 LoadGlowCondition = function(glowCondition)
@@ -2504,7 +2116,8 @@ LoadGlowCondition = function(glowCondition)
         glowColor:SetPoint("TOPLEFT", glowConditionType, "BOTTOMLEFT", 0, -10)
         glowConditionHeight = 40
     end
-    UpdateDetailsHeight()
+    detailsFrame.scrollFrame:SetContentHeight(225 + glowOptionsHeight + glowConditionHeight + conditionHeight)
+    detailsFrame.scrollFrame:ResetScroll()
 end
 
 -- spell description
@@ -2560,12 +2173,6 @@ ShowDetails = function(spell)
     trackByIdCB:SetChecked(spellTable["trackByID"])
     useElapsedTimeCB:SetChecked(spellTable["useElapsedTime"])
     LoadCondition(spellTable["condition"])
-
-    local curation = GetRaidDebuffCurationData(loadedInstance, GetSelectedBossKey(), spellId)
-    curationStatusDropdown:SetSelectedValue(curation["status"])
-    curationSuggestedOrder:SetText(curation["suggestedOrder"] or "")
-    curationCurrentOrderText:SetText(isEnabled and ("Current order: " .. selectedButtonIndex) or "Current order: disabled")
-    curationNoteEditBox:SetText(curation["note"] or "")
 
     local glowType = spellTable["glowType"] or "None"
     glowTypeDropdown:SetSelected(L[glowType])
@@ -2634,7 +2241,7 @@ function F.GetDebuffList(instanceName)
                 local spellName = F.GetSpellInfo(t["id"])
                 if spellName then
                     -- list[spellName/spellId] = {order, glowType, glowOptions}
-                    local entry = {
+                    list[t["trackByID"] and t["id"] or spellName] = {
                         ["order"] = t["order"],
                         ["condition"] = t["condition"],
                         ["glowType"] = t["glowType"],
@@ -2642,12 +2249,6 @@ function F.GetDebuffList(instanceName)
                         ["glowCondition"] = t["glowCondition"],
                         ["useElapsedTime"] = t["useElapsedTime"],
                     }
-                    list[t["trackByID"] and t["id"] or spellName] = entry
-                    -- 12.0+: also index by name for trackByID entries so
-                    -- GetDebuffOrder can match by resolved name when spellId is secret
-                    if t["trackByID"] and spellName and not list[spellName] then
-                        list[spellName] = entry
-                    end
                 end
             end
         end
@@ -2657,7 +2258,7 @@ function F.GetDebuffList(instanceName)
                 for _, t in pairs(bTable["enabled"]) do
                     local spellName = F.GetSpellInfo(t["id"])
                     if spellName then -- check again
-                        local entry = {
+                        list[t["trackByID"] and t["id"] or spellName] = {
                             ["order"] = t["order"]+n,
                             ["condition"] = t["condition"],
                             ["glowType"] = t["glowType"],
@@ -2665,11 +2266,6 @@ function F.GetDebuffList(instanceName)
                             ["glowCondition"] = t["glowCondition"],
                             ["useElapsedTime"] = t["useElapsedTime"],
                         }
-                        list[t["trackByID"] and t["id"] or spellName] = entry
-                        -- 12.0+: also index by name for trackByID entries
-                        if t["trackByID"] and spellName and not list[spellName] then
-                            list[spellName] = entry
-                        end
                     end
                 end
             end

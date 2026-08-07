@@ -23,6 +23,18 @@ Cell.bFuncs = {}
 Cell.uFuncs = {}
 Cell.animations = {}
 
+-- Some MoP / Classic builds omit the Blizzard DebuffTypeColor global.
+if type(_G.DebuffTypeColor) ~= "table" then
+    _G.DebuffTypeColor = {
+        none = { r = 0.80, g = 0.00, b = 0.00 },
+        Magic = { r = 0.20, g = 0.60, b = 1.00 },
+        Curse = { r = 0.60, g = 0.00, b = 1.00 },
+        Disease = { r = 0.60, g = 0.40, b = 0.00 },
+        Poison = { r = 0.00, g = 0.60, b = 0.00 },
+    }
+    _G.DebuffTypeColor[""] = _G.DebuffTypeColor.none
+end
+
 -- Provide safe accent-color fallbacks before Widgets.lua initializes its
 -- richer helpers. This keeps later files from exploding if a mixed install
 -- loads newer callers before the real widget helpers are available.
@@ -563,9 +575,17 @@ function eventFrame:ADDON_LOADED(arg1)
         Cell.vars.actions = I.ConvertActions(CellDB["actions"])
 
         -- misc -----------------------------------------------------------------------------------
-        Cell.version = GetAddOnMetadata("Cell", "version")
-        Cell.versionNum = tonumber(string.match(Cell.version, "%d+"))
+        F.InitAddonVersion()
         if not CellDB["revise"] then CellDB["firstRun"] = true end
+
+        -- krysio: warn non-Midnight users ------------------------------------------------
+        if not Cell.isMidnight and Cell.version and strfind(Cell.version, "krysio") then
+            F.Print("|cffFFAA00WARNING|r This is a custom Cell build focused on WoW Retail Midnight (12.0).")
+            F.Print("If you play on MoP, Cata, Wrath, TBC or Vanilla, use the official |cff00FF00r276-beta|r release by Enderneko instead.")
+            F.Print("Download: |cff00BFFFhttps://www.curseforge.com/wow/addons/cell|r")
+            F.Print("You can also update via CurseForge or Wago.")
+        end
+
         F.Revise()
         F.CheckWhatsNew()
         F.RunSnippets()
@@ -820,6 +840,17 @@ function eventFrame:PLAYER_LOGIN()
     end
 
     Cell.vars.playerGUID = UnitGUID("player")
+
+    -- Aura icon duration options can be nil before Appearance applies (MoP).
+    if type(Cell.vars.iconDurationDecimal) ~= "number" then
+        local opts = CellDB and CellDB.appearance and CellDB.appearance.auraIconOptions
+        local d = opts and opts.durationDecimal
+        Cell.vars.iconDurationDecimal = (type(d) == "number") and d or 0
+    end
+    if Cell.vars.iconDurationRoundUp == nil then
+        local opts = CellDB and CellDB.appearance and CellDB.appearance.auraIconOptions
+        Cell.vars.iconDurationRoundUp = opts and opts.durationRoundUp and true or false
+    end
 
     -- update spec vars
     UpdateSpecVars()

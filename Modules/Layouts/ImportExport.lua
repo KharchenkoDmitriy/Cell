@@ -13,11 +13,6 @@ local importExportFrame, importBtn, title, textArea
 
 local function DoImport(overwriteExisting)
     local name, layout = imported["name"], imported["data"]
-    local backup, backupState = F.CreateAutoBackup("Auto backup before layout import: " .. name, {
-        ["tag"] = "Layout",
-        ["type"] = "layout_import",
-        ["signature"] = "layout_import:" .. name,
-    })
 
     -- indicators
     local builtInFound = {}
@@ -76,13 +71,6 @@ local function DoImport(overwriteExisting)
             importExportFrame:Hide()
         end
     end
-
-    local backupText = F.GetBackupNotificationText(backup, backupState)
-    local message = name
-    if backupText then
-        message = message .. "\n" .. backupText
-    end
-    F.AddAddonNotification("import", "Layout Imported", message)
     F.Print(L["Layout imported: %s."]:format(name))
 end
 
@@ -137,7 +125,14 @@ local function CreateLayoutImportExportFrame()
         if userChanged then
             if isImport then
                 imported = {}
-                local text = eb:GetText()
+                local text = (eb:GetText() or ""):gsub("%s+", "")
+                -- full profile strings belong in About -> Import & Export All Settings
+                if string.find(text, "!CELL:", 1, true) and string.find(text, ":ALL!", 1, true) then
+                    title:SetText("|cffff2222Profil-String! Nutze: About/Ueber -> Import All")
+                    F.Print("|cffff2222Das ist ein Profil-String (!CELL:#:ALL!).|r Bitte unter |cffffd100Ueber/About|r auf |cffffd100Alle Einstellungen importieren und exportieren|r klicken - nicht den Layouts-Import.")
+                    importBtn:SetEnabled(false)
+                    return
+                end
                 -- check
                 local version, name, data = string.match(text, "^!CELL:(%d+):LAYOUT:(.+)!(.+)$")
                 version = tonumber(version)
@@ -155,7 +150,7 @@ local function CreateLayoutImportExportFrame()
                             imported["name"] = name
                             imported["data"] = data
                         else
-                            title:SetText(L["Import"]..": |cffff2222"..L["Error"])
+                            title:SetText(L["Import"]..": |cffff2222"..L["Error"].." (decode)")
                             importBtn:SetEnabled(false)
                         end
                     else -- incompatible version
@@ -163,7 +158,7 @@ local function CreateLayoutImportExportFrame()
                         importBtn:SetEnabled(false)
                     end
                 else
-                    title:SetText(L["Import"]..": |cffff2222"..L["Error"])
+                    title:SetText(L["Import"]..": |cffff2222"..L["Error"].." (kein LAYOUT-String)")
                     importBtn:SetEnabled(false)
                 end
             else

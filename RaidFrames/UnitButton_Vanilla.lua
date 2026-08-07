@@ -1981,6 +1981,7 @@ local function UnitButton_UpdateInRange(self)
     if not unit then return end
 
     local inRange = IsInRange(unit)
+    if inRange == nil then inRange = true end
 
     self.states.inRange = inRange
     if Cell.loaded then

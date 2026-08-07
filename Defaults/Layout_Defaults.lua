@@ -61,6 +61,7 @@ Cell.defaults.layout = {
         ["raidEnabled"] = false,
         ["sameSizeAsMain"] = true,
         ["sameArrangementAsMain"] = true,
+        ["petSide"] = "right",
         ["size"] = {66, 46},
         ["position"] = {},
         ["powerSize"] = 2,
@@ -420,7 +421,7 @@ Cell.defaults.layout = {
                 ["Poison"] = true,
                 ["Bleed"] = true,
             },
-            ["highlightType"] = "gradient-half",
+            ["highlightType"] = "edge-bottom",
             ["iconStyle"] = "blizzard",
             ["orientation"] = "right-to-left",
         }, -- 22

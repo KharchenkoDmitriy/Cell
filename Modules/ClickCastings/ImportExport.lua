@@ -12,12 +12,6 @@ local isImport, imported, exported = false, {}, ""
 local importExportFrame, importBtn, title, textArea
 
 local function DoImport()
-    local backup, backupState = F.CreateAutoBackup("Auto backup before click-casting import", {
-        ["tag"] = "Click-Castings",
-        ["type"] = "clickcast_import",
-        ["signature"] = "clickcast_import:" .. tostring(Cell.vars.playerClass),
-    })
-
     if Cell.vars.clickCastings["useCommon"] then
         Cell.vars.clickCastings["common"] = imported
     else
@@ -25,12 +19,6 @@ local function DoImport()
     end
 
     Cell.Fire("UpdateClickCastings")
-    local backupText = F.GetBackupNotificationText(backup, backupState)
-    local message = F.GetLocalizedClassName(Cell.vars.playerClass)
-    if backupText then
-        message = message .. "\n" .. backupText
-    end
-    F.AddAddonNotification("import", "Click-Castings Imported", message)
     importExportFrame:Hide()
 end
 

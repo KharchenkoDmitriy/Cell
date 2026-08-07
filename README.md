@@ -15,7 +15,7 @@ A maintained fork of **Cell**, continued from **Krysio (krysiolol)** / jdtoppin,
 
 Focused on Midnight compatibility, healer QoL, Classic/TBC support, and practical fixes that keep raid frames usable in modern WoW.
 
-**Current version:** `r277.8.2`
+**Current version:** `r277.9`
 
 </div>
 
@@ -34,8 +34,7 @@ Lineage:
 
 Goals of this fork:
 
-- Keep Cell working on **Retail Midnight (12.0.7)**
-- If everything works well, create a version for **Season 2 (Patch 12.1.0)**.
+- Keep Cell working on **Retail Midnight (12.1.0)**
 - Improve **Classic Era / Hardcore** and **TBC Classic** usability
 - Ship healer-focused QoL (Actions, Raid Debuffs, Import UX, options integration)
 - Preserve Krysio's Midnight foundation while fixing regressions and filling gaps
@@ -64,11 +63,12 @@ Without their work, this fork would not exist.
 | Retail Midnight (`12.0.7`) | Primary focus |
 | Classic Era / Hardcore (`1.15.9`) | Supported |
 | TBC Classic (Anniversary) (`2.5.6`) | Supported |
-| Wrath / Cata / MoP | TOC present; not the main focus of this branch |
+| MoP Classic (`5.5.4`) | Supported |
+| Cata / MoP | TOC present; not the main focus of this branch |
 
 ---
 
-## NeRgY Fork Highlights (`r277.8.2`)
+## NeRgY Fork Highlights
 
 ### Retail / Midnight
 

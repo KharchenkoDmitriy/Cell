@@ -13,7 +13,7 @@
 
 A maintained fork of **Cell**, continued from **Krysio (krysiolol)** / jdtoppin, originally by **enderneko**.
 
-Focused on Midnight compatibility, healer QoL, Classic/TBC support, and practical fixes that keep raid frames usable in modern WoW.
+Focused on Midnight compatibility, healer QoL, Classic/TBC & MoP support, and practical fixes that keep raid frames usable in modern WoW.
 
 **Current version:** `r277.9`
 
@@ -35,7 +35,7 @@ Lineage:
 Goals of this fork:
 
 - Keep Cell working on **Retail Midnight (12.1.0)**
-- Improve **Classic Era / Hardcore** and **TBC Classic** usability
+- Improve **Classic Era / Hardcore**, **TBC Classic** and **MoP** usability
 - Ship healer-focused QoL (Actions, Raid Debuffs, Import UX, options integration)
 - Preserve Krysio's Midnight foundation while fixing regressions and filling gaps
 - Stay practical: prefer stable, testable changes over experiments

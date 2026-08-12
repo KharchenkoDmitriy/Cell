@@ -3518,9 +3518,41 @@ local function CreateSetting_CheckButton(parent)
         function widget:SetDBValue(settingName, checked, tooltip)
             widget.cb:SetChecked(checked)
             widget.cb:SetText(L[settingName])
-            if tooltip then
-                Cell.SetTooltips(widget.cb, "ANCHOR_TOPLEFT", 0, 2, L[settingName], string.split("|", tooltip))
+            if tooltip and tooltip ~= "" then
+                if settingName == "keepInHealers" then
+                    Cell.ClearTooltips(widget.cb)
+                    if not widget.tips then
+                        widget.tips = Cell.CreateButton(widget, nil, "accent-hover", {16, 16})
+                        widget.tips.tex = widget.tips:CreateTexture(nil, "ARTWORK")
+                        widget.tips.tex:SetAllPoints(widget.tips)
+                        widget.tips.tex:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\info2.tga")
+                        widget.tips:HookScript("OnEnter", function()
+                            local tip = widget._tipsText
+                            if not tip or tip == "" then return end
+                            CellTooltip:SetOwner(widget.tips, "ANCHOR_NONE")
+                            CellTooltip:SetPoint("BOTTOMLEFT", widget.tips, "TOPLEFT", 0, 3)
+                            CellTooltip:AddLine(L["keepInHealers"])
+                            for _, line in ipairs({string.split("|", tip)}) do
+                                if line and line ~= "" then
+                                    CellTooltip:AddLine("|cffffffff" .. line)
+                                end
+                            end
+                            CellTooltip:Show()
+                        end)
+                        widget.tips:HookScript("OnLeave", function()
+                            CellTooltip:Hide()
+                        end)
+                    end
+                    widget._tipsText = tooltip
+                    widget.tips:ClearAllPoints()
+                    widget.tips:SetPoint("LEFT", widget.cb.label, "RIGHT", 6, 0)
+                    widget.tips:Show()
+                else
+                    if widget.tips then widget.tips:Hide() end
+                    Cell.SetTooltips(widget.cb, "ANCHOR_TOPLEFT", 0, 2, L[settingName], string.split("|", tooltip))
+                end
             else
+                if widget.tips then widget.tips:Hide() end
                 Cell.ClearTooltips(widget.cb)
             end
         end

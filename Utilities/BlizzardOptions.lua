@@ -106,7 +106,7 @@ local function RegisterSettingsCategory()
     authorLine:SetPoint("TOPLEFT", creditsLabel, "BOTTOMLEFT", 0, -10)
     authorLine:SetWidth(520)
 
-    local forkLine = MakeFS(card, "GameFontHighlightSmall", "Continued by NeRgY - r277.9.1 (from Krysio r277.7.5.3)", 0.65, 0.68, 0.74)
+    local forkLine = MakeFS(card, "GameFontHighlightSmall", "Continued by NeRgY - r277.9.2 (from Krysio r277.7.5.3)", 0.65, 0.68, 0.74)
     forkLine:SetPoint("TOPLEFT", authorLine, "BOTTOMLEFT", 0, -6)
     forkLine:SetWidth(520)
 

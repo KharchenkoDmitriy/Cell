@@ -5,8 +5,7 @@ local F = Cell.funcs
 ---@type CellIndicatorFuncs
 local I = Cell.iFuncs
 
-local GROUP_KEY = "healers"
-local INIT_VERSION = 11
+local INIT_VERSION = 1
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -16,7 +15,7 @@ local HARD_EXCLUDE_SPELLS = {
 }
 
 local stateByButton = setmetatable({}, { __mode = "k" })
-local cachedConfig
+local cachedConfigs
 local featureReady
 local durationFormatter
 local buildQueue = {}
@@ -49,14 +48,36 @@ local function ProbeSupported()
     return featureReady
 end
 
-local function ResolveHealersConfig()
-    local layout = Cell.vars.currentLayoutTable
-    if not (layout and layout.indicators) then return end
-    for _, t in ipairs(layout.indicators) do
-        if t.name == "Healers" and t.enabled and t.auraType == "buff" and t.auras and t.indicatorName then
-            return t
+local function IsSupportedCustomCfg(t)
+    if not (t and t.enabled and t.auraType == "buff") then return false end
+    if t.name == "Healers" then return false end
+    if t.type ~= "icon" and t.type ~= "icons" then return false end
+    if type(t.indicatorName) ~= "string" or not t.indicatorName:find("^indicator") then return false end
+    if type(t.auras) ~= "table" then return false end
+    local hasSpell = false
+    for k, v in pairs(t.auras) do
+        local n = tonumber(v)
+        if not (n and n > 0) then n = tonumber(k) end
+        if n and n > 0 then
+            hasSpell = true
+            break
         end
     end
+    return hasSpell
+end
+
+local function RefreshCachedConfigs()
+    local list = {}
+    local layout = Cell.vars.currentLayoutTable
+    if layout and layout.indicators then
+        for _, t in ipairs(layout.indicators) do
+            if IsSupportedCustomCfg(t) then
+                list[#list + 1] = t
+            end
+        end
+    end
+    cachedConfigs = list
+    return list
 end
 
 local function BuildSpellMap(auras)
@@ -109,20 +130,6 @@ local function BuildExcludeSpellMap()
         addAuraBlacklistTable(CellDB["auraBlacklist"]["HELPFUL"])
     end
 
-    local layout = Cell.vars and Cell.vars.currentLayoutTable
-    if layout and layout.indicators then
-        for _, t in ipairs(layout.indicators) do
-            if t and t.enabled and t.auraType == "buff" and t.name ~= "Healers"
-                and not t.keepInHealers and type(t.auras) == "table" then
-                for k, v in pairs(t.auras) do
-                    local n = tonumber(v)
-                    if not (n and n > 0) then n = tonumber(k) end
-                    addId(n)
-                end
-            end
-        end
-    end
-
     local alts = Cell.AuraBlacklist and Cell.AuraBlacklist.AlternateSpellIDs
     if type(alts) == "table" then
         for altId, primaryId in pairs(alts) do
@@ -139,6 +146,9 @@ end
 
 local function BuildFilter(castBy)
     if castBy == "anyone" then
+        return "HELPFUL"
+    end
+    if castBy == "others" then
         return "HELPFUL"
     end
     return "HELPFUL|PLAYER"
@@ -208,6 +218,14 @@ local function GetCellDurationFormatter()
     return nil
 end
 
+local function ShouldShowDuration(cfg)
+    local v = cfg and cfg.showDuration
+    if v == false or v == nil or v == 0 then
+        return false
+    end
+    return true
+end
+
 local function ResolveAnimationStyle(cfg)
     if type(cfg) == "table" and type(cfg.animationStyle) == "string" then
         local s = cfg.animationStyle
@@ -233,83 +251,106 @@ local function AttachInvisibleCooldown(button)
     return cooldown
 end
 
-local function InitAuraButton(button)
-    local cfg = cachedConfig
-    local size = (cfg and cfg.size and cfg.size[1]) or 13
-    pcall(button.SetSize, button, size, size)
-    pcall(button.SetMouseClickEnabled, button, false)
+local function MakeInitAuraButton(cfg)
+    return function(button)
+        local sizeW = (cfg.size and cfg.size[1]) or 13
+        local sizeH = (cfg.size and cfg.size[2]) or sizeW
+        pcall(button.SetSize, button, sizeW, sizeH)
+        pcall(button.SetMouseClickEnabled, button, false)
 
-    local icon = button:CreateTexture(nil, "ARTWORK")
-    icon:SetAllPoints(button)
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    button:SetIcon(icon)
+        local icon = button:CreateTexture(nil, "ARTWORK")
+        icon:SetAllPoints(button)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        button:SetIcon(icon)
 
-    local style = ResolveAnimationStyle(cfg)
-    local animFrame
+        local style = ResolveAnimationStyle(cfg)
+        local animFrame
 
-    if style == "none" then
-        animFrame = AttachInvisibleCooldown(button)
-    elseif style == "vertical" and type(button.SetDurationBar) == "function" then
-        local bar = CreateFrame("StatusBar", nil, button)
-        bar:SetAllPoints(button)
-        bar:EnableMouse(false)
-        bar:SetOrientation("VERTICAL")
-        bar:SetReverseFill(true)
-        bar:SetStatusBarTexture(Cell.vars.whiteTexture)
-        local barTex = bar:GetStatusBarTexture()
-        if barTex then
-            barTex:SetVertexColor(0, 0, 0, 0.77)
+        if style == "none" then
+            animFrame = AttachInvisibleCooldown(button)
+        elseif style == "vertical" and type(button.SetDurationBar) == "function" then
+            local bar = CreateFrame("StatusBar", nil, button)
+            bar:SetAllPoints(button)
+            bar:EnableMouse(false)
+            bar:SetOrientation("VERTICAL")
+            bar:SetReverseFill(true)
+            bar:SetStatusBarTexture(Cell.vars.whiteTexture)
+            local barTex = bar:GetStatusBarTexture()
+            if barTex then
+                barTex:SetVertexColor(0, 0, 0, 0.77)
+            end
+            local barOpts = {}
+            if Enum and Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.ElapsedTime then
+                barOpts.direction = Enum.StatusBarTimerDirection.ElapsedTime
+            end
+            if Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate then
+                barOpts.interpolation = Enum.StatusBarInterpolation.Immediate
+            end
+            pcall(button.SetDurationBar, button, bar, barOpts)
+            animFrame = bar
+        else
+            local cooldown = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
+            cooldown:SetAllPoints(button)
+            cooldown:EnableMouse(false)
+            cooldown:SetHideCountdownNumbers(true)
+            cooldown:SetDrawEdge(false)
+            cooldown:SetDrawBling(false)
+            cooldown:SetReverse(true)
+            if Cell.vars and Cell.vars.whiteTexture then
+                cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
+                cooldown:SetSwipeColor(0, 0, 0, 0.77)
+            end
+            pcall(button.SetDurationCooldown, button, cooldown)
+            animFrame = cooldown
         end
-        local barOpts = {}
-        if Enum and Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.ElapsedTime then
-            barOpts.direction = Enum.StatusBarTimerDirection.ElapsedTime
-        end
-        if Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate then
-            barOpts.interpolation = Enum.StatusBarInterpolation.Immediate
-        end
-        pcall(button.SetDurationBar, button, bar, barOpts)
-        animFrame = bar
-    else
-        local cooldown = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
-        cooldown:SetAllPoints(button)
-        cooldown:EnableMouse(false)
-        cooldown:SetHideCountdownNumbers(true)
-        cooldown:SetDrawEdge(false)
-        cooldown:SetDrawBling(false)
-        cooldown:SetReverse(true)
-        if Cell.vars and Cell.vars.whiteTexture then
-            cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
-            cooldown:SetSwipeColor(0, 0, 0, 0.77)
-        end
-        pcall(button.SetDurationCooldown, button, cooldown)
-        animFrame = cooldown
-    end
 
-    local textHost = CreateFrame("Frame", nil, button)
-    textHost:SetAllPoints(button)
-    textHost:EnableMouse(false)
-    textHost:SetFrameLevel(((animFrame and animFrame.GetFrameLevel and animFrame:GetFrameLevel()) or 1) + 4)
+        local textHost = CreateFrame("Frame", nil, button)
+        textHost:SetAllPoints(button)
+        textHost:EnableMouse(false)
+        local baseLevel = (animFrame and animFrame.GetFrameLevel and animFrame:GetFrameLevel())
+            or (button.GetFrameLevel and button:GetFrameLevel())
+            or 1
+        textHost:SetFrameLevel(baseLevel + 10)
 
-    if not cfg or cfg.showStack ~= false then
-        local stack = textHost:CreateFontString(nil, "OVERLAY")
-        stack:SetPoint("TOPRIGHT", 2, 1)
-        stack:SetJustifyH("RIGHT")
-        StyleFont(stack, cfg and cfg.font and cfg.font[1], 11)
-        pcall(button.SetApplicationCount, button, stack, {})
-    end
-
-    if cfg and cfg.showDuration == true then
-        local duration = textHost:CreateFontString(nil, "OVERLAY")
-        duration:SetPoint("BOTTOMRIGHT", 2, -1)
-        duration:SetJustifyH("RIGHT")
-        StyleFont(duration, cfg.font and cfg.font[2], 11)
-        local opts = {}
-        local formatter = GetCellDurationFormatter()
-        if formatter then
-            opts.textFormatter = formatter
+        if cfg.showStack ~= false then
+            local stack = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+            local fontCfg = cfg.font and cfg.font[1]
+            local ox = (type(fontCfg) == "table" and fontCfg[6]) or 2
+            local oy = (type(fontCfg) == "table" and fontCfg[7]) or 1
+            stack:ClearAllPoints()
+            stack:SetPoint("TOPRIGHT", textHost, "TOPRIGHT", ox, oy)
+            stack:SetJustifyH("RIGHT")
+            StyleFont(stack, fontCfg, 11)
+            if type(fontCfg) == "table" and type(fontCfg[8]) == "table" then
+                stack:SetTextColor(fontCfg[8][1] or 1, fontCfg[8][2] or 1, fontCfg[8][3] or 1, fontCfg[8][4] or 1)
+            else
+                stack:SetTextColor(1, 1, 1, 1)
+            end
+            pcall(button.SetApplicationCount, button, stack, {})
         end
-        if not pcall(button.SetDurationText, button, duration, opts) then
-            pcall(button.SetDurationText, button, duration, { textFormatter = formatter })
+
+        if ShouldShowDuration(cfg) then
+            local duration = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+            local fontCfg = cfg.font and cfg.font[2]
+            local ox = (type(fontCfg) == "table" and fontCfg[6]) or 2
+            local oy = (type(fontCfg) == "table" and fontCfg[7]) or -1
+            duration:ClearAllPoints()
+            duration:SetPoint("BOTTOMRIGHT", textHost, "BOTTOMRIGHT", ox, oy)
+            duration:SetJustifyH("RIGHT")
+            StyleFont(duration, fontCfg, 11)
+            if type(fontCfg) == "table" and type(fontCfg[8]) == "table" then
+                duration:SetTextColor(fontCfg[8][1] or 1, fontCfg[8][2] or 1, fontCfg[8][3] or 1, fontCfg[8][4] or 1)
+            else
+                duration:SetTextColor(1, 1, 1, 1)
+            end
+            local opts = {}
+            local formatter = GetCellDurationFormatter()
+            if formatter then
+                opts.textFormatter = formatter
+            end
+            if not pcall(button.SetDurationText, button, duration, opts) then
+                pcall(button.SetDurationText, button, duration, { textFormatter = formatter })
+            end
         end
     end
 end
@@ -344,10 +385,10 @@ end
 
 local function AnchorContainer(container, unitButton, cfg)
     local sizeW = (cfg.size and cfg.size[1]) or 13
-    local sizeH = (cfg.size and cfg.size[2]) or 13
+    local sizeH = (cfg.size and cfg.size[2]) or sizeW
     local spacingX = (cfg.spacing and cfg.spacing[1]) or 0
     local spacingY = (cfg.spacing and cfg.spacing[2]) or 0
-    local num = cfg.num or 5
+    local num = (cfg.type == "icon") and 1 or (cfg.num or 5)
     local numPerLine = cfg.numPerLine or num
     local pos = cfg.position or { "TOPRIGHT", "button", "TOPRIGHT", 0, 3 }
     local point = pos[1] or "TOPRIGHT"
@@ -368,12 +409,12 @@ local function AnchorContainer(container, unitButton, cfg)
         pcall(container.SetFlowLayoutAnchorPoint, container, point)
     end
 
-    local orientation = cfg.orientation or "right-to-left"
+    local orientation = cfg.orientation or "left-to-right"
     local FD = AnchorUtil and AnchorUtil.FlowDirection
     if FD and container.SetFlowLayoutGrowthDirection then
-        local h, v = FD.Left, FD.Down
-        if orientation == "left-to-right" then
-            h, v = FD.Right, FD.Down
+        local h, v = FD.Right, FD.Down
+        if orientation == "right-to-left" then
+            h, v = FD.Left, FD.Down
         elseif orientation == "top-to-bottom" then
             h, v = FD.Right, FD.Down
         elseif orientation == "bottom-to-top" then
@@ -388,8 +429,10 @@ local function AnchorContainer(container, unitButton, cfg)
         end
         pcall(container.SetFlowLayoutMaximumLineSize, container, rowWidth)
     end
-    if container.HasAuraGroup and container:HasAuraGroup(GROUP_KEY) and container.SetAuraGroupLayout then
-        pcall(container.SetAuraGroupLayout, container, GROUP_KEY, {
+
+    local groupKey = cfg.indicatorName
+    if container.HasAuraGroup and container:HasAuraGroup(groupKey) and container.SetAuraGroupLayout then
+        pcall(container.SetAuraGroupLayout, container, groupKey, {
             elementWidth = sizeW,
             elementHeight = sizeH,
             elementSpacing = spacingX,
@@ -401,7 +444,7 @@ local function AnchorContainer(container, unitButton, cfg)
     container:SetFrameLevel((parent:GetFrameLevel() or 0) + (cfg.frameLevel or 5))
 end
 
-local function CreateHealersContainer(unitButton, cfg)
+local function CreateCustomContainer(unitButton, cfg)
     local spellMap = BuildSpellMap(cfg.auras)
     if SpellMapCount(spellMap) == 0 then
         return nil, "empty spell list"
@@ -415,11 +458,13 @@ local function CreateHealersContainer(unitButton, cfg)
     end
 
     local sizeW = (cfg.size and cfg.size[1]) or 13
-    local sizeH = (cfg.size and cfg.size[2]) or 13
+    local sizeH = (cfg.size and cfg.size[2]) or sizeW
     local spacingX = (cfg.spacing and cfg.spacing[1]) or 0
     local spacingY = (cfg.spacing and cfg.spacing[2]) or 0
     local filter = BuildFilter(cfg.castBy)
     local unit = ResolveUnit(unitButton) or "player"
+    local maxCount = (cfg.type == "icon") and 1 or (cfg.num or 5)
+    local groupKey = cfg.indicatorName
 
     container:SetEnabled(false)
     container:Hide()
@@ -427,12 +472,12 @@ local function CreateHealersContainer(unitButton, cfg)
     pcall(container.SetUnit, container, unit)
 
     local groupOpts = {
-        maxFrameCount = cfg.num or 5,
+        maxFrameCount = maxCount,
         candidateFilters = {
             includeSpellIDs = spellMap,
             excludeSpellIDs = BuildExcludeSpellMap(),
         },
-        initializeFrame = InitAuraButton,
+        initializeFrame = MakeInitAuraButton(cfg),
         layout = {
             elementWidth = sizeW,
             elementHeight = sizeH,
@@ -447,7 +492,7 @@ local function CreateHealersContainer(unitButton, cfg)
         groupOpts.sortDirection = AuraContainerSortDirection.Normal
     end
 
-    local addOk, addErr = pcall(container.AddAuraGroup, container, GROUP_KEY, filter, groupOpts)
+    local addOk, addErr = pcall(container.AddAuraGroup, container, groupKey, filter, groupOpts)
     if not addOk then
         container:SetParent(nil)
         return nil, tostring(addErr)
@@ -457,12 +502,12 @@ local function CreateHealersContainer(unitButton, cfg)
     if container.UpdateAllAuras then
         pcall(container.UpdateAllAuras, container)
     end
-
     return container
 end
 
 local function DriveContainer(unitButton, cfg, enable)
-    local st = stateByButton[unitButton]
+    local map = stateByButton[unitButton]
+    local st = map and map[cfg.indicatorName]
     if not (st and st.container and cfg) then return end
     local unit = ResolveUnit(unitButton)
     AnchorContainer(st.container, unitButton, cfg)
@@ -483,12 +528,18 @@ local function DriveContainer(unitButton, cfg, enable)
     end
 end
 
-local function EnsureContainer(unitButton, cfg, allowCreate)
+local function EnsureIndicatorContainer(unitButton, cfg, allowCreate)
     if not ProbeSupported() then return false end
-    local st = stateByButton[unitButton]
+    local map = stateByButton[unitButton]
+    if not map then
+        map = {}
+        stateByButton[unitButton] = map
+    end
+    local name = cfg.indicatorName
+    local st = map[name]
     if not st then
         st = {}
-        stateByButton[unitButton] = st
+        map[name] = st
     end
 
     if st.createFailed and st.failedVersion == INIT_VERSION then
@@ -509,18 +560,17 @@ local function EnsureContainer(unitButton, cfg, allowCreate)
     if st.container then
         return true
     end
-
     if not allowCreate then
         return false
     end
 
-    local container, err = CreateHealersContainer(unitButton, cfg)
+    local container, err = CreateCustomContainer(unitButton, cfg)
     if not container then
         st.createFailed = true
         st.failedVersion = INIT_VERSION
-        if not Cell.vars._healersAuraDisplayWarned then
-            Cell.vars._healersAuraDisplayWarned = true
-            F.Print("|cFFFF7D7DHealers AuraContainer failed:|r " .. tostring(err))
+        if not Cell.vars._customAuraDisplayWarned then
+            Cell.vars._customAuraDisplayWarned = true
+            F.Print("|cFFFF7D7DCustom AuraContainer failed:|r " .. tostring(err))
         end
         return false
     end
@@ -545,10 +595,12 @@ local function PumpBuildQueue()
     end
     if not b then return end
 
-    local cfg = cachedConfig or ResolveHealersConfig()
-    cachedConfig = cfg
-    if cfg and EnsureContainer(b, cfg, true) then
-        DriveContainer(b, cfg, true)
+    local list = cachedConfigs or RefreshCachedConfigs()
+    for i = 1, #list do
+        local cfg = list[i]
+        if EnsureIndicatorContainer(b, cfg, true) then
+            DriveContainer(b, cfg, true)
+        end
     end
 
     if #buildQueue > 0 and not buildTicker then
@@ -567,74 +619,103 @@ end
 
 local function SyncButton(unitButton, allowCreate)
     if not unitButton or not unitButton._indicatorsReady then return end
-    local cfg = ResolveHealersConfig()
-    cachedConfig = cfg
-    if not cfg then
-        local st = stateByButton[unitButton]
-        if st then
-            DestroyContainer(st)
-            stateByButton[unitButton] = nil
-        end
-        return
-    end
-
+    local list = RefreshCachedConfigs()
     if allowCreate == nil then
         allowCreate = true
     end
 
-    if EnsureContainer(unitButton, cfg, false) then
-        DriveContainer(unitButton, cfg, true)
-    elseif allowCreate then
+    local seen = {}
+    local needsBuild = false
+    for i = 1, #list do
+        local cfg = list[i]
+        local name = cfg.indicatorName
+        seen[name] = true
+        if EnsureIndicatorContainer(unitButton, cfg, false) then
+            DriveContainer(unitButton, cfg, true)
+        else
+            needsBuild = true
+        end
+    end
+
+    if needsBuild and allowCreate then
         EnqueueBuild(unitButton)
+    end
+
+    local map = stateByButton[unitButton]
+    if map then
+        for name, st in pairs(map) do
+            if not seen[name] then
+                if not InCombatLockdown() then
+                    DestroyContainer(st)
+                    map[name] = nil
+                elseif st.container then
+                    st.container:SetEnabled(false)
+                    st.container:Hide()
+                end
+                ShowLegacy(unitButton, name)
+            end
+        end
     end
 end
 
-function I.ShouldSkipLegacyHealers(indicatorTable)
-    return ProbeSupported()
-        and indicatorTable
-        and indicatorTable.name == "Healers"
+function I.ShouldSkipLegacyCustom(indicatorTable)
+    if not ProbeSupported() or not indicatorTable then
+        return false
+    end
+    return IsSupportedCustomCfg(indicatorTable)
 end
 
-function I.HealersAuraDisplayActive()
+function I.CustomAuraDisplayActive()
     return ProbeSupported()
 end
 
-function I.SyncHealersAuraDisplay(unitButton)
+function I.SyncCustomAuraDisplays(unitButton)
     if not SUPPORTED then return end
     SyncButton(unitButton, true)
 end
 
-function I.UpdateHealersAuraDisplayUnit(unitButton)
+function I.UpdateCustomAuraDisplays(unitButton)
     if not SUPPORTED then return end
     SyncButton(unitButton, true)
 end
 
-function I.RefreshAllHealersAuraDisplays()
+function I.RefreshAllCustomAuraDisplays()
     if not SUPPORTED then return end
-    cachedConfig = ResolveHealersConfig()
+    cachedConfigs = nil
     F.IterateAllUnitButtons(function(b)
-        local st = stateByButton[b]
-        DestroyContainer(st)
-        stateByButton[b] = nil
+        local map = stateByButton[b]
+        if map then
+            for _, st in pairs(map) do
+                DestroyContainer(st)
+            end
+            stateByButton[b] = nil
+        end
         EnqueueBuild(b)
     end, true)
 end
 
 if SUPPORTED then
-    Cell.RegisterCallback("UpdateIndicators", "HealersAuraDisplay_UpdateIndicators", function(layout, indicatorName, setting)
-        if not layout or not indicatorName or setting == "create" or setting == "remove"
+    Cell.RegisterCallback("UpdateIndicators", "CustomAuraDisplay_UpdateIndicators", function(layout, indicatorName, setting)
+        if not layout or not indicatorName or not tostring(indicatorName):find("^indicator") then
+            if not layout or not indicatorName then
+                C_Timer.After(0, I.RefreshAllCustomAuraDisplays)
+            end
+            return
+        end
+        if setting == "create" or setting == "remove"
             or setting == "auras" or setting == "position" or setting == "size"
-            or setting == "num" or setting == "orientation" or setting == "spacing"
-            or setting == "castBy" or setting == "enabled" or setting == "frameLevel"
-            or setting == "showAnimation" or setting == "animationStyle"
+            or setting == "num" or setting == "numPerLine" or setting == "orientation"
+            or setting == "spacing" or setting == "castBy" or setting == "enabled"
+            or setting == "frameLevel" or setting == "showAnimation" or setting == "animationStyle"
             or setting == "showDuration" or setting == "showStack"
-            or setting == "checkbutton" or setting == "font" then
-            C_Timer.After(0, I.RefreshAllHealersAuraDisplays)
+            or setting == "checkbutton" or setting == "font"
+            or setting == "type" or setting == "auraType" then
+            C_Timer.After(0, I.RefreshAllCustomAuraDisplays)
         end
     end)
 
-    Cell.RegisterCallback("UpdateLayout", "HealersAuraDisplay_UpdateLayout", function()
-        C_Timer.After(0, I.RefreshAllHealersAuraDisplays)
+    Cell.RegisterCallback("UpdateLayout", "CustomAuraDisplay_UpdateLayout", function()
+        C_Timer.After(0, I.RefreshAllCustomAuraDisplays)
     end)
 
     local boot = CreateFrame("Frame")
@@ -643,7 +724,7 @@ if SUPPORTED then
     boot:RegisterEvent("PLAYER_REGEN_ENABLED")
     boot:SetScript("OnEvent", function(_, event)
         if event == "PLAYER_ENTERING_WORLD" then
-            C_Timer.After(0.5, I.RefreshAllHealersAuraDisplays)
+            C_Timer.After(0.5, I.RefreshAllCustomAuraDisplays)
             return
         end
         F.IterateAllUnitButtons(function(b)

@@ -35,6 +35,7 @@ select(2, ...).L = setmetatable({
     ["buffByMe"] = "Only show buffs I can apply",
     ["trackByName"] = "Track by name",
     ["keepInHealers"] = "Keep in Healers indicator",
+    ["keepInHealersTip"] = "When enabled, this buff also stays visible in the Healers indicator.|When disabled, it only shows here and is removed from Healers.",
     ["Healers indicator is up to date."] = "Healers indicator is up to date.",
     ["Healers indicator already exists. Add new spells?"] = "Healers indicator already exists. Add |cFFFFB5C5%d|r new spell(s)?",
     ["showDuration"] = "Show duration text",
@@ -104,6 +105,16 @@ select(2, ...).L = setmetatable({
     ["BACKUP_TIPS2"] = "Note for Classic players: Backups do not include Click-Castings and Layout Auto Switch of other characters",
     ["CHANGELOGS"] = [[
 
+
+        <h1>r277.9.2 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Custom Icon / Icons buff indicators now work correctly in combat (same reliable display as Healers).</p>
+        <p>* Custom Icon / Icons: duration text is a simple on/off checkbox.</p>
+        <p>* Custom Icon / Icons: choose how the cooldown looks - none, top to bottom, or circular.</p>
+        <p>* Custom Icon / Icons: glow type setting removed (it did not apply there).</p>
+        <p>* Added an info button next to "Keep in Healers indicator" that explains what the option does.</p>
+        <p>* Fixed Health Thresholds: enabling the indicator no longer causes an error, and it works again in and out of combat.</p>
+        <br/>
 
         <h1>r277.9.1 - NeRgY</h1>
         <h2>Retail</h2>

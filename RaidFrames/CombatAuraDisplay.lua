@@ -464,8 +464,6 @@ end
 local function HideLegacy(unitButton, indicatorName)
     local ind = unitButton.indicators and indicatorName and unitButton.indicators[indicatorName]
     if not ind then return end
-    -- Dispels: keep parent alive so health-bar highlight can show;
-    -- type icons are owned by the AuraContainer.
     if indicatorName == "dispels" then
         if type(ind) == "table" then
             for i = 1, 10 do
@@ -692,7 +690,6 @@ local function EnsureIndicatorContainer(unitButton, indicatorName, cfg, allowCre
         local p = st.container:GetParent()
         local highlightChanged = indicatorName == "dispels"
             and st.highlightType ~= NormalizeDispelHighlightType(cfg.highlightType)
-        -- PTR 7+: AuraContainers may be created/recreated in combat.
         if (p == UIParent or p == nil or st.initVersion ~= INIT_VERSION or highlightChanged) and allowCreate then
             DestroyContainer(st)
         end
@@ -754,7 +751,6 @@ local function PumpBuildQueue()
     if not b then return end
 
     RefreshCachedLayouts()
-    -- One indicator create per tick (AddAuraGroup is expensive).
     for i = 1, #TRACKED do
         local name = TRACKED[i]
         local cfg = cachedLayouts and cachedLayouts[name]
@@ -793,7 +789,6 @@ EnqueueBuild = function(unitButton)
     end
 end
 
---- Always-on: enable containers whenever the indicator is in the layout.
 local function SyncButton(unitButton, allowCreate)
     if not unitButton or not unitButton._indicatorsReady then return end
     RefreshCachedLayouts()
@@ -820,7 +815,6 @@ local function SyncButton(unitButton, allowCreate)
         EnqueueBuild(unitButton)
     end
 
-    -- Drop containers for disabled indicators (safe OOC; in combat only hide).
     local map = stateByButton[unitButton]
     if map then
         for name, st in pairs(map) do
@@ -874,7 +868,6 @@ end
 
 function I.UpdateCombatAuraDisplays(unitButton)
     if not SUPPORTED then return end
-    -- Aura events: drive existing shells; enqueue missing creates.
     SyncButton(unitButton, true)
 end
 
@@ -905,8 +898,6 @@ if SUPPORTED then
             C_Timer.After(0.5, I.RefreshAllCombatAuraDisplays)
             return
         end
-        -- Always-on: regen events only re-sync / finish queued builds.
-        -- Do NOT disable containers or restore legacy paint on REGEN_ENABLED.
         RefreshCachedLayouts()
         F.IterateAllUnitButtons(function(b)
             SyncButton(b, true)

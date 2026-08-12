@@ -193,7 +193,6 @@ local function SetOnUpdate(indicator, type, icon, stack, extra)
     end)
 end
 
--- Healers indicator: preview should follow per-indicator animationStyle (none/vertical/clock).
 local function ResolveHealersPreviewAnimationStyle(cfg)
     if type(cfg) == "table" and type(cfg.animationStyle) == "string" then
         local s = cfg.animationStyle
@@ -860,7 +859,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     indicator:SetTexture(t["texture"])
                 end
                 -- update animation
-                if t["name"] == "Healers" then
+                if t["name"] == "Healers" or t["animationStyle"] then
                     ApplyHealersPreviewAnimationStyle(indicator, ResolveHealersPreviewAnimationStyle(t))
                 elseif type(t["showAnimation"]) == "boolean" then
                     indicator:ShowAnimation(t["showAnimation"])
@@ -1181,7 +1180,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 indicator:ShowDuration(value["showDuration"])
             end
             -- update animation
-            if type(value["showAnimation"]) == "boolean" and value["name"] ~= "Healers" then
+            if type(value["showAnimation"]) == "boolean" and value["name"] ~= "Healers" and not value["animationStyle"] then
                 indicator:ShowAnimation(value["showAnimation"])
             end
             -- update stack
@@ -1205,7 +1204,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 indicator:SetupGlow(value["glowOptions"])
             end
             InitIndicator(indicatorName)
-            if value["name"] == "Healers" then
+            if value["name"] == "Healers" or value["animationStyle"] then
                 ApplyHealersPreviewAnimationStyle(indicator, ResolveHealersPreviewAnimationStyle(value))
             end
             indicator:Show()
@@ -1928,9 +1927,7 @@ local function ShowIndicatorSettings(id)
             settingsTable = {"enabled", "checkbutton3:fadeOut", "auras-picker", "thickness", "frameLevel:50"}
         end
 
-        -- Healers (AuraContainer on 12.1): animation style dropdown + simple duration checkbox.
-        if indicatorTable["name"] == "Healers" and (indicatorType == "icon" or indicatorType == "icons") then
-            -- Legacy threshold dropdown values (0.75, 10, …) → on/off boolean.
+        if Cell.isRetail and (indicatorType == "icon" or indicatorType == "icons") then
             if type(indicatorTable["showDuration"]) == "number" then
                 indicatorTable["showDuration"] = true
             elseif type(indicatorTable["showDuration"]) ~= "boolean" then
@@ -1952,8 +1949,7 @@ local function ShowIndicatorSettings(id)
 
         if indicatorTable["auraType"] == "buff" and indicatorTable["name"] ~= "Healers" then
             tinsert(settingsTable, 3, "checkbutton2:trackByName")
-            tinsert(settingsTable, 4, "checkbutton:keepInHealers")
-            -- tinsert(settingsTable, 5, "showOn")
+            tinsert(settingsTable, 4, "checkbutton:keepInHealers:" .. (L["keepInHealersTip"] or ""))
         end
 
         -- tips
@@ -2270,7 +2266,7 @@ local function ShowIndicatorSettings(id)
                 Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, currentSetting, value)
             end)
 
-        -- animationStyle (Healers AuraContainer)
+        -- animationStyle
         elseif currentSetting == "animationStyle" then
             local style = indicatorTable["animationStyle"]
             if type(style) ~= "string" then
@@ -2694,8 +2690,7 @@ local function UpdatePreviewCooldownStyle(style)
 
     for _, indicator in pairs(previewButton.indicators) do
         if indicator and indicator.SetCooldownStyle then
-            -- Healers keeps its own animationStyle; don't override with appearance.
-            if indicator.configs and indicator.configs.name == "Healers" then
+            if indicator.configs and (indicator.configs.name == "Healers" or indicator.configs.animationStyle) then
                 ApplyHealersPreviewAnimationStyle(indicator, ResolveHealersPreviewAnimationStyle(indicator.configs))
             else
                 indicator:SetCooldownStyle(style)

@@ -726,6 +726,9 @@ local function HandleIndicators(b)
     if I.SyncHealersAuraDisplay then
         I.SyncHealersAuraDisplay(b)
     end
+    if I.SyncCustomAuraDisplays then
+        I.SyncCustomAuraDisplays(b)
+    end
     if I.SyncCombatAuraDisplays then
         I.SyncCombatAuraDisplays(b)
     end
@@ -756,6 +759,9 @@ local function Process(b)
             UnitButton_UpdateAuras(b)
             if I.SyncHealersAuraDisplay then
                 I.SyncHealersAuraDisplay(b)
+            end
+            if I.SyncCustomAuraDisplays then
+                I.SyncCustomAuraDisplays(b)
             end
             if I.SyncCombatAuraDisplays then
                 I.SyncCombatAuraDisplays(b)
@@ -2437,6 +2443,9 @@ UnitButton_UpdateAuras = function(self, updateInfo)
         if I.UpdateHealersAuraDisplayUnit then
             I.UpdateHealersAuraDisplayUnit(self)
         end
+        if I.UpdateCustomAuraDisplays then
+            I.UpdateCustomAuraDisplays(self)
+        end
         if I.UpdateCombatAuraDisplays then
             I.UpdateCombatAuraDisplays(self)
         end
@@ -3836,6 +3845,9 @@ local function UnitButton_UpdateVehicleStatus(self)
     if I.UpdateHealersAuraDisplayUnit then
         I.UpdateHealersAuraDisplayUnit(self)
     end
+    if I.UpdateCustomAuraDisplays then
+        I.UpdateCustomAuraDisplays(self)
+    end
     if I.UpdateCombatAuraDisplays then
         I.UpdateCombatAuraDisplays(self)
     end
@@ -4679,6 +4691,9 @@ local function UnitButton_OnAttributeChanged(self, name, value)
             end
             if I.UpdateHealersAuraDisplayUnit then
                 I.UpdateHealersAuraDisplayUnit(self)
+            end
+            if I.UpdateCustomAuraDisplays then
+                I.UpdateCustomAuraDisplays(self)
             end
             if I.UpdateCombatAuraDisplays then
                 I.UpdateCombatAuraDisplays(self)

@@ -753,13 +753,12 @@ local function Dispels_SetDispels(self, dispelTypes)
                 found = true
                 local r, g, b = I.GetDebuffTypeColor(dispelType)
                 if self.highlightType == "edge-top" or self.highlightType == "edge-bottom" or self.highlightType == "gradient-sharp" then
-                    self.highlight:SetTexture("Interface\\AddOns\\Cell\\Media\\gradient-fade-bottom")
-                    -- Texture is opaque at the top by default; flip for bottom edge.
                     if self.highlightType == "edge-bottom" or self.highlightType == "gradient-sharp" then
-                        self.highlight:SetTexCoord(0, 1, 1, 0)
+                        self.highlight:SetTexture("Interface\\AddOns\\Cell\\Media\\Edge-Fade-Bottom")
                     else
-                        self.highlight:SetTexCoord(0, 1, 0, 1)
+                        self.highlight:SetTexture("Interface\\AddOns\\Cell\\Media\\Edge-Fade-Top")
                     end
+                    self.highlight:SetTexCoord(0, 1, 0, 1)
                     self.highlight:SetVertexColor(r, g, b, 1)
                 else -- entire (full health bar)
                     self.highlight:SetTexture(Cell.vars.whiteTexture)
@@ -856,13 +855,12 @@ local function Dispels_UpdateHighlight(self, highlightType)
     self.highlight:ClearAllPoints()
     self.highlight:SetAllPoints(self.parent.widgets.healthBar)
     self.highlight:SetDrawLayer("ARTWORK", 0)
-    if highlightType == "edge-top" or highlightType == "edge-bottom" then
-        self.highlight:SetTexture("Interface\\AddOns\\Cell\\Media\\gradient-fade-bottom")
-        if highlightType == "edge-bottom" then
-            self.highlight:SetTexCoord(0, 1, 1, 0)
-        else
-            self.highlight:SetTexCoord(0, 1, 0, 1)
-        end
+    if highlightType == "edge-top" then
+        self.highlight:SetTexture("Interface\\AddOns\\Cell\\Media\\Edge-Fade-Top")
+        self.highlight:SetTexCoord(0, 1, 0, 1)
+    elseif highlightType == "edge-bottom" then
+        self.highlight:SetTexture("Interface\\AddOns\\Cell\\Media\\Edge-Fade-Bottom")
+        self.highlight:SetTexCoord(0, 1, 0, 1)
     else
         self.highlight:SetTexture(Cell.vars.whiteTexture)
         self.highlight:SetTexCoord(0, 1, 0, 1)
@@ -2859,10 +2857,17 @@ function I.CreateHealthThresholds(parent)
     healthThresholds:SetAllPoints(parent.widgets.healthBar)
 
     healthThresholds.tex = healthThresholds:CreateTexture(nil, "ARTWORK")
+    healthThresholds._midnightCurves = nil
+    healthThresholds._midnightCurveKey = nil
 
     function healthThresholds:SetThickness(thickness)
         healthThresholds.thickness = thickness
         P.Size(healthThresholds.tex, thickness, thickness)
+        for i = 1, #healthThresholds do
+            if healthThresholds[i] then
+                P.Size(healthThresholds[i], thickness, thickness)
+            end
+        end
     end
 
     function healthThresholds:SetOrientation(orientation)
@@ -2885,6 +2890,11 @@ function I.CreateHealthThresholds(parent)
                 break
             end
         end
+        for i = 1, #healthThresholds do
+            if healthThresholds[i] then
+                healthThresholds[i]:Hide()
+            end
+        end
         if found then
             if healthThresholds.orientation == "horizontal" then
                 healthThresholds.tex:SetPoint("LEFT", Cell.vars.healthThresholds[found][1] * parent.widgets.healthBar:GetWidth(), 0)
@@ -2892,10 +2902,123 @@ function I.CreateHealthThresholds(parent)
                 healthThresholds.tex:SetPoint("BOTTOM", 0, Cell.vars.healthThresholds[found][1] * parent.widgets.healthBar:GetHeight())
             end
             healthThresholds.tex:SetColorTexture(unpack(Cell.vars.healthThresholds[found][2]))
+            healthThresholds.tex:Show()
             healthThresholds:Show()
         else
+            healthThresholds.tex:Hide()
             healthThresholds:Hide()
         end
+    end
+
+    local function EnsureMidnightTexturesAndCurves()
+        local thresholds = Cell.vars.healthThresholds
+        if type(thresholds) ~= "table" or #thresholds == 0 then
+            healthThresholds._midnightCurves = nil
+            healthThresholds._midnightCurveKey = nil
+            return false
+        end
+
+        local keyParts = {}
+        for i, t in ipairs(thresholds) do
+            keyParts[i] = tostring(t[1] or 0)
+        end
+        local key = table.concat(keyParts, ",")
+        if healthThresholds._midnightCurves and healthThresholds._midnightCurveKey == key then
+            return true
+        end
+        if not C_CurveUtil or not C_CurveUtil.CreateCurve then
+            healthThresholds._midnightCurves = nil
+            healthThresholds._midnightCurveKey = nil
+            return false
+        end
+
+        local curves = {}
+        for i, t in ipairs(thresholds) do
+            local curr = t[1] or 0
+            local prev = (i > 1 and thresholds[i - 1][1]) or 0
+            local curve = C_CurveUtil.CreateCurve()
+            if i == 1 then
+                curve:AddPoint(0.0, 1.0)
+                curve:AddPoint(math.max(curr - 0.0001, 0), 1.0)
+                curve:AddPoint(curr, 0.0)
+                curve:AddPoint(1.0, 0.0)
+            else
+                curve:AddPoint(0.0, 0.0)
+                curve:AddPoint(math.max(prev - 0.0001, 0), 0.0)
+                curve:AddPoint(prev, 1.0)
+                curve:AddPoint(math.max(curr - 0.0001, prev), 1.0)
+                curve:AddPoint(curr, 0.0)
+                curve:AddPoint(1.0, 0.0)
+            end
+            curves[i] = curve
+
+            local tex = healthThresholds[i] or healthThresholds:CreateTexture(nil, "ARTWORK")
+            healthThresholds[i] = tex
+            P.Size(tex, healthThresholds.thickness or 1, healthThresholds.thickness or 1)
+            tex:SetColorTexture(unpack(t[2]))
+            tex:ClearAllPoints()
+            if healthThresholds.orientation == "horizontal" then
+                tex:SetPoint("TOP")
+                tex:SetPoint("BOTTOM")
+                tex:SetPoint("LEFT", curr * parent.widgets.healthBar:GetWidth(), 0)
+            else
+                tex:SetPoint("LEFT")
+                tex:SetPoint("RIGHT")
+                tex:SetPoint("BOTTOM", 0, curr * parent.widgets.healthBar:GetHeight())
+            end
+            tex:Hide()
+        end
+
+        for i = #thresholds + 1, #healthThresholds do
+            if healthThresholds[i] then
+                healthThresholds[i]:Hide()
+            end
+        end
+
+        healthThresholds._midnightCurves = curves
+        healthThresholds._midnightCurveKey = key
+        return true
+    end
+
+    function healthThresholds:CheckThresholdMidnight(calc)
+        if not calc then
+            self:Hide()
+            return
+        end
+
+        local unit = parent.states and parent.states.displayedUnit
+        if unit then
+            local health = UnitHealth(unit)
+            local healthMax = UnitHealthMax(unit)
+            if F.IsValueNonSecret(health) and F.IsValueNonSecret(healthMax) and type(healthMax) == "number" and healthMax > 0 then
+                self:CheckThreshold(health / healthMax)
+                return
+            end
+        end
+
+        if not (calc.EvaluateCurrentHealthPercent and EnsureMidnightTexturesAndCurves()) then
+            self:Hide()
+            return
+        end
+
+        healthThresholds.tex:Hide()
+        local curves = healthThresholds._midnightCurves
+        local thresholds = Cell.vars.healthThresholds
+        for i = 1, #thresholds do
+            local tex = healthThresholds[i]
+            local curve = curves[i]
+            if tex and curve then
+                local alpha = calc:EvaluateCurrentHealthPercent(curve)
+                tex:Show()
+                tex:SetAlpha(alpha)
+            end
+        end
+        for i = #thresholds + 1, #healthThresholds do
+            if healthThresholds[i] then
+                healthThresholds[i]:Hide()
+            end
+        end
+        self:Show()
     end
 
     if parent == CellIndicatorsPreviewButton then
@@ -2906,7 +3029,6 @@ function I.CreateHealthThresholds(parent)
                 healthThresholds[i] = healthThresholds[i] or healthThresholds:CreateTexture(nil, "ARTWORK")
                 P.Size(healthThresholds[i], healthThresholds.thickness, healthThresholds.thickness)
                 healthThresholds[i]:SetColorTexture(unpack(t[2]))
-                -- healthThresholds[i]:SetBlendMode("ADD")
 
                 healthThresholds[i]:ClearAllPoints()
                 if healthThresholds.orientation == "horizontal" then
@@ -2918,9 +3040,9 @@ function I.CreateHealthThresholds(parent)
                     healthThresholds[i]:SetPoint("RIGHT")
                     healthThresholds[i]:SetPoint("BOTTOM", 0, t[1] * parent.widgets.healthBar:GetHeight())
                 end
+                healthThresholds[i]:SetAlpha(1)
                 healthThresholds[i]:Show()
             end
-            -- hide unused
             for i = #Cell.vars.healthThresholds+1, #healthThresholds do
                 if healthThresholds[i] then
                     healthThresholds[i]:Hide()

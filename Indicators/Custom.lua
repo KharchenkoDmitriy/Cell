@@ -239,7 +239,8 @@ function I.ResetCustomIndicators(unitButton, auraType)
 
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
         if enabledIndicators[indicatorName] and unitButton.indicators[indicatorName]
-            and not (I.ShouldSkipLegacyHealers and I.ShouldSkipLegacyHealers(indicatorTable)) then
+            and not (I.ShouldSkipLegacyHealers and I.ShouldSkipLegacyHealers(indicatorTable))
+            and not (I.ShouldSkipLegacyCustom and I.ShouldSkipLegacyCustom(indicatorTable)) then
             unitButton.indicators[indicatorName]:Hide(true)
             if indicatorTable["num"] then
                 if not indicatorTable["found"][unit] then
@@ -382,7 +383,8 @@ function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
     -- Pass 2: process all indicators (Healers skips consumed spells)
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
         if indicatorName and enabledIndicators[indicatorName] and unitButton.indicators[indicatorName]
-            and not (I.ShouldSkipLegacyHealers and I.ShouldSkipLegacyHealers(indicatorTable)) then
+            and not (I.ShouldSkipLegacyHealers and I.ShouldSkipLegacyHealers(indicatorTable))
+            and not (I.ShouldSkipLegacyCustom and I.ShouldSkipLegacyCustom(indicatorTable)) then
             local spell  --* trackByName
             if indicatorTable["trackByName"] then
                 spell = auraInfo.name
@@ -451,7 +453,8 @@ function I.ShowCustomIndicators(unitButton, auraType)
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
         local indicator = unitButton.indicators[indicatorName]
         if indicator and enabledIndicators[indicatorName]
-            and not (I.ShouldSkipLegacyHealers and I.ShouldSkipLegacyHealers(indicatorTable)) then
+            and not (I.ShouldSkipLegacyHealers and I.ShouldSkipLegacyHealers(indicatorTable))
+            and not (I.ShouldSkipLegacyCustom and I.ShouldSkipLegacyCustom(indicatorTable)) then
             if indicatorTable["num"] then
                 local t = indicatorTable["found"][unit]
                 if t and t[1] then

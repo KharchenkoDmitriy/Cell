@@ -5,7 +5,7 @@ local F = Cell.funcs
 ---@type CellIndicatorFuncs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 1
+local INIT_VERSION = 3
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -51,7 +51,7 @@ end
 local function IsSupportedCustomCfg(t)
     if not (t and t.enabled and t.auraType == "buff") then return false end
     if t.name == "Healers" then return false end
-    if t.type ~= "icon" and t.type ~= "icons" then return false end
+    if t.type ~= "icon" and t.type ~= "icons" and t.type ~= "color" then return false end
     if type(t.indicatorName) ~= "string" or not t.indicatorName:find("^indicator") then return false end
     if type(t.auras) ~= "table" then return false end
     local hasSpell = false
@@ -251,6 +251,88 @@ local function AttachInvisibleCooldown(button)
     return cooldown
 end
 
+local function AnchorColorOverlay(tex, unitButton, cfg)
+    local anchor = (cfg and cfg.anchor) or "healthbar-current"
+    local w = unitButton.widgets
+    tex:ClearAllPoints()
+    if anchor == "healthbar-current" and w and w.healthBar then
+        tex:SetAllPoints(w.healthBar:GetStatusBarTexture())
+    elseif anchor == "healthbar-loss" and w and w.healthBarLoss then
+        tex:SetAllPoints(w.healthBarLoss)
+    elseif anchor == "healthbar-entire" and w and w.healthBar then
+        tex:SetAllPoints(w.healthBar)
+    else
+        local inset = CELL_BORDER_SIZE or 1
+        tex:SetPoint("TOPLEFT", unitButton, "TOPLEFT", inset, -inset)
+        tex:SetPoint("BOTTOMRIGHT", unitButton, "BOTTOMRIGHT", -inset, inset)
+    end
+end
+
+local function ApplyColorOverlay(solidTex, gradientTex, cfg, unitButton)
+    local colors = cfg and cfg.colors
+    if type(colors) ~= "table" then
+        solidTex:SetVertexColor(1, 0, 0.4, 1)
+        solidTex:Show()
+        gradientTex:Hide()
+        return
+    end
+
+    local kind = colors[1]
+    if kind == "gradient-vertical" or kind == "gradient-horizontal" then
+        local c1, c2 = colors[2], colors[3]
+        if type(c1) == "table" and type(c2) == "table" then
+            local dir = (kind == "gradient-vertical") and "VERTICAL" or "HORIZONTAL"
+            gradientTex:SetGradient(dir,
+                CreateColor(c1[1] or 1, c1[2] or 0, c1[3] or 0, c1[4] or 1),
+                CreateColor(c2[1] or 0, c2[2] or 0, c2[3] or 0, c2[4] or 1))
+        end
+        gradientTex:Show()
+        solidTex:Hide()
+        return
+    end
+
+    local r, g, b, a = 1, 0, 0.4, 1
+    if kind == "class-color" then
+        r, g, b = F.GetClassColor(unitButton.states and unitButton.states.class)
+        r, g, b, a = r or 1, g or 1, b or 1, 1
+    elseif kind == "change-over-time" and type(colors[4]) == "table" then
+        r, g, b, a = colors[4][1], colors[4][2], colors[4][3], colors[4][4] or 1
+    elseif type(colors[2]) == "table" then
+        r, g, b, a = colors[2][1], colors[2][2], colors[2][3], colors[2][4] or 1
+    end
+    solidTex:SetVertexColor(r, g, b, a)
+    solidTex:Show()
+    gradientTex:Hide()
+end
+
+local function MakeInitColorButton(cfg, unitButton)
+    return function(button)
+        pcall(button.SetSize, button, 0.001, 0.001)
+        pcall(button.SetMouseClickEnabled, button, false)
+
+        local dummy = button:CreateTexture(nil, "ARTWORK")
+        dummy:SetAllPoints(button)
+        dummy:SetColorTexture(0, 0, 0, 0)
+        pcall(button.SetIcon, button, dummy)
+
+        local solidTex = button:CreateTexture(nil, "ARTWORK", nil, 3)
+        solidTex:SetTexture(Cell.vars.texture or Cell.vars.whiteTexture)
+        AnchorColorOverlay(solidTex, unitButton, cfg)
+
+        local gradientTex = button:CreateTexture(nil, "ARTWORK", nil, 3)
+        gradientTex:SetTexture(Cell.vars.whiteTexture)
+        AnchorColorOverlay(gradientTex, unitButton, cfg)
+
+        ApplyColorOverlay(solidTex, gradientTex, cfg, unitButton)
+
+        local health = unitButton.widgets and unitButton.widgets.healthBar
+        local base = (health and health.GetFrameLevel and health:GetFrameLevel())
+            or (unitButton.GetFrameLevel and unitButton:GetFrameLevel())
+            or 1
+        pcall(button.SetFrameLevel, button, base + (cfg.frameLevel or 1))
+    end
+end
+
 local function MakeInitAuraButton(cfg)
     return function(button)
         local sizeW = (cfg.size and cfg.size[1]) or 13
@@ -384,11 +466,11 @@ local function DestroyContainer(st)
 end
 
 local function AnchorContainer(container, unitButton, cfg)
-    local sizeW = (cfg.size and cfg.size[1]) or 13
-    local sizeH = (cfg.size and cfg.size[2]) or sizeW
+    local sizeW = (cfg.type == "color" and 1) or (cfg.size and cfg.size[1]) or 13
+    local sizeH = (cfg.type == "color" and 1) or (cfg.size and cfg.size[2]) or sizeW
     local spacingX = (cfg.spacing and cfg.spacing[1]) or 0
     local spacingY = (cfg.spacing and cfg.spacing[2]) or 0
-    local num = (cfg.type == "icon") and 1 or (cfg.num or 5)
+    local num = (cfg.type == "icon" or cfg.type == "color") and 1 or (cfg.num or 5)
     local numPerLine = cfg.numPerLine or num
     local pos = cfg.position or { "TOPRIGHT", "button", "TOPRIGHT", 0, 3 }
     local point = pos[1] or "TOPRIGHT"
@@ -457,13 +539,13 @@ local function CreateCustomContainer(unitButton, cfg)
         return nil, tostring(container)
     end
 
-    local sizeW = (cfg.size and cfg.size[1]) or 13
-    local sizeH = (cfg.size and cfg.size[2]) or sizeW
+    local sizeW = (cfg.type == "color" and 1) or (cfg.size and cfg.size[1]) or 13
+    local sizeH = (cfg.type == "color" and 1) or (cfg.size and cfg.size[2]) or sizeW
     local spacingX = (cfg.spacing and cfg.spacing[1]) or 0
     local spacingY = (cfg.spacing and cfg.spacing[2]) or 0
     local filter = BuildFilter(cfg.castBy)
     local unit = ResolveUnit(unitButton) or "player"
-    local maxCount = (cfg.type == "icon") and 1 or (cfg.num or 5)
+    local maxCount = (cfg.type == "icon" or cfg.type == "color") and 1 or (cfg.num or 5)
     local groupKey = cfg.indicatorName
 
     container:SetEnabled(false)
@@ -477,7 +559,7 @@ local function CreateCustomContainer(unitButton, cfg)
             includeSpellIDs = spellMap,
             excludeSpellIDs = BuildExcludeSpellMap(),
         },
-        initializeFrame = MakeInitAuraButton(cfg),
+        initializeFrame = (cfg.type == "color") and MakeInitColorButton(cfg, unitButton) or MakeInitAuraButton(cfg),
         layout = {
             elementWidth = sizeW,
             elementHeight = sizeH,
@@ -653,6 +735,10 @@ local function SyncButton(unitButton, allowCreate)
                     st.container:Hide()
                 end
                 ShowLegacy(unitButton, name)
+                local ind = unitButton.indicators and unitButton.indicators[name]
+                if ind and ind.indicatorType == "color" then
+                    ind:Hide()
+                end
             end
         end
     end
@@ -709,7 +795,8 @@ if SUPPORTED then
             or setting == "frameLevel" or setting == "showAnimation" or setting == "animationStyle"
             or setting == "showDuration" or setting == "showStack"
             or setting == "checkbutton" or setting == "font"
-            or setting == "type" or setting == "auraType" then
+            or setting == "type" or setting == "auraType"
+            or setting == "colors" or setting == "anchor" then
             C_Timer.After(0, I.RefreshAllCustomAuraDisplays)
         end
     end)

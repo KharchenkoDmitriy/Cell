@@ -77,3 +77,14 @@ function F.ClearAuraMeta(frame)
     frame._cellAuraUnit = nil
     frame._cellAuraInstanceID = nil
 end
+
+function F.CopyAuraTable(aura)
+    if not aura then return nil end
+    if aura._cellOwned then return aura end
+    local copy = {}
+    for k, v in pairs(aura) do
+        copy[k] = v
+    end
+    copy._cellOwned = true
+    return copy
+end

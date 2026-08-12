@@ -242,15 +242,13 @@ local CheckCLEURequired
 -------------------------------------------------
 -- 12.0+ aura annotation (read-only tagging)
 -------------------------------------------------
--- AnnotateAura sets a single _hasSecrets flag on the aura table without
--- mutating any of Blizzard's aura fields. Secret values flow through
--- to C-level APIs (SetTexture, SetText, SetCooldownFromDurationObject, etc.)
--- which accept them natively.
 local function AnnotateAura(aura)
     if not aura then return nil end
 
     -- auraInstanceID is the cache key — if secret, drop the aura
     if not F.IsValueNonSecret(aura.auraInstanceID) then return nil end
+
+    aura = F.CopyAuraTable(aura)
 
     -- Fast path: readable spellId means the aura is not opaque-secret.
     -- Prefer curated tables over fingerprint matching in that case.

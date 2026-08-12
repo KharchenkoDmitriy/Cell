@@ -106,6 +106,12 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.3 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Fixed a taint error with Cooldown Manager addons that could pop up when buffs were applied (for example Blizzard Cooldown Viewer and BetterCooldownManager).</p>
+        <p>* Custom Color indicators (for example Atonement) now update in combat.</p>
+        <br/>
+
         <h1>r277.9.2 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Custom Icon / Icons buff indicators now work correctly in combat (same reliable display as Healers).</p>

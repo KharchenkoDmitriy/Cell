@@ -13,9 +13,13 @@
 
 A maintained fork of **Cell**, continued from **Krysio (krysiolol)** / jdtoppin, originally by **enderneko**.
 
-Focused on Midnight compatibility, healer QoL, Classic/TBC support, and practical fixes that keep raid frames usable in modern WoW.
+Focused on Midnight compatibility, healer QoL, Classic/TBC & MoP support, and practical fixes that keep raid frames usable in modern WoW.
 
+<<<<<<< HEAD
 **Current version:** `r277.9.1`
+=======
+**Current version:** `r277.9`
+>>>>>>> 15b365b560b71d8456334e235871a2dd379e5eaa
 
 </div>
 
@@ -34,9 +38,8 @@ Lineage:
 
 Goals of this fork:
 
-- Keep Cell working on **Retail Midnight (12.0.7)**
-- If everything works well, create a version for **Season 2 (Patch 12.1.0)**.
-- Improve **Classic Era / Hardcore** and **TBC Classic** usability
+- Keep Cell working on **Retail Midnight (12.1.0)**
+- Improve **Classic Era / Hardcore**, **TBC Classic** and **MoP** usability
 - Ship healer-focused QoL (Actions, Raid Debuffs, Import UX, options integration)
 - Preserve Krysio's Midnight foundation while fixing regressions and filling gaps
 - Stay practical: prefer stable, testable changes over experiments
@@ -61,14 +64,15 @@ Without their work, this fork would not exist.
 
 | Client | Status |
 |--------|--------|
-| Retail Midnight (`12.0.7`) | Primary focus |
+| Retail Midnight (`12.1.0`) | Primary focus |
 | Classic Era / Hardcore (`1.15.9`) | Supported |
 | TBC Classic (Anniversary) (`2.5.6`) | Supported |
-| Wrath / Cata / MoP | TOC present; not the main focus of this branch |
+| MoP Classic (`5.5.4`) | Supported |
+| Wotlk / Cata  | TOC present; not the main focus of this branch |
 
 ---
 
-## NeRgY Fork Highlights (`r277.8.2`)
+## NeRgY Fork Highlights
 
 ### Retail / Midnight
 
@@ -162,7 +166,7 @@ Bug reports, fixes, ideas and suggestions are welcome.
 
 When reporting an issue, please include:
 
-- WoW version / client (Retail, Classic Era, TBC)
+- WoW version / client (Retail, Classic Era, TBC, MoP)
 - Addon version (`r277.8.2` etc.)
 - Lua errors (BugSack / `/console scriptErrors 1`)
 - Reproduction steps
@@ -175,7 +179,6 @@ This fork may:
 
 - include additional QoL not present upstream
 - migrate profile data automatically (e.g. Actions potion IDs)
-- keep Targeted Spells disabled on purpose
 - diverge further over time as NeRgY continues maintenance
 
 ---
@@ -214,7 +217,7 @@ https://github.com/enderneko/Cell
 
 ## NeRgY
 
-Continuing Cell for healers across Retail Midnight, Classic Era and TBC.
+Continuing Cell for healers across Retail Midnight, Classic Era, TBC and MoP.
 
 </div>
 

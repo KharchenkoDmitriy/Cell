@@ -22,10 +22,45 @@ local function ShouldHideBlizzardRaidManager()
     return CellDB and CellDB["general"] and CellDB["general"]["hideBlizzardRaidManager"]
 end
 
+local function IsCompactLayoutFrame(frame)
+    if not frame then return false end
+    if frame == _G.CompactPartyFrame
+        or frame == _G.CompactArenaFrame
+        or frame == _G.CompactRaidFrameContainer
+        or frame == _G.CompactRaidFrameManager then
+        return true
+    end
+    local name = frame.GetName and frame:GetName()
+    if type(name) ~= "string" then return false end
+    return name:find("^CompactParty", 1, true) ~= nil
+        or name:find("^CompactArena", 1, true) ~= nil
+        or name:find("^CompactRaid", 1, true) ~= nil
+end
+
+local function InstallArenaVisibilityNoops()
+    local function apply(target)
+        if not target then return end
+        if target.UpdateVisibility then
+            target.UpdateVisibility = Noop
+        end
+        if target.UpdatePaddingAndLayout then
+            target.UpdatePaddingAndLayout = Noop
+        end
+        if target.Layout then
+            target.Layout = Noop
+        end
+    end
+    apply(_G.CompactArenaFrameMixin)
+    apply(_G.CompactArenaFrame)
+end
+
 local function SoftVisualHide(frame)
     if not frame then return end
     pcall(function()
         frame:Hide()
+        if IsCompactLayoutFrame(frame) then
+            return
+        end
         frame:SetAlpha(0)
         if not InCombatLockdown() then
             frame:SetScale(0.001)
@@ -36,6 +71,7 @@ end
 local function SoftVisualHideDeferred(frame)
     if not frame then return end
     C_Timer.After(0, function()
+        if InCombatLockdown() then return end
         SoftVisualHide(frame)
     end)
 end
@@ -156,9 +192,13 @@ end
 local function suppressEditModeOverlay(frame)
     if not frame then return end
     pcall(function()
-        frame:SetAlpha(0)
-        if not InCombatLockdown() then
-            frame:SetScale(0.001)
+        if not IsCompactLayoutFrame(frame) then
+            frame:SetAlpha(0)
+            if not InCombatLockdown() then
+                frame:SetScale(0.001)
+            end
+        else
+            frame:Hide()
         end
         if frame.selectionHighlight and frame.selectionHighlight.SetShown then
             frame.selectionHighlight:SetShown(false)
@@ -215,6 +255,15 @@ local function InstallPartyUpdateNoops()
         if _G.CompactPartyFrameMixin.OnEvent then
             _G.CompactPartyFrameMixin.OnEvent = Noop
         end
+        if _G.CompactPartyFrameMixin.UpdateVisibility then
+            _G.CompactPartyFrameMixin.UpdateVisibility = Noop
+        end
+        if _G.CompactPartyFrameMixin.UpdatePaddingAndLayout then
+            _G.CompactPartyFrameMixin.UpdatePaddingAndLayout = Noop
+        end
+        if _G.CompactPartyFrameMixin.Layout then
+            _G.CompactPartyFrameMixin.Layout = Noop
+        end
         if ShouldHideBlizzardRaid() and _G.CompactPartyFrameMixin.ApplyFunctionToAllFrames then
             _G.CompactPartyFrameMixin.ApplyFunctionToAllFrames = Noop
         end
@@ -223,6 +272,13 @@ local function InstallPartyUpdateNoops()
         _G.CompactPartyFrame.RefreshMembers = Noop
         if _G.CompactPartyFrame.OnEvent then
             _G.CompactPartyFrame.OnEvent = Noop
+        end
+        _G.CompactPartyFrame.UpdateVisibility = Noop
+        if _G.CompactPartyFrame.UpdatePaddingAndLayout then
+            _G.CompactPartyFrame.UpdatePaddingAndLayout = Noop
+        end
+        if _G.CompactPartyFrame.Layout then
+            _G.CompactPartyFrame.Layout = Noop
         end
         if ShouldHideBlizzardRaid() then
             _G.CompactPartyFrame.applyFunc = Noop
@@ -237,6 +293,8 @@ local function InstallPartyUpdateNoops()
             end
         end)
     end
+
+    InstallArenaVisibilityNoops()
 
     if _G.PartyMemberFrameMixin then
         for i = 1, #MEMBER_NOOP_METHODS do
@@ -463,8 +521,7 @@ boot:SetScript("OnEvent", function(_, event, addonName)
         if addonName == "Blizzard_UnitFrame"
             or addonName == "Blizzard_EditMode"
             or addonName == "Blizzard_RaidFrame"
-            or addonName == "Blizzard_CompactRaidFrames"
-            or addonName == "Blizzard_CUFProfiles" then
+            or addonName == "Blizzard_CompactRaidFrames" then
             TryEarlyPartyNoops()
             if ShouldHideBlizzardParty() then
                 HideActiveBlizzardPartyMembers()

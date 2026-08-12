@@ -11,9 +11,14 @@ local I = Cell.iFuncs
 ]]
 
 local GROUP_KEY = "healers"
-local INIT_VERSION = 10 -- bump: showDuration is boolean checkbox only
+local INIT_VERSION = 11
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
+
+local HARD_EXCLUDE_SPELLS = {
+    [225788] = true,
+    [186404] = true,
+}
 
 local stateByButton = setmetatable({}, { __mode = "k" })
 local cachedConfig
@@ -74,6 +79,53 @@ local function SpellMapCount(map)
     local n = 0
     for _ in pairs(map) do n = n + 1 end
     return n
+end
+
+local function BuildExcludeSpellMap()
+    local map = {}
+    for id in pairs(HARD_EXCLUDE_SPELLS) do
+        map[id] = true
+    end
+
+    local function addId(id)
+        id = tonumber(id)
+        if id and id > 0 then
+            map[id] = true
+        end
+    end
+
+    local function addAuraBlacklistTable(tbl)
+        if type(tbl) ~= "table" then return end
+        for spellId, entry in pairs(tbl) do
+            if type(spellId) == "number" then
+                if entry == true then
+                    addId(spellId)
+                elseif type(entry) == "table" and (entry.combat or entry.ooc) then
+                    addId(spellId)
+                end
+            elseif type(entry) == "number" then
+                addId(entry)
+            end
+        end
+    end
+
+    if CellDB and CellDB["auraBlacklist"] then
+        addAuraBlacklistTable(CellDB["auraBlacklist"]["buffs"])
+        addAuraBlacklistTable(CellDB["auraBlacklist"]["HELPFUL"])
+    end
+
+    local alts = Cell.AuraBlacklist and Cell.AuraBlacklist.AlternateSpellIDs
+    if type(alts) == "table" then
+        for altId, primaryId in pairs(alts) do
+            if map[primaryId] then
+                addId(altId)
+            elseif map[altId] then
+                addId(primaryId)
+            end
+        end
+    end
+
+    return map
 end
 
 local function BuildFilter(castBy)
@@ -372,7 +424,10 @@ local function CreateHealersContainer(unitButton, cfg)
 
     local groupOpts = {
         maxFrameCount = cfg.num or 5,
-        candidateFilters = { includeSpellIDs = spellMap },
+        candidateFilters = {
+            includeSpellIDs = spellMap,
+            excludeSpellIDs = BuildExcludeSpellMap(),
+        },
         initializeFrame = InitAuraButton,
         layout = {
             elementWidth = sizeW,

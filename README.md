@@ -15,7 +15,7 @@ A maintained fork of **Cell**, continued from **Krysio (krysiolol)** / jdtoppin,
 
 Focused on Midnight compatibility, healer QoL, Classic/TBC support, and practical fixes that keep raid frames usable in modern WoW.
 
-**Current version:** `r277.8.2`
+**Current version:** `r277.9.1`
 
 </div>
 

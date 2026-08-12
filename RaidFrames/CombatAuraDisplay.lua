@@ -5,20 +5,21 @@ local F = Cell.funcs
 ---@type CellIndicatorFuncs
 local I = Cell.iFuncs
 
---[[
-    Always-on AuraContainers (12.1+): TRACKED built-ins use AuraContainer
-    both OOC and in combat. Legacy icons stay hidden once a container exists.
-]]
-
-local INIT_VERSION = 11 -- bump: edge-top/edge-bottom rename + third option
+local INIT_VERSION = 14
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
 local DISPEL_TYPE_ORDER = { "Magic", "Curse", "Disease", "Poison", "Bleed" }
 local DISPEL_TYPE_LEVEL = { Magic = 1, Curse = 2, Disease = 3, Poison = 4, Bleed = 5 }
-local EDGE_FADE_TEXTURE = "Interface\\AddOns\\Cell\\Media\\gradient-fade-bottom"
+local EDGE_FADE_TOP = "Interface\\AddOns\\Cell\\Media\\Edge-Fade-Top"
+local EDGE_FADE_BOTTOM = "Interface\\AddOns\\Cell\\Media\\Edge-Fade-Bottom"
 local WHITE_TEXTURE = "Interface\\AddOns\\Cell\\Media\\white"
 local DISPEL_FULL_ALPHA = 0.5
+
+local stateByButton = setmetatable({}, { __mode = "k" })
+local featureReady
+local durationFormatter
+local cachedLayouts
 
 local function NormalizeDispelHighlightType(ht)
     if ht == "edge-top" then
@@ -29,11 +30,6 @@ local function NormalizeDispelHighlightType(ht)
     end
     return "entire"
 end
-
-local stateByButton = setmetatable({}, { __mode = "k" })
-local featureReady
-local durationFormatter
-local cachedLayouts
 
 local function EnsureAuraContainerLoaded()
     if C_AddOns and C_AddOns.LoadAddOn then
@@ -89,9 +85,6 @@ local function JoinFilter(...)
 end
 
 local TRACKED = {
-    "defensiveCooldowns",
-    "externalCooldowns",
-    "allCooldowns",
     "crowdControls",
     "debuffs",
     "dispels",
@@ -171,7 +164,6 @@ local function BuildExcludeSpellMap()
     if CellDB and CellDB["auraBlacklist"] then
         addAuraBlacklistTable(CellDB["auraBlacklist"]["debuffs"])
         addAuraBlacklistTable(CellDB["auraBlacklist"]["HARMFUL"])
-        -- HELPFUL / buffs also feed Def/Ext excludeSpellIDs
         addAuraBlacklistTable(CellDB["auraBlacklist"]["buffs"])
         addAuraBlacklistTable(CellDB["auraBlacklist"]["HELPFUL"])
     end
@@ -218,36 +210,7 @@ local function BuildGroupsForIndicator(indicatorName, cfg)
         return c
     end
 
-    if indicatorName == "defensiveCooldowns" then
-        groups[#groups + 1] = {
-            key = "def",
-            filter = JoinFilter("HELPFUL", "BIG_DEFENSIVE", "!EXTERNAL_DEFENSIVE"),
-            candidateFilters = cand(),
-            maxFrameCount = cfg.num or 2,
-        }
-    elseif indicatorName == "externalCooldowns" then
-        groups[#groups + 1] = {
-            key = "ext",
-            filter = JoinFilter("HELPFUL", "EXTERNAL_DEFENSIVE"),
-            candidateFilters = cand(),
-            maxFrameCount = cfg.num or 2,
-        }
-    elseif indicatorName == "allCooldowns" then
-        -- Legacy shows defensive OR external; BIG_DEFENSIVE alone misses externals.
-        local n = cfg.num or 2
-        groups[#groups + 1] = {
-            key = "allcd_def",
-            filter = JoinFilter("HELPFUL", "BIG_DEFENSIVE", "!EXTERNAL_DEFENSIVE"),
-            candidateFilters = cand(),
-            maxFrameCount = n,
-        }
-        groups[#groups + 1] = {
-            key = "allcd_ext",
-            filter = JoinFilter("HELPFUL", "EXTERNAL_DEFENSIVE"),
-            candidateFilters = cand(),
-            maxFrameCount = n,
-        }
-    elseif indicatorName == "crowdControls" then
+    if indicatorName == "crowdControls" then
         groups[#groups + 1] = {
             key = "cc",
             filter = JoinFilter("HARMFUL", "CROWD_CONTROL"),
@@ -357,7 +320,12 @@ local function MakeInitDispelAuraButton(cfg, token, unitButton)
         r, g, b = r or 1, g or 1, b or 1
         local isEdge = mode == "edge-top" or mode == "edge-bottom"
         local alpha = isEdge and 1 or DISPEL_FULL_ALPHA
-        local asset = isEdge and EDGE_FADE_TEXTURE or WHITE_TEXTURE
+        local asset = WHITE_TEXTURE
+        if mode == "edge-top" then
+            asset = EDGE_FADE_TOP
+        elseif mode == "edge-bottom" then
+            asset = EDGE_FADE_BOTTOM
+        end
 
         if showIcons then
             pcall(button.SetSize, button, sizeW, sizeH)
@@ -371,11 +339,7 @@ local function MakeInitDispelAuraButton(cfg, token, unitButton)
             overlay:ClearAllPoints()
             overlay:SetAllPoints(health)
             overlay:SetTexture(asset)
-            if mode == "edge-bottom" then
-                overlay:SetTexCoord(0, 1, 1, 0)
-            else
-                overlay:SetTexCoord(0, 1, 0, 1)
-            end
+            overlay:SetTexCoord(0, 1, 0, 1)
             overlay:SetVertexColor(r, g, b, alpha)
             overlay:Show()
             local lvl = (health.GetFrameLevel and health:GetFrameLevel() or 1)
@@ -454,21 +418,37 @@ local function MakeInitAuraButton(cfg)
         local textHost = CreateFrame("Frame", nil, button)
         textHost:SetAllPoints(button)
         textHost:EnableMouse(false)
-        textHost:SetFrameLevel(((animFrame and animFrame.GetFrameLevel and animFrame:GetFrameLevel()) or 1) + 4)
+        local baseLevel = (animFrame and animFrame.GetFrameLevel and animFrame:GetFrameLevel())
+            or (button.GetFrameLevel and button:GetFrameLevel())
+            or 1
+        textHost:SetFrameLevel(baseLevel + 10)
 
         if cfg.showStack ~= false then
-            local stack = textHost:CreateFontString(nil, "OVERLAY")
-            stack:SetPoint("TOPRIGHT", 2, 1)
+            local stack = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+            local fontCfg = cfg.font and cfg.font[1]
+            local ox = (type(fontCfg) == "table" and fontCfg[6]) or 2
+            local oy = (type(fontCfg) == "table" and fontCfg[7]) or 1
+            stack:ClearAllPoints()
+            stack:SetPoint("TOPRIGHT", textHost, "TOPRIGHT", ox, oy)
             stack:SetJustifyH("RIGHT")
-            StyleFont(stack, cfg.font and cfg.font[1], 11)
+            StyleFont(stack, fontCfg, 11)
+            if type(fontCfg) == "table" and type(fontCfg[8]) == "table" then
+                stack:SetTextColor(fontCfg[8][1] or 1, fontCfg[8][2] or 1, fontCfg[8][3] or 1, fontCfg[8][4] or 1)
+            else
+                stack:SetTextColor(1, 1, 1, 1)
+            end
             pcall(button.SetApplicationCount, button, stack, {})
         end
 
         if cfg.showDuration then
-            local duration = textHost:CreateFontString(nil, "OVERLAY")
-            duration:SetPoint("BOTTOMRIGHT", 2, -1)
+            local duration = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+            local fontCfg = cfg.font and cfg.font[2]
+            local ox = (type(fontCfg) == "table" and fontCfg[6]) or 2
+            local oy = (type(fontCfg) == "table" and fontCfg[7]) or -1
+            duration:ClearAllPoints()
+            duration:SetPoint("BOTTOMRIGHT", textHost, "BOTTOMRIGHT", ox, oy)
             duration:SetJustifyH("RIGHT")
-            StyleFont(duration, cfg.font and cfg.font[2], 11)
+            StyleFont(duration, fontCfg, 11)
             local opts = {}
             local formatter = GetCellDurationFormatter()
             if formatter then
@@ -860,6 +840,16 @@ end
 
 function I.ShouldSkipLegacyCombatAura(indicatorName)
     if not ProbeSupported() or not indicatorName then
+        return false
+    end
+    local tracked = false
+    for i = 1, #TRACKED do
+        if TRACKED[i] == indicatorName then
+            tracked = true
+            break
+        end
+    end
+    if not tracked then
         return false
     end
     RefreshCachedLayouts()

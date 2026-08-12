@@ -105,6 +105,14 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.1 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Fixed wrong buffs showing up as defensives or externals in the open world / in a party.</p>
+        <p>* The Healers icons no longer show the World Quest bonus buff "Sign of the Emissary".</p>
+        <p>* Debuff stacks and duration timers show correctly again.</p>
+        <p>* Hiding Blizzard party and raid frames causes fewer error popups.</p>
+        <br/>
+
         <h1>r277.9 - NeRgY</h1>
         <h2>Retail PTR (12.1.0)</h2>
         <p>* Important buffs and debuffs (defensives, externals, crowd controls, healers, and more) now show correctly both in and out of combat.</p>

@@ -1757,93 +1757,91 @@ end
 -----------------------------------------
 -- create popup (delete/edit/... confirm) with mask
 -----------------------------------------
-function Cell.CreateConfirmPopup(parent, width, text, onAccept, onReject, mask, hasEditBox, dropdowns)
-    if not parent.confirmPopup then -- not init
-        parent.confirmPopup = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-        parent.confirmPopup:SetSize(width, 100)
-        Cell.StylizeFrame(parent.confirmPopup, {0.1, 0.1, 0.1, 0.95}, {accentColor.t[1], accentColor.t[2], accentColor.t[3], 1})
-        parent.confirmPopup:EnableMouse(true)
-        parent.confirmPopup:SetClampedToScreen(true)
-        parent.confirmPopup:Hide()
+function Cell.CreateConfirmPopup(parent, width, text, onAccept, onReject, mask, hasEditBox, dropdowns, key)
+    key = key or "confirmPopup"
+    if not parent[key] then -- not init
+        parent[key] = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+        parent[key]:SetSize(width, 100)
+        Cell.StylizeFrame(parent[key], {0.1, 0.1, 0.1, 0.95}, {accentColor.t[1], accentColor.t[2], accentColor.t[3], 1})
+        parent[key]:EnableMouse(true)
+        parent[key]:SetClampedToScreen(true)
+        parent[key]:Hide()
 
-        parent.confirmPopup:SetScript("OnHide", function()
-            parent.confirmPopup:Hide()
-            -- hide mask
-            if mask and parent.mask then parent.mask:Hide() end
+        parent[key]:SetScript("OnHide", function(self)
+            self:Hide()
+            if self._cellMask and parent.mask then parent.mask:Hide() end
         end)
 
-        parent.confirmPopup.text = parent.confirmPopup:CreateFontString(nil, "OVERLAY", font_title_name)
-        parent.confirmPopup.text:SetWordWrap(true)
-        parent.confirmPopup.text:SetSpacing(3)
-        parent.confirmPopup.text:SetJustifyH("CENTER")
-        parent.confirmPopup.text:SetPoint("TOPLEFT", 5, -8)
-        parent.confirmPopup.text:SetPoint("TOPRIGHT", -5, -8)
+        parent[key].text = parent[key]:CreateFontString(nil, "OVERLAY", font_title_name)
+        parent[key].text:SetWordWrap(true)
+        parent[key].text:SetSpacing(3)
+        parent[key].text:SetJustifyH("CENTER")
+        parent[key].text:SetPoint("TOPLEFT", 5, -8)
+        parent[key].text:SetPoint("TOPRIGHT", -5, -8)
 
-        -- yes
-        parent.confirmPopup.button1 = Cell.CreateButton(parent.confirmPopup, L["Yes"], "green", {35, 15})
-        -- button1:SetPoint("BOTTOMRIGHT", -45, 0)
-        parent.confirmPopup.button1:SetPoint("BOTTOMRIGHT", -34, 0)
-        parent.confirmPopup.button1:SetBackdropBorderColor(accentColor.t[1], accentColor.t[2], accentColor.t[3], 1)
-        -- no
-        parent.confirmPopup.button2 = Cell.CreateButton(parent.confirmPopup, L["No"], "red", {35, 15})
-        parent.confirmPopup.button2:SetPoint("LEFT", parent.confirmPopup.button1, "RIGHT", P.Scale(-1), 0)
-        parent.confirmPopup.button2:SetBackdropBorderColor(accentColor.t[1], accentColor.t[2], accentColor.t[3], 1)
+        parent[key].button1 = Cell.CreateButton(parent[key], L["Yes"], "green", {35, 15})
+        parent[key].button1:SetPoint("BOTTOMRIGHT", -34, 0)
+        parent[key].button1:SetBackdropBorderColor(accentColor.t[1], accentColor.t[2], accentColor.t[3], 1)
+        parent[key].button2 = Cell.CreateButton(parent[key], L["No"], "red", {35, 15})
+        parent[key].button2:SetPoint("LEFT", parent[key].button1, "RIGHT", P.Scale(-1), 0)
+        parent[key].button2:SetBackdropBorderColor(accentColor.t[1], accentColor.t[2], accentColor.t[3], 1)
     end
+    local popup = parent[key]
+    popup._cellMask = not not mask
 
     if hasEditBox then
-        if not parent.confirmPopup.editBox then
-            parent.confirmPopup.editBox = Cell.CreateEditBox(parent.confirmPopup, width-40, 20)
-            parent.confirmPopup.editBox:SetPoint("TOP", parent.confirmPopup.text, "BOTTOM", 0, -5)
-            parent.confirmPopup.editBox:SetAutoFocus(true)
-            parent.confirmPopup.editBox:SetScript("OnHide", function()
-                parent.confirmPopup.editBox:SetText("")
+        if not popup.editBox then
+            popup.editBox = Cell.CreateEditBox(popup, width-40, 20)
+            popup.editBox:SetPoint("TOP", popup.text, "BOTTOM", 0, -5)
+            popup.editBox:SetAutoFocus(true)
+            popup.editBox:SetScript("OnHide", function()
+                popup.editBox:SetText("")
             end)
         end
-        parent.confirmPopup.editBox:Show()
-        -- disable yes if editBox empty
-        parent.confirmPopup.button1:SetEnabled(false)
-        parent.confirmPopup.editBox:SetScript("OnTextChanged", function()
-            if not parent.confirmPopup.editBox:GetText() or strtrim(parent.confirmPopup.editBox:GetText()) == "" then
-                parent.confirmPopup.button1:SetEnabled(false)
+        popup.editBox:Show()
+        popup.button1:SetEnabled(false)
+        popup.editBox:SetScript("OnTextChanged", function()
+            if not popup.editBox:GetText() or strtrim(popup.editBox:GetText()) == "" then
+                popup.button1:SetEnabled(false)
             else
-                parent.confirmPopup.button1:SetEnabled(true)
+                popup.button1:SetEnabled(true)
             end
         end)
-    elseif parent.confirmPopup.editBox then
-        parent.confirmPopup.editBox:Hide()
-        parent.confirmPopup.editBox:SetScript("OnTextChanged", nil)
-        parent.confirmPopup.button1:SetEnabled(true)
+    elseif popup.editBox then
+        popup.editBox:Hide()
+        popup.editBox:SetScript("OnTextChanged", nil)
+        popup.button1:SetEnabled(true)
     end
 
     if dropdowns then
-        if not parent.confirmPopup.dropdown1 then
-            parent.confirmPopup.dropdown1 = Cell.CreateDropdown(parent.confirmPopup, width-40)
-            parent.confirmPopup.dropdown1:SetPoint("LEFT", 20, 0)
+        if not popup.dropdown1 then
+            popup.dropdown1 = Cell.CreateDropdown(popup, width-40)
+            popup.dropdown1:SetPoint("LEFT", 20, 0)
             if hasEditBox then
-                parent.confirmPopup.dropdown1:SetPoint("TOP", parent.confirmPopup.editBox, "BOTTOM", 0, -5)
+                popup.dropdown1:SetPoint("TOP", popup.editBox, "BOTTOM", 0, -5)
             else
-                parent.confirmPopup.dropdown1:SetPoint("TOP", parent.confirmPopup.text, "BOTTOM", 0, -5)
+                popup.dropdown1:SetPoint("TOP", popup.text, "BOTTOM", 0, -5)
             end
         end
-        if not parent.confirmPopup.dropdown2 then
-            parent.confirmPopup.dropdown2 = Cell.CreateDropdown(parent.confirmPopup, (width-40)/2-3)
-            parent.confirmPopup.dropdown2:SetPoint("LEFT", parent.confirmPopup.dropdown1, "RIGHT", 5, 0)
+        if not popup.dropdown2 then
+            popup.dropdown2 = Cell.CreateDropdown(popup, (width-40)/2-3)
+            popup.dropdown2:SetPoint("LEFT", popup.dropdown1, "RIGHT", 5, 0)
         end
 
         if dropdowns == 1 then
-            parent.confirmPopup.dropdown1:Show()
-            parent.confirmPopup.dropdown2:Hide()
+            popup.dropdown1:Show()
+            popup.dropdown2:Hide()
         elseif dropdowns == 2 then
-            parent.confirmPopup.dropdown1:Show()
-            parent.confirmPopup.dropdown2:Show()
-            parent.confirmPopup.dropdown1:SetWidth((width-40)/2-2)
+            popup.dropdown1:Show()
+            popup.dropdown2:Show()
+            popup.dropdown1:SetWidth((width-40)/2-2)
         end
-    elseif parent.confirmPopup.dropdown1 then
-        parent.confirmPopup.dropdown1:Hide()
-        parent.confirmPopup.dropdown2:Hide()
+    elseif popup.dropdown1 then
+        popup.dropdown1:Hide()
+        popup.dropdown2:Hide()
     end
 
-    if mask then -- show mask?
+    if mask then
         if not parent.mask then
             Cell.CreateMask(parent, nil, {1, -1, -1, 1})
         else
@@ -1851,39 +1849,34 @@ function Cell.CreateConfirmPopup(parent, width, text, onAccept, onReject, mask, 
         end
     end
 
-    parent.confirmPopup.button1:SetScript("OnClick", function()
-        if onAccept then onAccept(parent.confirmPopup) end
-        -- hide mask
+    popup.button1:SetScript("OnClick", function()
+        if onAccept then onAccept(popup) end
         if mask and parent.mask then parent.mask:Hide() end
-        parent.confirmPopup:Hide()
+        popup:Hide()
     end)
 
-    parent.confirmPopup.button2:SetScript("OnClick", function()
-        if onReject then onReject(parent.confirmPopup) end
-        -- hide mask
+    popup.button2:SetScript("OnClick", function()
+        if onReject then onReject(popup) end
         if mask and parent.mask then parent.mask:Hide() end
-        parent.confirmPopup:Hide()
+        popup:Hide()
     end)
 
-    parent.confirmPopup:SetWidth(width)
-    parent.confirmPopup.text:SetText(text)
+    popup:SetWidth(width)
+    popup.text:SetText(text)
 
-    -- update height
-    parent.confirmPopup:SetScript("OnUpdate", function(self, elapsed)
-        local newHeight = parent.confirmPopup.text:GetStringHeight() + 30
+    popup:SetScript("OnUpdate", function(self, elapsed)
+        local newHeight = popup.text:GetStringHeight() + 30
         if hasEditBox then newHeight = newHeight + 30 end
         if dropdowns then newHeight = newHeight + 30 end
-        parent.confirmPopup:SetHeight(newHeight)
-        -- run OnUpdate once, stop updating height
-        parent.confirmPopup:SetScript("OnUpdate", nil)
+        popup:SetHeight(newHeight)
+        popup:SetScript("OnUpdate", nil)
     end)
 
-    -- parent.confirmPopup:SetFrameStrata("DIALOG")
-    parent.confirmPopup:SetFrameLevel(parent:GetFrameLevel() + 300)
-    parent.confirmPopup:ClearAllPoints() -- prepare for SetPoint()
-    parent.confirmPopup:Show()
+    popup:SetFrameLevel(parent:GetFrameLevel() + 300)
+    popup:ClearAllPoints()
+    popup:Show()
 
-    return parent.confirmPopup
+    return popup
 end
 
 -----------------------------------------

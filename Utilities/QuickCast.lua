@@ -987,7 +987,15 @@ end)
 local function QuickCast_OnEvent(self, event, unit, arg1, arg2)
     if unit and self.unit == unit then
         if event == "UNIT_AURA" then
-            QuickCast_UpdateAuras(self)
+            if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
+                C_Timer.After(0, function()
+                    if self.unit then
+                        QuickCast_UpdateAuras(self)
+                    end
+                end)
+            else
+                QuickCast_UpdateAuras(self)
+            end
         elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
             QuickCast_UpdateCasts(self, arg2)
         elseif event == "UNIT_IN_RANGE_UPDATE" then

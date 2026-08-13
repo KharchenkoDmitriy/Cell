@@ -145,6 +145,16 @@ local function Shared_ShowDuration(frame, show)
     frame.duration:SetShown(show)
 end
 
+local function Shared_ShowAnimation(frame, show)
+    frame.showAnimation = show
+    if not frame.cooldown then return end
+    if show then
+        frame.cooldown:Show()
+    else
+        frame.cooldown:Hide()
+    end
+end
+
 local STATUSBAR_INTERPOLATION_NONE = Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.None
 local STATUSBAR_TIMER_DIRECTION_ELAPSED = Enum and Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.ElapsedTime
 
@@ -364,43 +374,15 @@ local StopGlow = {
 }
 
 local function Shared_SetupGlow(frame, glowOptions)
-    frame.glowType = glowOptions[1]
-    frame.glowOptions = {}
-
+    -- 12.1: LibCustomGlow is not used on unit buttons (taint / lag).
     ButtonGlow_Stop(frame)
     PixelGlow_Stop(frame)
     AutoCastGlow_Stop(frame)
     ProcGlow_Stop(frame)
-
-    frame.StartGlow = StartGlow[strlower(frame.glowType)]
-    frame.StopGlow = StopGlow[strlower(frame.glowType)]
-
-    if frame.glowType == "Normal" then
-        frame.glowOptions.color = glowOptions[2]
-    elseif frame.glowType == "Pixel" then
-        frame.glowOptions.color = glowOptions[2]
-        frame.glowOptions.N = glowOptions[3]
-        frame.glowOptions.frequency = glowOptions[4]
-        frame.glowOptions.length = glowOptions[5]
-        frame.glowOptions.thickness = glowOptions[6]
-    elseif frame.glowType == "Shine" then
-        frame.glowOptions.color = glowOptions[2]
-        frame.glowOptions.N = glowOptions[3]
-        frame.glowOptions.frequency = glowOptions[4]
-        frame.glowOptions.scale = glowOptions[5]
-    elseif frame.glowType == "Proc" then
-        frame.glowOptions = {color = glowOptions[2], duration = glowOptions[3], startAnim = false}
-    end
-
-    if frame.glowType ~= "None" then
-        frame:StartGlow()
-        if not frame._sizeChangedHooked then
-            frame._sizeChangedHooked = true
-            frame:HookScript("OnSizeChanged", function()
-                frame:StartGlow()
-            end)
-        end
-    end
+    frame.glowType = "None"
+    frame.glowOptions = {}
+    frame.StartGlow = StartGlow["none"]
+    frame.StopGlow = StopGlow["none"]
 end
 
 function I.Glow_SetupForChildren(parent, glowOptions)
@@ -1731,6 +1713,7 @@ function I.CreateAura_Rect(name, parent)
     frame.SetColors = Rect_SetColors
     frame.ShowStack = Shared_ShowStack
     frame.ShowDuration = Shared_ShowDuration
+    frame.ShowAnimation = Shared_ShowAnimation
     frame.SetupGlow = Shared_SetupGlow
     frame.UpdatePixelPerfect = Rect_UpdatePixelPerfect
 
@@ -2534,7 +2517,11 @@ local function Block_SetCooldown_Duration(frame, start, duration, debuffType, te
         frame._threshold = nil
     else
         -- frame.cooldown:SetSwipeColor(r, g, b)
-        frame.cooldown:ShowCooldown(start, duration)
+        if frame.showAnimation == false then
+            frame.cooldown:Hide()
+        else
+            frame.cooldown:ShowCooldown(start, duration)
+        end
 
         if not frame.showDuration then
             frame._threshold = -1
@@ -2600,7 +2587,11 @@ local function Block_SetCooldown_Stack(frame, start, duration, debuffType, textu
         frame._threshold = nil
     else
         -- frame.cooldown:SetSwipeColor(r, g, b)
-        frame.cooldown:ShowCooldown(start, duration)
+        if frame.showAnimation == false then
+            frame.cooldown:Hide()
+        else
+            frame.cooldown:ShowCooldown(start, duration)
+        end
 
         if not frame.showDuration then
             frame._threshold = -1
@@ -2682,6 +2673,7 @@ function I.CreateAura_Block(name, parent)
     frame.SetColors = Block_SetColors
     frame.ShowStack = Shared_ShowStack
     frame.ShowDuration = Shared_ShowDuration
+    frame.ShowAnimation = Shared_ShowAnimation
     frame.SetCooldown = Block_SetCooldown_Duration
     frame.SetCooldownStyle = Block_SetCooldownStyle
     frame.SetupGlow = Shared_SetupGlow
@@ -2741,7 +2733,11 @@ local function Blocks_SetCooldown(frame, start, duration, debuffType, texture, c
         frame._remain = nil
         frame._threshold = nil
     else
-        frame.cooldown:ShowCooldown(start, duration)
+        if frame.showAnimation == false then
+            frame.cooldown:Hide()
+        else
+            frame.cooldown:ShowCooldown(start, duration)
+        end
 
         if not frame.showDuration then
             frame._threshold = -1
@@ -2798,6 +2794,7 @@ function I.CreateAura_Blocks(name, parent, num)
     blocks.SetNumPerLine = Icons_SetNumPerLine
     blocks.ShowDuration = Icons_ShowDuration
     blocks.ShowStack = Icons_ShowStack
+    blocks.ShowAnimation = Icons_ShowAnimation
     blocks.SetCooldownStyle = Blocks_SetCooldownStyle
     blocks.SetupGlow = I.Glow_SetupForChildren
     blocks.UpdatePixelPerfect = Icons_UpdatePixelPerfect

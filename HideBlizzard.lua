@@ -6,7 +6,7 @@ local Swallow = function() end
 local partyMemberSetupHookInstalled = false
 local partyFrameInitHookInstalled = false
 local editModeOverlayHooked = false
-local raidContainerHooked = false
+local raidMemberHooksInstalled = false
 local showHooks = {}
 local registerHooks = setmetatable({}, { __mode = "k" })
 
@@ -56,15 +56,14 @@ end
 
 local function SoftVisualHide(frame)
     if not frame then return end
+    if InCombatLockdown() then return end
     pcall(function()
         frame:Hide()
         if IsCompactLayoutFrame(frame) then
             return
         end
         frame:SetAlpha(0)
-        if not InCombatLockdown() then
-            frame:SetScale(0.001)
-        end
+        frame:SetScale(0.001)
     end)
 end
 
@@ -115,24 +114,50 @@ local MEMBER_NOOP_METHODS = {
     "ToVehicleArt",
 }
 
-local function HookStopRegistration(frame)
+local function HookStopRegistration(frame, shouldHideFn)
     if not frame or registerHooks[frame] or not hooksecurefunc then return end
-    registerHooks[frame] = true
+    registerHooks[frame] = shouldHideFn or ShouldHideBlizzardParty
 
     pcall(function()
         hooksecurefunc(frame, "RegisterEvent", function(self, event)
-            if ShouldHideBlizzardParty() and event then
+            local check = registerHooks[self]
+            if check and check() and event then
                 self:UnregisterEvent(event)
             end
         end)
     end)
     pcall(function()
         hooksecurefunc(frame, "RegisterUnitEvent", function(self, event)
-            if ShouldHideBlizzardParty() and event then
+            local check = registerHooks[self]
+            if check and check() and event then
                 self:UnregisterEvent(event)
             end
         end)
     end)
+end
+
+local function NeutralizeCompactUnitFrameScripts(frame)
+    if not frame then return end
+    pcall(function()
+        frame:UnregisterAllEvents()
+        if frame.SetScript then
+            frame:SetScript("OnEvent", Swallow)
+            frame:SetScript("OnUpdate", nil)
+            frame:SetScript("OnShow", Swallow)
+        end
+        if frame.onUpdateFrame and frame.onUpdateFrame.SetScript then
+            frame.onUpdateFrame:SetScript("OnUpdate", nil)
+        end
+    end)
+end
+
+local function IsCompactRaidMemberFrame(frame)
+    if not frame or not frame.GetName then return false end
+    local name = frame:GetName()
+    if type(name) ~= "string" then return false end
+    if name:find("^CompactRaidFrame%d+$") then return true end
+    if name:find("^CompactRaidGroup%d+Member%d+") then return true end
+    return false
 end
 
 local function NeutralizeMemberFrame(frame)
@@ -192,11 +217,10 @@ end
 local function suppressEditModeOverlay(frame)
     if not frame then return end
     pcall(function()
+        if InCombatLockdown() then return end
         if not IsCompactLayoutFrame(frame) then
             frame:SetAlpha(0)
-            if not InCombatLockdown() then
-                frame:SetScale(0.001)
-            end
+            frame:SetScale(0.001)
         else
             frame:Hide()
         end
@@ -211,18 +235,114 @@ end
 
 local function NeutralizeCompactPartyMember(frame)
     if not frame then return end
-    HookStopRegistration(frame)
-    pcall(function()
-        frame:UnregisterAllEvents()
-        if frame.SetScript then
-            frame:SetScript("OnEvent", Swallow)
-            frame:SetScript("OnUpdate", nil)
-        end
-    end)
+    HookStopRegistration(frame, ShouldHideBlizzardParty)
+    NeutralizeCompactUnitFrameScripts(frame)
     UnregisterBar(frame.healthBar or frame.healthbar)
     UnregisterBar(frame.powerBar or frame.manabar)
     SoftVisualHide(frame)
     KeepHidden(frame, ShouldHideBlizzardParty)
+end
+
+local function NeutralizeCompactRaidMember(frame)
+    if not frame then return end
+    HookStopRegistration(frame, ShouldHideBlizzardRaid)
+    NeutralizeCompactUnitFrameScripts(frame)
+    UnregisterBar(frame.healthBar or frame.healthbar)
+    UnregisterBar(frame.powerBar or frame.manabar)
+    SoftVisualHide(frame)
+    KeepHidden(frame, ShouldHideBlizzardRaid)
+end
+
+local function NeutralizeRaidGroupMembers(group)
+    if not group then return end
+    local MEMBERS_PER_GROUP = _G.MEMBERS_PER_RAID_GROUP or 5
+    local groupName = group.GetName and group:GetName()
+    if type(groupName) == "string" then
+        for i = 1, MEMBERS_PER_GROUP do
+            NeutralizeCompactRaidMember(_G[groupName .. "Member" .. i])
+        end
+    end
+    if group.memberUnitFrames then
+        for _, frame in ipairs(group.memberUnitFrames) do
+            NeutralizeCompactRaidMember(frame)
+        end
+    end
+    if group.petUnitFrames then
+        for _, frame in ipairs(group.petUnitFrames) do
+            NeutralizeCompactRaidMember(frame)
+        end
+    end
+end
+
+local function NeutralizeAllBlizzardRaidMembers()
+    if not ShouldHideBlizzardRaid() then return end
+
+    local maxFrames = (_G.MAX_RAID_MEMBERS or 40) * 3
+    for i = 1, maxFrames do
+        local frame = _G["CompactRaidFrame" .. i]
+        if frame then
+            NeutralizeCompactRaidMember(frame)
+        end
+    end
+
+    for i = 1, 8 do
+        NeutralizeRaidGroupMembers(_G["CompactRaidGroup" .. i])
+    end
+end
+
+local function InstallRaidMemberHooks()
+    if raidMemberHooksInstalled or not hooksecurefunc then return end
+    if not _G.CompactUnitFrame_RegisterEvents then return end
+    raidMemberHooksInstalled = true
+
+    local function reassert()
+        if ShouldHideBlizzardRaid() then
+            NeutralizeAllBlizzardRaidMembers()
+        end
+    end
+
+    if _G.CompactRaidGroup_UpdateUnits then
+        hooksecurefunc("CompactRaidGroup_UpdateUnits", reassert)
+    end
+    if _G.CompactRaidGroup_InitializeForGroup then
+        hooksecurefunc("CompactRaidGroup_InitializeForGroup", reassert)
+    end
+    if _G.CompactRaidGroup_GenerateForGroup then
+        hooksecurefunc("CompactRaidGroup_GenerateForGroup", reassert)
+    end
+    if _G.CompactUnitFrame_SetUpFrame then
+        hooksecurefunc("CompactUnitFrame_SetUpFrame", function(frame)
+            if ShouldHideBlizzardRaid() and IsCompactRaidMemberFrame(frame) then
+                NeutralizeCompactRaidMember(frame)
+            end
+        end)
+    end
+    hooksecurefunc("CompactUnitFrame_RegisterEvents", function(frame)
+        if ShouldHideBlizzardRaid() and IsCompactRaidMemberFrame(frame) then
+            NeutralizeCompactRaidMember(frame)
+        end
+    end)
+    if _G.CompactUnitFrame_CheckNeedsUpdate then
+        hooksecurefunc("CompactUnitFrame_CheckNeedsUpdate", function(frame)
+            if ShouldHideBlizzardRaid() and IsCompactRaidMemberFrame(frame) then
+                if frame.SetScript then
+                    frame:SetScript("OnUpdate", nil)
+                end
+                if frame.onUpdateFrame and frame.onUpdateFrame.SetScript then
+                    frame.onUpdateFrame:SetScript("OnUpdate", nil)
+                end
+            end
+        end)
+    end
+    if _G.CompactUnitFrame_SetUpdateAllOnUpdate then
+        hooksecurefunc("CompactUnitFrame_SetUpdateAllOnUpdate", function(frame)
+            if ShouldHideBlizzardRaid() and IsCompactRaidMemberFrame(frame) then
+                if frame.onUpdateFrame and frame.onUpdateFrame.SetScript then
+                    frame.onUpdateFrame:SetScript("OnUpdate", nil)
+                end
+            end
+        end)
+    end
 end
 
 local function InstallPartyUpdateNoops()
@@ -393,11 +513,15 @@ end
 
 local function SuppressBlizzRaid()
     if not ShouldHideBlizzardRaid() then return end
-    if InCombatLockdown() then return end
+
+    InstallRaidMemberHooks()
+    NeutralizeAllBlizzardRaidMembers()
 
     if ShouldHideBlizzardParty() then
         InstallPartyUpdateNoops()
     end
+
+    if InCombatLockdown() then return end
 
     local container = _G.CompactRaidFrameContainer
     if container then
@@ -413,17 +537,6 @@ local function SuppressBlizzRaid()
         if container.TryUpdate then
             container.TryUpdate = Noop
         end
-        if not raidContainerHooked then
-            raidContainerHooked = true
-            container:HookScript("OnShow", function(self)
-                if ShouldHideBlizzardRaid() then
-                    SoftVisualHideDeferred(self)
-                    C_Timer.After(0, function()
-                        suppressEditModeOverlay(self)
-                    end)
-                end
-            end)
-        end
         suppressEditModeOverlay(container)
     end
 
@@ -431,6 +544,12 @@ local function SuppressBlizzRaid()
         local group = _G["CompactRaidGroup" .. i]
         if group then
             pcall(function() group:UnregisterAllEvents() end)
+            if group.applyFunc then
+                group.applyFunc = Noop
+            end
+            if group.SetScript then
+                group:SetScript("OnEvent", Swallow)
+            end
             SoftVisualHide(group)
             KeepHidden(group, ShouldHideBlizzardRaid)
         end
@@ -460,6 +579,10 @@ local function applyEditModeOverlaySuppression()
 end
 
 local function TrySuppressForGroup()
+    if ShouldHideBlizzardRaid() then
+        InstallRaidMemberHooks()
+        NeutralizeAllBlizzardRaidMembers()
+    end
     if InCombatLockdown() then return end
     if ShouldHideBlizzardRaid() then SuppressBlizzRaid() end
     if ShouldHideBlizzardRaidManager() then SuppressBlizzRaidManager() end
@@ -497,12 +620,14 @@ local function TryEarlyPartyNoops()
         InstallBlizzardPartyHooks()
     end
     if ShouldHideBlizzardRaid() then
+        InstallRaidMemberHooks()
         if _G.CompactRaidFrameContainer and _G.CompactRaidFrameContainer.ApplyToFrames then
             _G.CompactRaidFrameContainer.ApplyToFrames = Noop
         end
         if _G.CompactRaidFrameContainerMixin and _G.CompactRaidFrameContainerMixin.ApplyToFrames then
             _G.CompactRaidFrameContainerMixin.ApplyToFrames = Noop
         end
+        NeutralizeAllBlizzardRaidMembers()
     end
     InstallEditModeOverlayHooks()
 end
@@ -526,6 +651,9 @@ boot:SetScript("OnEvent", function(_, event, addonName)
             if ShouldHideBlizzardParty() then
                 HideActiveBlizzardPartyMembers()
             end
+            if ShouldHideBlizzardRaid() then
+                NeutralizeAllBlizzardRaidMembers()
+            end
         end
         return
     end
@@ -548,9 +676,15 @@ boot:SetScript("OnEvent", function(_, event, addonName)
     end
 
     if event == "PLAYER_ENTERING_WORLD" then
-        if ShouldHideBlizzardParty() then
-            InstallPartyUpdateNoops()
-            HideActiveBlizzardPartyMembers()
+        if not InCombatLockdown() then
+            if ShouldHideBlizzardParty() then
+                InstallPartyUpdateNoops()
+                HideActiveBlizzardPartyMembers()
+            end
+            if ShouldHideBlizzardRaid() then
+                InstallRaidMemberHooks()
+                NeutralizeAllBlizzardRaidMembers()
+            end
         end
         C_Timer.After(0, applyEditModeOverlaySuppression)
         C_Timer.After(0.5, TrySuppressForGroup)
@@ -558,9 +692,15 @@ boot:SetScript("OnEvent", function(_, event, addonName)
     end
 
     if event == "GROUP_ROSTER_UPDATE" then
-        if ShouldHideBlizzardParty() then
-            InstallPartyUpdateNoops()
-            HideActiveBlizzardPartyMembers()
+        if not InCombatLockdown() then
+            if ShouldHideBlizzardParty() then
+                InstallPartyUpdateNoops()
+                HideActiveBlizzardPartyMembers()
+            end
+            if ShouldHideBlizzardRaid() then
+                InstallRaidMemberHooks()
+                NeutralizeAllBlizzardRaidMembers()
+            end
         end
         C_Timer.After(0, TrySuppressForGroup)
     end

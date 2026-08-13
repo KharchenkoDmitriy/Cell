@@ -5,7 +5,7 @@ local F = Cell.funcs
 ---@type CellIndicatorFuncs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 14
+local INIT_VERSION = 15
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -88,6 +88,10 @@ local TRACKED = {
     "crowdControls",
     "debuffs",
     "dispels",
+    "defensiveCooldowns",
+    "externalCooldowns",
+    "allCooldowns",
+    "raidDebuffs",
 }
 
 local function RefreshCachedLayouts()
@@ -182,6 +186,57 @@ local function BuildExcludeSpellMap()
     return map
 end
 
+local function CollectSpellIds(src, dest)
+    if type(src) ~= "table" then return dest end
+    for k, v in pairs(src) do
+        if type(k) == "number" and k > 0 then
+            dest[k] = true
+        end
+        if type(v) == "number" and v > 0 then
+            dest[v] = true
+        elseif type(v) == "table" then
+            CollectSpellIds(v, dest)
+        end
+    end
+    return dest
+end
+
+local function BuildDefensiveSpellMap()
+    local map = CollectSpellIds(Cell.vars and Cell.vars.builtInDefensives, {})
+    CollectSpellIds(Cell.vars and Cell.vars.customDefensives, map)
+    if not next(map) and I.GetDefensives then
+        CollectSpellIds(I.GetDefensives(), map)
+    end
+    return map
+end
+
+local function BuildExternalSpellMap()
+    local map = CollectSpellIds(Cell.vars and Cell.vars.builtInExternals, {})
+    CollectSpellIds(Cell.vars and Cell.vars.customExternals, map)
+    if not next(map) and I.GetExternals then
+        CollectSpellIds(I.GetExternals(), map)
+    end
+    return map
+end
+
+local function BuildRaidDebuffSpellMap()
+    local map = {}
+    local current = I.GetCurrentAreaDebuffs and I.GetCurrentAreaDebuffs()
+    if type(current) ~= "table" then return map end
+    for k, t in pairs(current) do
+        if type(k) == "number" and k > 0 then
+            map[k] = true
+        end
+        if type(t) == "table" then
+            local id = tonumber(t.id)
+            if id and id > 0 then
+                map[id] = true
+            end
+        end
+    end
+    return map
+end
+
 local function CountKeys(map)
     local n = 0
     for _ in pairs(map) do n = n + 1 end
@@ -250,6 +305,47 @@ local function BuildGroupsForIndicator(indicatorName, cfg)
                     dispelToken = token,
                 }
             end
+        end
+    elseif indicatorName == "defensiveCooldowns" then
+        local map = BuildDefensiveSpellMap()
+        if next(map) then
+            groups[#groups + 1] = {
+                key = "def",
+                filter = "HELPFUL",
+                candidateFilters = cand({ includeSpellIDs = map }),
+                maxFrameCount = cfg.num or 5,
+            }
+        end
+    elseif indicatorName == "externalCooldowns" then
+        local map = BuildExternalSpellMap()
+        if next(map) then
+            groups[#groups + 1] = {
+                key = "ext",
+                filter = "HELPFUL",
+                candidateFilters = cand({ includeSpellIDs = map }),
+                maxFrameCount = cfg.num or 5,
+            }
+        end
+    elseif indicatorName == "allCooldowns" then
+        local map = BuildDefensiveSpellMap()
+        CollectSpellIds(BuildExternalSpellMap(), map)
+        if next(map) then
+            groups[#groups + 1] = {
+                key = "allcd",
+                filter = "HELPFUL",
+                candidateFilters = cand({ includeSpellIDs = map }),
+                maxFrameCount = cfg.num or 5,
+            }
+        end
+    elseif indicatorName == "raidDebuffs" then
+        local map = BuildRaidDebuffSpellMap()
+        if next(map) then
+            groups[#groups + 1] = {
+                key = "rd",
+                filter = "HARMFUL",
+                candidateFilters = cand({ includeSpellIDs = map }),
+                maxFrameCount = cfg.num or 3,
+            }
         end
     end
 
@@ -476,7 +572,11 @@ local function HideLegacy(unitButton, indicatorName)
         return
     end
     if ind.Hide then
-        pcall(ind.Hide, ind, true)
+        if indicatorName == "raidDebuffs" then
+            pcall(ind.Hide, ind)
+        else
+            pcall(ind.Hide, ind, true)
+        end
     end
     if ind.SetAlpha then ind:SetAlpha(0) end
     if type(ind) == "table" then
@@ -578,7 +678,7 @@ end
 local function CreateIndicatorContainer(unitButton, indicatorName, cfg)
     local groups = BuildGroupsForIndicator(indicatorName, cfg)
     if #groups == 0 then
-        return nil, "no groups"
+        return nil, "skip"
     end
 
     EnsureAuraContainerLoaded()
@@ -707,7 +807,7 @@ local function EnsureIndicatorContainer(unitButton, indicatorName, cfg, allowCre
     if not container then
         st.createFailed = true
         st.failedVersion = INIT_VERSION
-        if not Cell.vars._combatAuraDisplayWarned then
+        if err ~= "skip" and not Cell.vars._combatAuraDisplayWarned then
             Cell.vars._combatAuraDisplayWarned = true
             F.Print("|cFFFF7D7DCombat AuraContainer (" .. indicatorName .. ") failed:|r " .. tostring(err))
         end
@@ -886,6 +986,10 @@ if SUPPORTED then
     end)
 
     Cell.RegisterCallback("UpdateLayout", "CombatAuraDisplay_UpdateLayout", function()
+        C_Timer.After(0, I.RefreshAllCombatAuraDisplays)
+    end)
+
+    Cell.RegisterCallback("RaidDebuffsChanged", "CombatAuraDisplay_RaidDebuffs", function()
         C_Timer.After(0, I.RefreshAllCombatAuraDisplays)
     end)
 

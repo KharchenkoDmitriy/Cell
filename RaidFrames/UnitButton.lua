@@ -613,7 +613,7 @@ local function HandleIndicators(b)
             indicator:SetIconStyle(t["iconStyle"])
         end
         -- update animation
-        if type(t["showAnimation"]) == "boolean" then
+        if type(t["showAnimation"]) == "boolean" and indicator.ShowAnimation then
             indicator:ShowAnimation(t["showAnimation"])
         end
         -- update duration
@@ -1258,7 +1258,10 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end, true)
             elseif value == "showAnimation" then
                 F.IterateAllUnitButtons(function(b)
-                    b.indicators[indicatorName]:ShowAnimation(value2)
+                    local ind = b.indicators[indicatorName]
+                    if ind and ind.ShowAnimation then
+                        ind:ShowAnimation(value2)
+                    end
                     UnitButton_UpdateAuras(b)
                 end, true)
             elseif value == "trackByName" then
@@ -1354,7 +1357,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     indicator:SetTexture(value["texture"])
                 end
                 -- update showAnimation
-                if type(value["showAnimation"]) == "boolean" then
+                if type(value["showAnimation"]) == "boolean" and indicator.ShowAnimation then
                     indicator:ShowAnimation(value["showAnimation"])
                 end
                 -- update showDuration
@@ -1427,7 +1430,9 @@ local function ForEachAuraHelper(button, func, ...)
 end
 
 local function ForEachAura(button, filter, func)
-    -- 12.1+: GetAuraSlots throws when auras are secret under tainted addon code.
+    if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
+        return
+    end
     if F.IsAuraRestricted and F.IsAuraRestricted() then
         return
     end
@@ -2436,7 +2441,10 @@ UnitButton_UpdateAuras = function(self, updateInfo)
     local unit = self.states.displayedUnit
     if not unit then return end
 
-    -- 12.1 combat/secret: skip GetAuraSlots scans; Healers use spell-ID lookup.
+    if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
+        return
+    end
+
     if F.IsAuraRestricted and F.IsAuraRestricted() then
         if I.UpdateHealersAuraDisplayUnit then
             I.UpdateHealersAuraDisplayUnit(self)

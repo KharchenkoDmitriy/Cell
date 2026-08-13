@@ -36,8 +36,10 @@ select(2, ...).L = setmetatable({
     ["trackByName"] = "Track by name",
     ["keepInHealers"] = "Keep in Healers indicator",
     ["keepInHealersTip"] = "When enabled, this buff also stays visible in the Healers indicator.|When disabled, it only shows here and is removed from Healers.",
+    ["glowDisabledApiWarning"] = "Unfortunately Glow cannot be implemented right now due to API changes. I have disabled this indicator for now, until a solution is found.",
     ["Healers indicator is up to date."] = "Healers indicator is up to date.",
     ["Healers indicator already exists. Add new spells?"] = "Healers indicator already exists. Add |cFFFFB5C5%d|r new spell(s)?",
+    ["Create Healers indicator"] = "Create Healers indicator",
     ["showDuration"] = "Show duration text",
     ["showAnimation"] = "Show animation",
     ["Animation"] = "Animation",
@@ -106,41 +108,55 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.4 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Fixed errors from the Blizzard Cooldown Viewer and Buff Frame that could pop up while playing with Cell.</p>
+        <p>* Fixed an error when entering a dungeon (Raid Debuffs).</p>
+        <p>* Hiding Blizzard party/raid frames no longer causes a blocked Hide() error when you enter a dungeon.</p>
+        <p>* Fixed an error that could appear while Blizzard raid frames were hidden.</p>
+        <p>* You can also create the Healers indicator with the + button (same as /cell healers).</p>
+        <p>* Healers default list: added Innervate, Seraphic Barrier, Beacon of the Savior, and Void Shield.</p>
+        <p>* All custom indicator types now update in combat, including Border.</p>
+        <p>* Duration text for Bar, Bars, Rect, Block and Blocks is now a simple on/off checkbox.</p>
+        <p>* Rect, Block and Blocks: choose how the cooldown looks - none, top to bottom, or circular.</p>
+        <p>* Custom Glow removed on 12.1 (custom indicator, Defensives, Externals, Raid Debuffs, Targeted Spells). LibCustomGlow on unit buttons caused taint and lag.</p>
+        <br/>
+
         <h1>r277.9.3 - NeRgY</h1>
         <h2>Retail</h2>
-        <p>* Fixed a taint error with Cooldown Manager addons that could pop up when buffs were applied (for example Blizzard Cooldown Viewer and BetterCooldownManager).</p>
+        <p>* Fixed an error with Cooldown Manager addons that could pop up when buffs were applied.</p>
         <p>* Custom Color indicators (for example Atonement) now update in combat.</p>
         <br/>
 
         <h1>r277.9.2 - NeRgY</h1>
         <h2>Retail</h2>
-        <p>* Custom Icon / Icons buff indicators now work correctly in combat (same reliable display as Healers).</p>
+        <p>* Custom Icon / Icons buff indicators now work correctly in combat.</p>
         <p>* Custom Icon / Icons: duration text is a simple on/off checkbox.</p>
         <p>* Custom Icon / Icons: choose how the cooldown looks - none, top to bottom, or circular.</p>
         <p>* Custom Icon / Icons: glow type setting removed (it did not apply there).</p>
-        <p>* Added an info button next to "Keep in Healers indicator" that explains what the option does.</p>
-        <p>* Fixed Health Thresholds: enabling the indicator no longer causes an error, and it works again in and out of combat.</p>
+        <p>* Added an info button next to "Keep in Healers indicator".</p>
+        <p>* Fixed Health Thresholds: enabling it no longer causes an error, and it works again in and out of combat.</p>
         <br/>
 
         <h1>r277.9.1 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Fixed wrong buffs showing up as defensives or externals in the open world / in a party.</p>
-        <p>* The Healers icons no longer show the World Quest bonus buff "Sign of the Emissary".</p>
+        <p>* The Healers icons no longer show the World Quest buff "Sign of the Emissary".</p>
         <p>* Debuff stacks and duration timers show correctly again.</p>
-        <p>* Hiding Blizzard party and raid frames causes fewer error popups.</p>
+        <p>* Hiding Blizzard party and raid frames causes fewer errors.</p>
         <br/>
 
         <h1>r277.9 - NeRgY</h1>
         <h2>Retail PTR (12.1.0)</h2>
-        <p>* Important buffs and debuffs (defensives, externals, crowd controls, healers, and more) now show correctly both in and out of combat.</p>
-        <p>* Dispels can highlight the health bar as a solid color or with a soft fade from the top or bottom.</p>
-        <p>* Healers indicator: choose how the cooldown looks - none, top to bottom, or circular.</p>
-        <p>* Healers indicator: duration text is a simple on/off checkbox (no more percentage options that did not work there).</p>
-        <p>* Healers indicator: glow type setting removed (it did not apply there).</p>
+        <p>* Important buffs and debuffs (defensives, externals, crowd controls, healers, and more) now show correctly in and out of combat.</p>
+        <p>* Dispels can highlight the health bar as a solid color or with a fade from the top or bottom.</p>
+        <p>* Healers: choose how the cooldown looks - none, top to bottom, or circular.</p>
+        <p>* Healers: duration text is a simple on/off checkbox.</p>
+        <p>* Healers: glow type setting removed (it did not apply there).</p>
         <h2>MoP Classic</h2>
-        <p>* Hiding Blizzard party/raid frames is more stable and less likely to cause errors.</p>
+        <p>* Hiding Blizzard party/raid frames is more stable.</p>
         <p>* Fewer issues while inspecting group members in combat.</p>
-        <p>* Custom indicators that track all timed auras no longer cause Lua errors.</p>
+        <p>* Custom indicators that track all timed auras no longer cause errors.</p>
         <h2>Classic / TBC</h2>
         <p>* Buff Tracker is more reliable when joining a raid.</p>
         <p>* Raid Debuffs correctly detect Serpentshrine Cavern and Tempest Keep.</p>
@@ -148,27 +164,27 @@ select(2, ...).L = setmetatable({
 
         <h1>r277.8.3 - NeRgY</h1>
         <h2>Retail / Midnight</h2>
-        <p>* Fixed TextStatusBar error spam (attempt to compare a secret number value, execution tainted by Cell) on Blizzard party mana/power bars when Hide Blizzard Party is enabled.</p>
-        <p>* Hide Blizzard Party/Raid: hidden frames no longer keep updating health/power bars in the background.</p>
-        <p>* Miscellaneous small bug fixes and stability improvements.</p>
+        <p>* Fixed error spam on Blizzard party mana/power bars when Hide Blizzard Party is enabled.</p>
+        <p>* Hidden Blizzard party/raid frames no longer keep updating in the background.</p>
+        <p>* Small bug fixes and stability improvements.</p>
         <h2>Classic / TBC</h2>
-        <p>* Fixed Buff Tracker errors when joining a raid (safer aura lookup + missing class guards).</p>
-        <p>* Classic flavors no longer use the retail Hide Blizzard path (fixes raid-entry Lua errors).</p>
-        <p>* Fixed TBC Raid Debuffs zone detection for SSC / Tempest Keep (instance name mapping now matches GetInstanceInfo).</p>
+        <p>* Fixed Buff Tracker errors when joining a raid.</p>
+        <p>* Classic no longer uses the retail Hide Blizzard path (fixes errors when entering a raid).</p>
+        <p>* Fixed TBC Raid Debuffs zone detection for SSC / Tempest Keep.</p>
         <br/>
 
         <h1>r277.8.2 - NeRgY</h1>
         <h2>Retail / Midnight</h2>
-        <p>* Hide Blizzard Party / Raid is more stable and causes fewer errors in raids and with other addons.</p>
+        <p>* Hide Blizzard Party / Raid is more stable and causes fewer errors.</p>
         <p>* Fixed a rare error when power bars update while playing solo.</p>
         <br/>
 
         <h1>r277.8.1 - NeRgY</h1>
         <h2>Retail / Midnight</h2>
         <p>* Fixed Bar Animation &gt; Smooth: health and power bars animate smoothly again.</p>
-        <p>* Fixed Out of Range Alpha: frames correctly fade when out of range again.</p>
+        <p>* Fixed Out of Range Alpha: frames fade correctly when out of range again.</p>
         <h2>Classic Era / TBC</h2>
-        <p>* Fixed Out of Range Alpha: frames correctly fade when out of range again.</p>
+        <p>* Fixed Out of Range Alpha: frames fade correctly when out of range again.</p>
         <br/>
 
         <h1>r277.8 - NeRgY</h1>

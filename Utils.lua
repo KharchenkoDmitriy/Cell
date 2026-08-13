@@ -22,7 +22,7 @@ Cell.isCata = WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC
 Cell.isMists = WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC
 Cell.isTWW = LE_EXPANSION_LEVEL_CURRENT == LE_EXPANSION_WAR_WITHIN
 
-local CELL_VERSION_FALLBACK = "r277.9.3"
+local CELL_VERSION_FALLBACK = "r277.9.4"
 
 function F.InitAddonVersion()
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
@@ -2803,6 +2803,11 @@ function F.IsAuraRestricted()
         return true
     end
     return false
+end
+
+function F.IsLiveAuraScanBlocked()
+    local build = select(4, GetBuildInfo())
+    return Cell.isRetail and build and build >= 120100
 end
 
 function F.IsCooldownRestricted()

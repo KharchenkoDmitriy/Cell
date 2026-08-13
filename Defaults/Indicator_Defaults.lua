@@ -113,6 +113,7 @@ function I.GetDefaultCustomIndicatorTable(name, indicatorName, type, auraType)
             },
             ["showStack"] = false,
             ["showDuration"] = false,
+            ["animationStyle"] = "none",
             ["auraType"] = auraType,
             ["auras"] = {},
             ["glowOptions"] = {"None", {0.95, 0.95, 0.32, 1}}
@@ -208,6 +209,7 @@ function I.GetDefaultCustomIndicatorTable(name, indicatorName, type, auraType)
             },
             ["showStack"] = false,
             ["showDuration"] = false,
+            ["animationStyle"] = "clock",
             ["auraType"] = auraType,
             ["auras"] = {},
             ["glowOptions"] = {"None", {0.95, 0.95, 0.32, 1}}
@@ -231,6 +233,7 @@ function I.GetDefaultCustomIndicatorTable(name, indicatorName, type, auraType)
             },
             ["showStack"] = false,
             ["showDuration"] = false,
+            ["animationStyle"] = "clock",
             ["auraType"] = auraType,
             ["auras"] = {},
             ["glowOptions"] = {"None", {0.95, 0.95, 0.32, 1}}

@@ -5,9 +5,15 @@ local F = Cell.funcs
 ---@type CellIndicatorFuncs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 3
+local INIT_VERSION = 11
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
+
+local SUPPORTED_TYPES = {
+    icon = true, icons = true, color = true, border = true,
+    text = true, bar = true, bars = true, rect = true,
+    texture = true, overlay = true, block = true, blocks = true,
+}
 
 local HARD_EXCLUDE_SPELLS = {
     [225788] = true,
@@ -48,17 +54,49 @@ local function ProbeSupported()
     return featureReady
 end
 
+local function IsOverlayType(cfgType)
+    return cfgType == "color" or cfgType == "border" or cfgType == "overlay"
+end
+
+local function IsSingleSlot(cfgType)
+    return cfgType ~= "icons" and cfgType ~= "bars" and cfgType ~= "blocks"
+end
+
+local function GetElementSize(cfg)
+    if IsOverlayType(cfg.type) then
+        return 1, 1
+    end
+    if cfg.type == "text" then
+        local s = (type(cfg.font) == "table" and cfg.font[2]) or 12
+        return s, s
+    end
+    local w = (cfg.size and cfg.size[1]) or 13
+    local h = (cfg.size and cfg.size[2]) or w
+    return w, h
+end
+
+local function AuraEntrySpellId(k, v)
+    if type(v) == "table" then
+        local n = tonumber(v[1])
+        if n and n > 0 then return n end
+        return
+    end
+    local n = tonumber(v)
+    if n and n > 0 then return n end
+    n = tonumber(k)
+    if n and n > 0 then return n end
+end
+
 local function IsSupportedCustomCfg(t)
-    if not (t and t.enabled and t.auraType == "buff") then return false end
+    if not (t and t.enabled) then return false end
+    if t.auraType ~= "buff" and t.auraType ~= "debuff" then return false end
     if t.name == "Healers" then return false end
-    if t.type ~= "icon" and t.type ~= "icons" and t.type ~= "color" then return false end
+    if not SUPPORTED_TYPES[t.type] then return false end
     if type(t.indicatorName) ~= "string" or not t.indicatorName:find("^indicator") then return false end
     if type(t.auras) ~= "table" then return false end
     local hasSpell = false
     for k, v in pairs(t.auras) do
-        local n = tonumber(v)
-        if not (n and n > 0) then n = tonumber(k) end
-        if n and n > 0 then
+        if AuraEntrySpellId(k, v) then
             hasSpell = true
             break
         end
@@ -84,9 +122,8 @@ local function BuildSpellMap(auras)
     local map = {}
     if type(auras) ~= "table" then return map end
     for k, v in pairs(auras) do
-        local n = tonumber(v)
-        if not (n and n > 0) then n = tonumber(k) end
-        if n and n > 0 then map[n] = true end
+        local n = AuraEntrySpellId(k, v)
+        if n then map[n] = true end
     end
     return map
 end
@@ -144,14 +181,12 @@ local function BuildExcludeSpellMap()
     return map
 end
 
-local function BuildFilter(castBy)
-    if castBy == "anyone" then
-        return "HELPFUL"
+local function BuildFilter(castBy, auraType)
+    local base = (auraType == "debuff") and "HARMFUL" or "HELPFUL"
+    if castBy == "anyone" or castBy == "others" then
+        return base
     end
-    if castBy == "others" then
-        return "HELPFUL"
-    end
-    return "HELPFUL|PLAYER"
+    return base .. "|PLAYER"
 end
 
 local function ResolveUnit(unitButton)
@@ -226,6 +261,190 @@ local function ShouldShowDuration(cfg)
     return true
 end
 
+local function UnpackColor(c, fallback)
+    fallback = fallback or { 0, 1, 0, 1 }
+    if type(c) ~= "table" then
+        return fallback[1], fallback[2], fallback[3], fallback[4] or 1
+    end
+    return c[1] or fallback[1], c[2] or fallback[2], c[3] or fallback[3], c[4] or fallback[4] or 1
+end
+
+local function GetCfgColor(cfg, fallback)
+    local colors = cfg and cfg.colors
+    if type(colors) ~= "table" then
+        return UnpackColor(nil, fallback)
+    end
+    if type(colors[1]) == "table" then
+        return UnpackColor(colors[1], fallback)
+    end
+    if type(colors[1]) == "string" and type(colors[2]) == "table" then
+        return UnpackColor(colors[2], fallback)
+    end
+    return UnpackColor(nil, fallback)
+end
+
+local function GetSpellTexture(spellId)
+    if C_Spell and C_Spell.GetSpellTexture then
+        local tex = C_Spell.GetSpellTexture(spellId)
+        if tex then return tex end
+    end
+    local _, icon = F.GetSpellInfo(spellId)
+    return icon
+end
+
+local function AddTextureColorKey(map, key, color)
+    if key == nil or key == "" then return end
+    map[key] = color
+    if type(key) ~= "string" then
+        map[tostring(key)] = color
+    end
+end
+
+local function BuildTextureColorMap(auras)
+    local map, first = {}, nil
+    if type(auras) ~= "table" then return map, first end
+    for k, v in pairs(auras) do
+        local id, color
+        if type(v) == "table" then
+            id = tonumber(v[1])
+            if type(v[2]) == "table" then color = v[2] end
+        else
+            id = AuraEntrySpellId(k, v)
+        end
+        if id and color then
+            first = first or color
+            AddTextureColorKey(map, GetSpellTexture(id), color)
+            local _, icon = F.GetSpellInfo(id)
+            AddTextureColorKey(map, icon, color)
+            if C_Spell and C_Spell.GetSpellInfo then
+                local info = C_Spell.GetSpellInfo(id)
+                if type(info) == "table" then
+                    AddTextureColorKey(map, info.iconID, color)
+                    AddTextureColorKey(map, info.originalIconID, color)
+                end
+            end
+        end
+    end
+    return map, first
+end
+
+local function ResolveIconTexture(button, fallback)
+    if button and button.GetIcon then
+        local ok, tex = pcall(button.GetIcon, button)
+        if ok and tex then return tex end
+    end
+    return fallback
+end
+
+local function HookIconColor(icon, texMap, firstColor, apply)
+    if not icon or not apply then return end
+    local function onTex(_, tex)
+        apply((texMap and tex and texMap[tex]) or (texMap and tex and texMap[tostring(tex)]) or firstColor)
+    end
+    hooksecurefunc(icon, "SetTexture", onTex)
+    if icon.SetAtlas then
+        hooksecurefunc(icon, "SetAtlas", onTex)
+    end
+end
+
+local function AttachHiddenIcon(button)
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetAllPoints(button)
+    icon:SetAlpha(0)
+    pcall(button.SetIcon, button, icon)
+    return icon
+end
+
+local function DurationBarOpts()
+    local barOpts = {}
+    if Enum and Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.ElapsedTime then
+        barOpts.direction = Enum.StatusBarTimerDirection.ElapsedTime
+    end
+    if Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate then
+        barOpts.interpolation = Enum.StatusBarInterpolation.Immediate
+    end
+    return barOpts
+end
+
+local function AttachDurationBar(button, orientation, r, g, b, a)
+    local bar = CreateFrame("StatusBar", nil, button)
+    bar:SetAllPoints(button)
+    bar:EnableMouse(false)
+    if orientation == "vertical" or orientation == "top-to-bottom" or orientation == "bottom-to-top" then
+        bar:SetOrientation("VERTICAL")
+    else
+        bar:SetOrientation("HORIZONTAL")
+    end
+    bar:SetReverseFill(true)
+    bar:SetStatusBarTexture(Cell.vars.whiteTexture or Cell.vars.texture)
+    local barTex = bar:GetStatusBarTexture()
+    if barTex then
+        barTex:SetVertexColor(r or 0, g or 1, b or 0, a or 1)
+    end
+    pcall(button.SetDurationBar, button, bar, DurationBarOpts())
+    return bar
+end
+
+local function AttachStackAndDuration(button, cfg, host, animFrame)
+    host = host or button
+    local textHost = CreateFrame("Frame", nil, host)
+    textHost:SetAllPoints(host)
+    textHost:EnableMouse(false)
+    local baseLevel = (animFrame and animFrame.GetFrameLevel and animFrame:GetFrameLevel())
+        or (button.GetFrameLevel and button:GetFrameLevel())
+        or 1
+    textHost:SetFrameLevel(baseLevel + 10)
+
+    if cfg.showStack ~= false then
+        local stack = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        local fontCfg = cfg.font and cfg.font[1]
+        local point = (type(fontCfg) == "table" and fontCfg[5]) or "TOPRIGHT"
+        local ox = (type(fontCfg) == "table" and fontCfg[6]) or 2
+        local oy = (type(fontCfg) == "table" and fontCfg[7]) or 1
+        stack:ClearAllPoints()
+        stack:SetPoint(point, textHost, point, ox, oy)
+        stack:SetJustifyH("RIGHT")
+        StyleFont(stack, fontCfg, 11)
+        if type(fontCfg) == "table" and type(fontCfg[8]) == "table" then
+            stack:SetTextColor(fontCfg[8][1] or 1, fontCfg[8][2] or 1, fontCfg[8][3] or 1, fontCfg[8][4] or 1)
+        else
+            stack:SetTextColor(1, 1, 1, 1)
+        end
+        pcall(button.SetApplicationCount, button, stack, {})
+    end
+
+    local showDuration = ShouldShowDuration(cfg)
+    if not showDuration and cfg.duration and cfg.duration[1] then
+        showDuration = true
+    end
+    if showDuration then
+        local duration = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        local fontCfg = (cfg.font and cfg.font[2]) or cfg.font
+        local point = (type(fontCfg) == "table" and fontCfg[5]) or "BOTTOMRIGHT"
+        local ox = (type(fontCfg) == "table" and fontCfg[6]) or 2
+        local oy = (type(fontCfg) == "table" and fontCfg[7]) or -1
+        duration:ClearAllPoints()
+        duration:SetPoint(point, textHost, point, ox, oy)
+        duration:SetJustifyH("RIGHT")
+        StyleFont(duration, fontCfg, 11)
+        if type(fontCfg) == "table" and type(fontCfg[8]) == "table" then
+            duration:SetTextColor(fontCfg[8][1] or 1, fontCfg[8][2] or 1, fontCfg[8][3] or 1, fontCfg[8][4] or 1)
+        else
+            duration:SetTextColor(1, 1, 1, 1)
+        end
+        local opts = {}
+        local formatter = GetCellDurationFormatter()
+        if formatter then
+            opts.textFormatter = formatter
+        end
+        if not pcall(button.SetDurationText, button, duration, opts) then
+            pcall(button.SetDurationText, button, duration, { textFormatter = formatter })
+        end
+    end
+    return textHost
+end
+
+
 local function ResolveAnimationStyle(cfg)
     if type(cfg) == "table" and type(cfg.animationStyle) == "string" then
         local s = cfg.animationStyle
@@ -234,6 +453,9 @@ local function ResolveAnimationStyle(cfg)
         end
     end
     if type(cfg) == "table" and cfg.showAnimation == false then
+        return "none"
+    end
+    if type(cfg) == "table" and cfg.type == "rect" then
         return "none"
     end
     return "clock"
@@ -247,6 +469,40 @@ local function AttachInvisibleCooldown(button)
     cooldown:SetDrawEdge(false)
     cooldown:SetDrawBling(false)
     cooldown:SetSwipeColor(0, 0, 0, 0)
+    pcall(button.SetDurationCooldown, button, cooldown)
+    return cooldown
+end
+
+local function AttachDurationAnimation(button, cfg)
+    local style = ResolveAnimationStyle(cfg)
+    if style == "none" then
+        return AttachInvisibleCooldown(button)
+    elseif style == "vertical" and type(button.SetDurationBar) == "function" then
+        local bar = CreateFrame("StatusBar", nil, button)
+        bar:SetAllPoints(button)
+        bar:EnableMouse(false)
+        bar:SetOrientation("VERTICAL")
+        bar:SetReverseFill(true)
+        bar:SetStatusBarTexture(Cell.vars.whiteTexture)
+        local barTex = bar:GetStatusBarTexture()
+        if barTex then
+            barTex:SetVertexColor(0, 0, 0, 0.77)
+        end
+        pcall(button.SetDurationBar, button, bar, DurationBarOpts())
+        return bar
+    end
+
+    local cooldown = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
+    cooldown:SetAllPoints(button)
+    cooldown:EnableMouse(false)
+    cooldown:SetHideCountdownNumbers(true)
+    cooldown:SetDrawEdge(false)
+    cooldown:SetDrawBling(false)
+    cooldown:SetReverse(true)
+    if Cell.vars and Cell.vars.whiteTexture then
+        cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
+        cooldown:SetSwipeColor(0, 0, 0, 0.77)
+    end
     pcall(button.SetDurationCooldown, button, cooldown)
     return cooldown
 end
@@ -333,6 +589,281 @@ local function MakeInitColorButton(cfg, unitButton)
     end
 end
 
+local function GetBorderColor(cfg)
+    local auras = cfg and cfg.auras
+    if type(auras) == "table" then
+        for _, v in ipairs(auras) do
+            if type(v) == "table" and type(v[2]) == "table" then
+                local c = v[2]
+                return c[1] or 1, c[2] or 0, c[3] or 0, c[4] or 1
+            end
+        end
+    end
+    return 1, 0, 0, 1
+end
+
+local function MakeInitBorderButton(cfg, unitButton)
+    return function(button)
+        pcall(button.SetSize, button, 0.001, 0.001)
+        pcall(button.SetMouseClickEnabled, button, false)
+
+        local dummy = button:CreateTexture(nil, "ARTWORK")
+        dummy:SetAllPoints(button)
+        dummy:SetColorTexture(0, 0, 0, 0)
+        pcall(button.SetIcon, button, dummy)
+
+        local inset = CELL_BORDER_SIZE or 1
+        local thickness = cfg.thickness or 2
+        local r, g, b, a = GetBorderColor(cfg)
+
+        local tex = button:CreateTexture(nil, "ARTWORK", nil, 3)
+        tex:SetTexture(Cell.vars.whiteTexture)
+        tex:SetVertexColor(r, g, b, a)
+        tex:ClearAllPoints()
+        tex:SetPoint("TOPLEFT", unitButton, "TOPLEFT", inset, -inset)
+        tex:SetPoint("BOTTOMRIGHT", unitButton, "BOTTOMRIGHT", -inset, inset)
+
+        local mask = button:CreateMaskTexture()
+        mask:SetTexture(Cell.vars.emptyTexture, "CLAMPTOWHITE", "CLAMPTOWHITE")
+        mask:ClearAllPoints()
+        mask:SetPoint("TOPLEFT", tex, "TOPLEFT", thickness, -thickness)
+        mask:SetPoint("BOTTOMRIGHT", tex, "BOTTOMRIGHT", -thickness, thickness)
+        tex:AddMaskTexture(mask)
+
+        local tex2 = button:CreateTexture(nil, "ARTWORK", nil, 2)
+        tex2:SetColorTexture(0, 0, 0, 1)
+        tex2:ClearAllPoints()
+        tex2:SetPoint("TOPLEFT", unitButton, "TOPLEFT", inset, -inset)
+        tex2:SetPoint("BOTTOMRIGHT", unitButton, "BOTTOMRIGHT", -inset, inset)
+
+        local mask2 = button:CreateMaskTexture()
+        mask2:SetTexture(Cell.vars.emptyTexture, "CLAMPTOWHITE", "CLAMPTOWHITE")
+        mask2:ClearAllPoints()
+        mask2:SetPoint("TOPLEFT", tex2, "TOPLEFT", thickness + inset, -(thickness + inset))
+        mask2:SetPoint("BOTTOMRIGHT", tex2, "BOTTOMRIGHT", -(thickness + inset), thickness + inset)
+        tex2:AddMaskTexture(mask2)
+
+        local host = unitButton.widgets and unitButton.widgets.highLevelFrame or unitButton
+        local base = (host.GetFrameLevel and host:GetFrameLevel())
+            or (unitButton.GetFrameLevel and unitButton:GetFrameLevel())
+            or 1
+        pcall(button.SetFrameLevel, button, base + (cfg.frameLevel or 10))
+    end
+end
+
+local function MakeInitTextButton(cfg)
+    return function(button)
+        local size = (type(cfg.font) == "table" and cfg.font[2]) or 12
+        pcall(button.SetSize, button, size, size)
+        pcall(button.SetMouseClickEnabled, button, false)
+        AttachHiddenIcon(button)
+
+        local text = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        text:SetPoint("CENTER", 1, 0)
+        StyleFont(text, cfg.font, size)
+        local r, g, b, a = GetCfgColor(cfg, { 0, 1, 0, 1 })
+        text:SetTextColor(r, g, b, a)
+
+        local showDuration = cfg.duration and cfg.duration[1]
+        local showStack = not (cfg.stack and cfg.stack[1] == false)
+        if showDuration then
+            local opts = {}
+            local formatter = GetCellDurationFormatter()
+            if formatter then
+                opts.textFormatter = formatter
+            end
+            if not pcall(button.SetDurationText, button, text, opts) then
+                pcall(button.SetDurationText, button, text, { textFormatter = formatter })
+            end
+            if showStack then
+                local stack = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+                stack:SetPoint("TOPRIGHT", 2, 1)
+                StyleFont(stack, cfg.font, size)
+                stack:SetTextColor(r, g, b, a)
+                pcall(button.SetApplicationCount, button, stack, {})
+            end
+        elseif showStack then
+            pcall(button.SetApplicationCount, button, text, {})
+        end
+    end
+end
+
+local function MakeInitRectButton(cfg)
+    return function(button)
+        local sizeW = (cfg.size and cfg.size[1]) or 11
+        local sizeH = (cfg.size and cfg.size[2]) or 4
+        pcall(button.SetSize, button, sizeW, sizeH)
+        pcall(button.SetMouseClickEnabled, button, false)
+        AttachHiddenIcon(button)
+
+        local r, g, b, a = GetCfgColor(cfg, { 0, 1, 0, 1 })
+        local fill = button:CreateTexture(nil, "ARTWORK")
+        fill:SetAllPoints(button)
+        fill:SetColorTexture(r, g, b, a)
+
+        local br, bg, bb, ba = 0, 0, 0, 1
+        if type(cfg.colors) == "table" and type(cfg.colors[4]) == "table" then
+            br, bg, bb, ba = UnpackColor(cfg.colors[4], { 0, 0, 0, 1 })
+        end
+        local border = button:CreateTexture(nil, "OVERLAY")
+        border:SetAllPoints(button)
+        border:SetColorTexture(br, bg, bb, ba)
+        local mask = button:CreateMaskTexture()
+        mask:SetTexture(Cell.vars.emptyTexture or "Interface\\Buttons\\WHITE8X8", "CLAMPTOWHITE", "CLAMPTOWHITE")
+        mask:SetPoint("TOPLEFT", border, "TOPLEFT", 1, -1)
+        mask:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", -1, 1)
+        border:AddMaskTexture(mask)
+
+        local animFrame = AttachDurationAnimation(button, cfg)
+        AttachStackAndDuration(button, cfg, button, animFrame)
+    end
+end
+
+local function MakeInitBarButton(cfg)
+    return function(button)
+        local sizeW = (cfg.size and cfg.size[1]) or 18
+        local sizeH = (cfg.size and cfg.size[2]) or 4
+        pcall(button.SetSize, button, sizeW, sizeH)
+        pcall(button.SetMouseClickEnabled, button, false)
+        local icon = AttachHiddenIcon(button)
+
+        local bgr, bgg, bgb, bga = 0.07, 0.07, 0.07, 0.9
+        if type(cfg.colors) == "table" and type(cfg.colors[5]) == "table" then
+            bgr, bgg, bgb, bga = UnpackColor(cfg.colors[5], { 0.07, 0.07, 0.07, 0.9 })
+        end
+        local bg = button:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints(button)
+        bg:SetColorTexture(bgr, bgg, bgb, bga)
+
+        local r, g, b, a = GetCfgColor(cfg, { 0, 1, 0, 1 })
+        local texMap, firstColor = BuildTextureColorMap(cfg.auras)
+        if firstColor then
+            r, g, b, a = UnpackColor(firstColor, { r, g, b, a })
+        end
+        local fillOrientation = (cfg.type == "bar") and (cfg.orientation or "horizontal") or "horizontal"
+        local bar = AttachDurationBar(button, fillOrientation, r, g, b, a)
+        HookIconColor(ResolveIconTexture(button, icon), texMap, firstColor or { r, g, b, a }, function(color)
+            if not (bar and color) then return end
+            local cr, cg, cb, ca = UnpackColor(color, { r, g, b, a })
+            local barTex = bar:GetStatusBarTexture()
+            if barTex then
+                barTex:SetVertexColor(cr, cg, cb, ca)
+            end
+        end)
+
+        AttachStackAndDuration(button, cfg, button, bar)
+    end
+end
+
+local function MakeInitBlockButton(cfg)
+    return function(button)
+        local sizeW = (cfg.size and cfg.size[1]) or 10
+        local sizeH = (cfg.size and cfg.size[2]) or 10
+        pcall(button.SetSize, button, sizeW, sizeH)
+        pcall(button.SetMouseClickEnabled, button, false)
+        local icon = AttachHiddenIcon(button)
+
+        local texMap, firstColor = BuildTextureColorMap(cfg.auras)
+        local r, g, b, a
+        if cfg.type == "blocks" then
+            r, g, b, a = UnpackColor(firstColor, { 0, 1, 0, 1 })
+        else
+            r, g, b, a = GetCfgColor(cfg, { 0, 1, 0, 1 })
+        end
+        local fill = button:CreateTexture(nil, "ARTWORK")
+        fill:SetAllPoints(button)
+        fill:SetColorTexture(r, g, b, a)
+
+        local br, bg, bb, ba = 0, 0, 0, 1
+        if type(cfg.colors) == "table" and type(cfg.colors[5]) == "table" then
+            br, bg, bb, ba = UnpackColor(cfg.colors[5], { 0, 0, 0, 1 })
+        end
+        local border = button:CreateTexture(nil, "OVERLAY")
+        border:SetAllPoints(button)
+        border:SetColorTexture(br, bg, bb, ba)
+        local mask = button:CreateMaskTexture()
+        mask:SetTexture(Cell.vars.emptyTexture or "Interface\\Buttons\\WHITE8X8", "CLAMPTOWHITE", "CLAMPTOWHITE")
+        mask:SetPoint("TOPLEFT", border, "TOPLEFT", 1, -1)
+        mask:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", -1, 1)
+        border:AddMaskTexture(mask)
+
+        if cfg.type == "blocks" then
+            HookIconColor(ResolveIconTexture(button, icon), texMap, firstColor or { r, g, b, a }, function(color)
+                if not color then return end
+                fill:SetColorTexture(UnpackColor(color, { r, g, b, a }))
+            end)
+        end
+
+        local animFrame = AttachDurationAnimation(button, cfg)
+        AttachStackAndDuration(button, cfg, button, animFrame)
+    end
+end
+
+local function MakeInitTextureButton(cfg, unitButton)
+    return function(button)
+        local sizeW = (cfg.size and cfg.size[1]) or 16
+        local sizeH = (cfg.size and cfg.size[2]) or 16
+        pcall(button.SetSize, button, sizeW, sizeH)
+        pcall(button.SetMouseClickEnabled, button, false)
+        AttachHiddenIcon(button)
+
+        local tex = button:CreateTexture(nil, "ARTWORK")
+        tex:SetAllPoints(button)
+        local texTbl = cfg.texture
+        if type(texTbl) == "table" and texTbl[1] then
+            local path = texTbl[1]
+            if type(path) == "string" and strfind(strlower(path), "^interface") then
+                tex:SetTexture(path)
+            else
+                tex:SetAtlas(path)
+            end
+            if texTbl[2] then
+                tex:SetRotation((texTbl[2] or 0) * math.pi / 180)
+            end
+            if type(texTbl[3]) == "table" then
+                tex:SetVertexColor(UnpackColor(texTbl[3], { 1, 1, 1, 1 }))
+            end
+        else
+            tex:SetColorTexture(1, 1, 1, 1)
+        end
+    end
+end
+
+local function MakeInitOverlayButton(cfg, unitButton)
+    return function(button)
+        pcall(button.SetSize, button, 0.001, 0.001)
+        pcall(button.SetMouseClickEnabled, button, false)
+        AttachHiddenIcon(button)
+
+        local health = unitButton.widgets and unitButton.widgets.healthBar
+        local r, g, b, a = GetCfgColor(cfg, { 0, 0.61, 1, 0.55 })
+
+        local bar = CreateFrame("StatusBar", nil, button)
+        if health then
+            bar:SetAllPoints(health)
+        else
+            bar:SetAllPoints(unitButton)
+        end
+        bar:EnableMouse(false)
+        bar:SetStatusBarTexture(Cell.vars.whiteTexture or Cell.vars.texture)
+        local orientation = cfg.orientation or "horizontal"
+        if orientation == "vertical" then
+            bar:SetOrientation("VERTICAL")
+        else
+            bar:SetOrientation("HORIZONTAL")
+        end
+        bar:SetReverseFill(true)
+        local barTex = bar:GetStatusBarTexture()
+        if barTex then
+            barTex:SetVertexColor(r, g, b, a)
+        end
+        local parent = health or unitButton
+        local base = (parent.GetFrameLevel and parent:GetFrameLevel()) or 1
+        pcall(bar.SetFrameLevel, bar, base + (cfg.frameLevel or 1) + 55)
+        pcall(button.SetDurationBar, button, bar, DurationBarOpts())
+    end
+end
+
 local function MakeInitAuraButton(cfg)
     return function(button)
         local sizeW = (cfg.size and cfg.size[1]) or 13
@@ -345,46 +876,7 @@ local function MakeInitAuraButton(cfg)
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         button:SetIcon(icon)
 
-        local style = ResolveAnimationStyle(cfg)
-        local animFrame
-
-        if style == "none" then
-            animFrame = AttachInvisibleCooldown(button)
-        elseif style == "vertical" and type(button.SetDurationBar) == "function" then
-            local bar = CreateFrame("StatusBar", nil, button)
-            bar:SetAllPoints(button)
-            bar:EnableMouse(false)
-            bar:SetOrientation("VERTICAL")
-            bar:SetReverseFill(true)
-            bar:SetStatusBarTexture(Cell.vars.whiteTexture)
-            local barTex = bar:GetStatusBarTexture()
-            if barTex then
-                barTex:SetVertexColor(0, 0, 0, 0.77)
-            end
-            local barOpts = {}
-            if Enum and Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.ElapsedTime then
-                barOpts.direction = Enum.StatusBarTimerDirection.ElapsedTime
-            end
-            if Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate then
-                barOpts.interpolation = Enum.StatusBarInterpolation.Immediate
-            end
-            pcall(button.SetDurationBar, button, bar, barOpts)
-            animFrame = bar
-        else
-            local cooldown = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
-            cooldown:SetAllPoints(button)
-            cooldown:EnableMouse(false)
-            cooldown:SetHideCountdownNumbers(true)
-            cooldown:SetDrawEdge(false)
-            cooldown:SetDrawBling(false)
-            cooldown:SetReverse(true)
-            if Cell.vars and Cell.vars.whiteTexture then
-                cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
-                cooldown:SetSwipeColor(0, 0, 0, 0.77)
-            end
-            pcall(button.SetDurationCooldown, button, cooldown)
-            animFrame = cooldown
-        end
+        local animFrame = AttachDurationAnimation(button, cfg)
 
         local textHost = CreateFrame("Frame", nil, button)
         textHost:SetAllPoints(button)
@@ -437,7 +929,13 @@ local function MakeInitAuraButton(cfg)
     end
 end
 
-local function ResolveContainerParent(unitButton)
+local function ResolveContainerParent(unitButton, cfg)
+    if cfg and cfg.type == "border" and unitButton.widgets and unitButton.widgets.highLevelFrame then
+        return unitButton.widgets.highLevelFrame
+    end
+    if cfg and cfg.type == "overlay" and unitButton.widgets and unitButton.widgets.healthBar then
+        return unitButton.widgets.healthBar
+    end
     if unitButton.widgets and unitButton.widgets.indicatorFrame then
         return unitButton.widgets.indicatorFrame
     end
@@ -447,6 +945,9 @@ end
 local function HideLegacy(unitButton, indicatorName)
     local ind = unitButton.indicators and indicatorName and unitButton.indicators[indicatorName]
     if not ind then return end
+    if ind.StopGlow then
+        pcall(ind.StopGlow, ind)
+    end
     ind:Hide(true)
     if ind.SetAlpha then ind:SetAlpha(0) end
 end
@@ -466,11 +967,10 @@ local function DestroyContainer(st)
 end
 
 local function AnchorContainer(container, unitButton, cfg)
-    local sizeW = (cfg.type == "color" and 1) or (cfg.size and cfg.size[1]) or 13
-    local sizeH = (cfg.type == "color" and 1) or (cfg.size and cfg.size[2]) or sizeW
+    local sizeW, sizeH = GetElementSize(cfg)
     local spacingX = (cfg.spacing and cfg.spacing[1]) or 0
     local spacingY = (cfg.spacing and cfg.spacing[2]) or 0
-    local num = (cfg.type == "icon" or cfg.type == "color") and 1 or (cfg.num or 5)
+    local num = IsSingleSlot(cfg.type) and 1 or (cfg.num or 5)
     local numPerLine = cfg.numPerLine or num
     local pos = cfg.position or { "TOPRIGHT", "button", "TOPRIGHT", 0, 3 }
     local point = pos[1] or "TOPRIGHT"
@@ -522,7 +1022,7 @@ local function AnchorContainer(container, unitButton, cfg)
         })
     end
 
-    local parent = ResolveContainerParent(unitButton)
+    local parent = ResolveContainerParent(unitButton, cfg)
     container:SetFrameLevel((parent:GetFrameLevel() or 0) + (cfg.frameLevel or 5))
 end
 
@@ -533,19 +1033,18 @@ local function CreateCustomContainer(unitButton, cfg)
     end
 
     EnsureAuraContainerLoaded()
-    local parent = ResolveContainerParent(unitButton)
+    local parent = ResolveContainerParent(unitButton, cfg)
     local ok, container = pcall(CreateFrame, "AuraContainer", nil, parent, "CustomAuraContainerTemplate")
     if not ok or not container then
         return nil, tostring(container)
     end
 
-    local sizeW = (cfg.type == "color" and 1) or (cfg.size and cfg.size[1]) or 13
-    local sizeH = (cfg.type == "color" and 1) or (cfg.size and cfg.size[2]) or sizeW
+    local sizeW, sizeH = GetElementSize(cfg)
     local spacingX = (cfg.spacing and cfg.spacing[1]) or 0
     local spacingY = (cfg.spacing and cfg.spacing[2]) or 0
-    local filter = BuildFilter(cfg.castBy)
+    local filter = BuildFilter(cfg.castBy, cfg.auraType)
     local unit = ResolveUnit(unitButton) or "player"
-    local maxCount = (cfg.type == "icon" or cfg.type == "color") and 1 or (cfg.num or 5)
+    local maxCount = IsSingleSlot(cfg.type) and 1 or (cfg.num or 5)
     local groupKey = cfg.indicatorName
 
     container:SetEnabled(false)
@@ -553,13 +1052,42 @@ local function CreateCustomContainer(unitButton, cfg)
     AnchorContainer(container, unitButton, cfg)
     pcall(container.SetUnit, container, unit)
 
+    local initFrame
+    if cfg.type == "color" then
+        initFrame = MakeInitColorButton(cfg, unitButton)
+    elseif cfg.type == "border" then
+        initFrame = MakeInitBorderButton(cfg, unitButton)
+    elseif cfg.type == "text" then
+        initFrame = MakeInitTextButton(cfg)
+    elseif cfg.type == "rect" then
+        initFrame = MakeInitRectButton(cfg)
+    elseif cfg.type == "bar" or cfg.type == "bars" then
+        initFrame = MakeInitBarButton(cfg)
+    elseif cfg.type == "block" or cfg.type == "blocks" then
+        initFrame = MakeInitBlockButton(cfg)
+    elseif cfg.type == "texture" then
+        initFrame = MakeInitTextureButton(cfg, unitButton)
+    elseif cfg.type == "overlay" then
+        initFrame = MakeInitOverlayButton(cfg, unitButton)
+    else
+        initFrame = MakeInitAuraButton(cfg)
+    end
+    local rawInit = initFrame
+    initFrame = function(button)
+        local ok, err = pcall(rawInit, button)
+        if not ok and not Cell.vars._customAuraInitWarned then
+            Cell.vars._customAuraInitWarned = true
+            F.Print("|cFFFF7D7DCustom indicator setup failed:|r " .. tostring(err))
+        end
+    end
+
     local groupOpts = {
         maxFrameCount = maxCount,
         candidateFilters = {
             includeSpellIDs = spellMap,
             excludeSpellIDs = BuildExcludeSpellMap(),
         },
-        initializeFrame = (cfg.type == "color") and MakeInitColorButton(cfg, unitButton) or MakeInitAuraButton(cfg),
+        initializeFrame = initFrame,
         layout = {
             elementWidth = sizeW,
             elementHeight = sizeH,
@@ -736,7 +1264,9 @@ local function SyncButton(unitButton, allowCreate)
                 end
                 ShowLegacy(unitButton, name)
                 local ind = unitButton.indicators and unitButton.indicators[name]
-                if ind and ind.indicatorType == "color" then
+                if ind and (ind.indicatorType == "color" or ind.indicatorType == "border"
+                    or ind.indicatorType == "glow" or ind.indicatorType == "overlay"
+                    or ind.indicatorType == "texture") then
                     ind:Hide()
                 end
             end
@@ -745,10 +1275,20 @@ local function SyncButton(unitButton, allowCreate)
 end
 
 function I.ShouldSkipLegacyCustom(indicatorTable)
+    if indicatorTable and indicatorTable.type == "glow" then
+        return true
+    end
     if not ProbeSupported() or not indicatorTable then
         return false
     end
-    return IsSupportedCustomCfg(indicatorTable)
+    if IsSupportedCustomCfg(indicatorTable) then
+        return true
+    end
+    -- Custom.lua runtime tables omit enabled/auraType/indicatorName
+    if indicatorTable.name == "Healers" then
+        return false
+    end
+    return SUPPORTED_TYPES[indicatorTable.type] and true or false
 end
 
 function I.CustomAuraDisplayActive()
@@ -796,7 +1336,10 @@ if SUPPORTED then
             or setting == "showDuration" or setting == "showStack"
             or setting == "checkbutton" or setting == "font"
             or setting == "type" or setting == "auraType"
-            or setting == "colors" or setting == "anchor" then
+            or setting == "colors" or setting == "anchor" or setting == "thickness"
+            or setting == "glowOptions" or setting == "texture" or setting == "fadeOut"
+            or setting == "smooth" or setting == "maxValue" or setting == "duration"
+            or setting == "stack" or setting == "barOrientation" then
             C_Timer.After(0, I.RefreshAllCustomAuraDisplays)
         end
     end)

@@ -796,6 +796,7 @@ local spells =  {
     383193, -- 林地护理 - Grove Tending
     439530, -- 共生绽华 - Symbiotic Blooms
     474754, -- 共生关系 - Symbiotic Relationship
+    29166, -- 激活 - Innervate
     -- 429224, -- 次级塞纳里奥结界 - Minor Cenarion Ward (removed in 12.0, Durability of Nature redesigned)
 
     -- evoker
@@ -847,6 +848,8 @@ local spells =  {
     -- 388011, -- 凛冬祝福 - Blessing of Winter, removed in 12.0
     200654, -- 提尔的拯救 - Tyr's Deliverance
     1244893, -- 救世主道标 - Beacon of the Savior
+    1245369, -- 救世主道标（吸收） - Beacon of the Savior (absorb)
+    1241717, -- 炽天使屏障 - Seraphic Barrier
     432496, -- 圣洁壁垒 - Holy Bulwark (Holy Armaments shield variant)
     432502, -- 圣洁武器 - Holy Armaments (Sacred Weapon variant)
 
@@ -860,6 +863,7 @@ local spells =  {
     372847, -- 光明之泉恢复 - Blessed Bolt
     -- 443526, -- 慰藉预兆 - Premonition of Solace (removed in 12.0)
     1253593, -- 虚空之盾 - Void Shield
+    1300009, -- 虚空之盾（展开幻象） - Void Shield (Unfolding Vision)
 
     -- shaman
     974, -- 大地之盾 - Earth Shield
@@ -873,101 +877,123 @@ local spells =  {
     -- 456366, -- 治疗之雨 - Healing Rain
 }
 
-function F.FirstRun()
-    local currentLayoutTable = Cell.vars.currentLayoutTable
-
-    -- Check if Healers indicator already exists
-    for _, indicator in ipairs(currentLayoutTable["indicators"]) do
-        if indicator["name"] == "Healers" then
-            local existingAuras = indicator["auras"] or {}
-            local seen = {}
-            for _, id in ipairs(existingAuras) do seen[id] = true end
-
-            local missing = {}
-            for _, id in ipairs(spells) do
-                if not seen[id] then tinsert(missing, id) end
-            end
-
-            if #missing == 0 then
-                F.Print(L["Healers indicator is up to date."])
-                return
-            end
-
-            -- Build icon preview for missing spells
-            local icons = "\n\n"
-            for _, id in ipairs(missing) do
-                local icon = select(2, F.GetSpellInfo(id))
-                if icon then icons = icons .. "|T"..icon..":0|t" end
-            end
-
-            local popup = Cell.CreateConfirmPopup(Cell.frames.anchorFrame, 200,
-                string.format(L["Healers indicator already exists. Add new spells?"], #missing) .. icons,
-                function()
-                    for _, id in ipairs(missing) do
-                        tinsert(indicator["auras"], id)
-                    end
-                    Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, indicator["indicatorName"], "auras", "buff", indicator["auras"])
-                    F.ReloadIndicatorList()
-                end
-            )
-            popup:SetPoint("TOPLEFT")
-            popup:Show()
-            return
-        end
-    end
-
-    -- No Healers found → create one
-    local icons = "\n\n"
-    for i, id in pairs(spells) do
+local function BuildHealersSpellIcons(ids)
+    local icons, n = "\n\n", 0
+    for _, id in ipairs(ids) do
         local icon = select(2, F.GetSpellInfo(id))
         if icon then
+            n = n + 1
             icons = icons .. "|T"..icon..":0|t"
-            if i % 11 == 0 then
+            if n % 11 == 0 then
                 icons = icons .. "\n"
             end
         end
     end
+    return icons
+end
 
-    local popup = Cell.CreateConfirmPopup(Cell.frames.anchorFrame, 200, L["Would you like Cell to create a \"Healers\" indicator (icons)?"]..icons, function(self)
-        local last = #currentLayoutTable["indicators"]
-        if currentLayoutTable["indicators"][last]["type"] == "built-in" then
-            indicatorName = "indicator1"
-        else
-            indicatorName = "indicator"..(tonumber(strmatch(currentLayoutTable["indicators"][last]["indicatorName"], "%d+"))+1)
+local function NextCustomIndicatorName(layoutTable)
+    local last = layoutTable["indicators"][#layoutTable["indicators"]]
+    if last["type"] == "built-in" then
+        return "indicator1"
+    end
+    local n = tonumber(strmatch(last["indicatorName"], "%d+")) or 0
+    return "indicator" .. (n + 1)
+end
+
+local function MakeHealersIndicatorTable(indicatorName)
+    return {
+        ["name"] = "Healers",
+        ["indicatorName"] = indicatorName,
+        ["type"] = "icons",
+        ["enabled"] = true,
+        ["position"] = {"TOPRIGHT", "button", "TOPRIGHT", 0, 3},
+        ["frameLevel"] = 5,
+        ["size"] = {13, 13},
+        ["num"] = 5,
+        ["numPerLine"] = 5,
+        ["orientation"] = "right-to-left",
+        ["spacing"] = {0, 0},
+        ["font"] = {
+            {"Cell ".._G.DEFAULT, 11, "Outline", false, "TOPRIGHT", 2, 1, {1, 1, 1}},
+            {"Cell ".._G.DEFAULT, 11, "Outline", false, "BOTTOMRIGHT", 2, -1, {1, 1, 1}},
+        },
+        ["showStack"] = true,
+        ["showDuration"] = false,
+        ["showAnimation"] = true,
+        ["glowOptions"] = {"None", {0.95, 0.95, 0.32, 1}},
+        ["auraType"] = "buff",
+        ["castBy"] = "me",
+        ["auras"] = F.Copy(spells),
+    }
+end
+
+function F.PromptHealersIndicator(parent, opts)
+    opts = opts or {}
+    local layoutTable = Cell.vars.currentLayoutTable
+    if not (parent and layoutTable) then return end
+
+    local existing
+    for _, indicator in ipairs(layoutTable["indicators"]) do
+        if indicator["name"] == "Healers" then
+            existing = indicator
+            break
         end
+    end
 
-        tinsert(currentLayoutTable["indicators"], {
-            ["name"] = "Healers",
-            ["indicatorName"] = indicatorName,
-            ["type"] = "icons",
-            ["enabled"] = true,
-            ["position"] = {"TOPRIGHT", "button", "TOPRIGHT", 0, 3},
-            ["frameLevel"] = 5,
-            ["size"] = {13, 13},
-            ["num"] = 5,
-            ["numPerLine"] = 5,
-            ["orientation"] = "right-to-left",
-            ["spacing"] = {0, 0},
-            ["font"] = {
-                {"Cell ".._G.DEFAULT, 11, "Outline", false, "TOPRIGHT", 2, 1, {1, 1, 1}},
-                {"Cell ".._G.DEFAULT, 11, "Outline", false, "BOTTOMRIGHT", 2, -1, {1, 1, 1}},
-            },
-            ["showStack"] = true,
-            ["showDuration"] = false,
-            ["showAnimation"] = true,
-            ["glowOptions"] = {"None", {0.95, 0.95, 0.32, 1}},
-            ["auraType"] = "buff",
-            ["castBy"] = "me",
-            ["auras"] = spells,
-        })
-        Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, indicatorName, "create", currentLayoutTable["indicators"][last+1])
-        CellDB["firstRun"] = false
-        F.ReloadIndicatorList()
-    end, function()
-        CellDB["firstRun"] = false
-    end)
-    popup:SetPoint("TOPLEFT")
-    popup:Show()
+    if existing then
+        local seen, missing = {}, {}
+        for _, id in ipairs(existing["auras"] or {}) do
+            seen[id] = true
+        end
+        for _, id in ipairs(spells) do
+            if not seen[id] then
+                tinsert(missing, id)
+            end
+        end
+        if #missing == 0 then
+            if opts.printIfUpToDate then
+                F.Print(L["Healers indicator is up to date."])
+            end
+            return
+        end
+        return Cell.CreateConfirmPopup(parent, opts.width or 200,
+            string.format(L["Healers indicator already exists. Add new spells?"], #missing) .. BuildHealersSpellIcons(missing),
+            function()
+                for _, id in ipairs(missing) do
+                    tinsert(existing["auras"], id)
+                end
+                Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, existing["indicatorName"], "auras", "buff", existing["auras"])
+                F.ReloadIndicatorList()
+                if opts.onDone then opts.onDone() end
+            end, opts.onReject, opts.mask, nil, nil, opts.key)
+    end
+
+    local createText = opts.createText or L["Would you like Cell to create a \"Healers\" indicator (icons)?"]
+    return Cell.CreateConfirmPopup(parent, opts.width or 200,
+        createText .. BuildHealersSpellIcons(spells),
+        function()
+            local indicatorName = NextCustomIndicatorName(layoutTable)
+            local t = MakeHealersIndicatorTable(indicatorName)
+            tinsert(layoutTable["indicators"], t)
+            Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, indicatorName, "create", t)
+            CellDB["firstRun"] = false
+            F.ReloadIndicatorList()
+            if opts.onDone then opts.onDone() end
+        end, opts.onReject, opts.mask, nil, nil, opts.key)
+end
+
+function F.FirstRun()
+    local popup = F.PromptHealersIndicator(Cell.frames.anchorFrame, {
+        printIfUpToDate = true,
+        onReject = function()
+            CellDB["firstRun"] = false
+        end,
+    })
+    if popup then
+        popup:SetPoint("TOPLEFT")
+        popup:Show()
+    end
 end
 
 -------------------------------------------------

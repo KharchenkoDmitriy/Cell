@@ -923,6 +923,17 @@ function buffTrackerFrame:PLAYER_UNGHOST()
 end
 
 function buffTrackerFrame:UNIT_AURA(unit)
+    if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
+        C_Timer.After(0, function()
+            buffTrackerFrame:_CheckUnitAura(unit)
+        end)
+        return
+    end
+    buffTrackerFrame:_CheckUnitAura(unit)
+end
+
+function buffTrackerFrame:_CheckUnitAura(unit)
+    if type(unit) ~= "string" then return end
     -- Restricted context just ended: rebuild full snapshot once so stale
     -- missing-buff indicators are cleared immediately.
     if buffTrackerFrame._hadSecretContext and (not F.IsSecretContextActive or not F.IsSecretContextActive()) then

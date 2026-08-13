@@ -32,7 +32,7 @@ function I.UpdateIndicatorTable(indicatorTable)
     local auraType = indicatorTable["auraType"]
 
     -- keep custom indicators in table
-    if indicatorTable["enabled"] then enabledIndicators[indicatorName] = true end
+    if indicatorTable["enabled"] and not (Cell.isRetail and indicatorTable["type"] == "glow") then enabledIndicators[indicatorName] = true end
 
     -- NOTE: icons is different from other custom indicators, more like the Debuffs indicator
     if indicatorTable["type"] == "icons" then
@@ -106,7 +106,18 @@ function I.CreateIndicator(parent, indicatorTable)
     elseif indicatorTable["type"] == "texture" then
         indicator = I.CreateAura_Texture(nil, parent.widgets.indicatorFrame)
     elseif indicatorTable["type"] == "glow" then
-        indicator = I.CreateAura_Glow(nil, parent.widgets.highLevelFrame)
+        if Cell.isRetail then
+            -- 12.1: LCG cannot run on AuraContainer frames; the workaround lagged.
+            indicator = CreateFrame("Frame", nil, parent)
+            indicator:Hide()
+            indicator.indicatorType = "glow"
+            indicator.SetCooldown = function() end
+            indicator.SetupGlow = function() end
+            indicator.SetFadeOut = function() end
+            indicator.Show = function() end
+        else
+            indicator = I.CreateAura_Glow(nil, parent.widgets.highLevelFrame)
+        end
     elseif indicatorTable["type"] == "overlay" then
         indicator = I.CreateAura_Overlay(nil, parent)
     elseif indicatorTable["type"] == "block" then

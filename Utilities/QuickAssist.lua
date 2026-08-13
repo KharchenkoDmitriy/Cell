@@ -499,7 +499,15 @@ end
 local function QuickAssist_OnEvent(self, event, unit, arg, arg2)
     if unit and self.unit == unit then
         if event == "UNIT_AURA" then
-            QuickAssist_UpdateAuras(self, arg)
+            if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
+                C_Timer.After(0, function()
+                    if self.unit then
+                        QuickAssist_UpdateAuras(self)
+                    end
+                end)
+            else
+                QuickAssist_UpdateAuras(self, arg)
+            end
 
         elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
             QuickAssist_UpdateCasts(self, arg2)
@@ -756,35 +764,10 @@ end)
 --                                   glow                                  --
 -- ----------------------------------------------------------------------- --
 local function ShowGlow(indicator, glowType, glowColor)
-    if glowType == "Normal" then
-        LCG.PixelGlow_Stop(indicator)
-        LCG.AutoCastGlow_Stop(indicator)
-        LCG.ProcGlow_Stop(indicator)
-        LCG.ButtonGlow_Start(indicator, glowColor)
-    elseif glowType == "Pixel" then
-        LCG.ButtonGlow_Stop(indicator)
-        LCG.AutoCastGlow_Stop(indicator)
-        LCG.ProcGlow_Stop(indicator)
-        -- color, N, frequency, length, thickness
-        LCG.PixelGlow_Start(indicator, glowColor, 7, 0.5, 4, 1)
-    elseif glowType == "Shine" then
-        LCG.ButtonGlow_Stop(indicator)
-        LCG.PixelGlow_Stop(indicator)
-        LCG.ProcGlow_Stop(indicator)
-        -- color, N, frequency, scale
-        LCG.AutoCastGlow_Start(indicator, glowColor, 7, 0.5, 0.7)
-    elseif glowType == "Proc" then
-        LCG.ButtonGlow_Stop(indicator)
-        LCG.PixelGlow_Stop(indicator)
-        LCG.AutoCastGlow_Stop(indicator)
-        -- color, duration
-        LCG.ProcGlow_Start(indicator, {color=glowColor, duration=0.6, startAnim=false})
-    else
-        LCG.ButtonGlow_Stop(indicator)
-        LCG.PixelGlow_Stop(indicator)
-        LCG.AutoCastGlow_Stop(indicator)
-        LCG.ProcGlow_Stop(indicator)
-    end
+    LCG.ButtonGlow_Stop(indicator)
+    LCG.PixelGlow_Stop(indicator)
+    LCG.AutoCastGlow_Stop(indicator)
+    LCG.ProcGlow_Stop(indicator)
 end
 
 -- ----------------------------------------------------------------------- --

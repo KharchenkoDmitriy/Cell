@@ -76,21 +76,23 @@ else
         if event == "UNIT_AURA" then
             local guid = UnitGUID(unit)
             if not guid then return end
-            -- Midnight 12.0.0+: UnitGUID may return secret strings for non-group units
             if issecretvalue and issecretvalue(guid) then return end
-            -- Check if soulstone buff is now absent but was present
-            -- (simple: after UNIT_AURA fires, see if unit still has it)
-            local hasSoulstone = F.FindAuraByName and F.FindAuraByName(unit, "BUFF", SOULSTONE)
-            if not hasSoulstone and soulstones[guid] then
-                -- aura gone; keep window open for death
-                C_Timer.After(0.1, function()
-                    soulstones[guid] = nil
-                end)
-            elseif hasSoulstone then
-                soulstones[guid] = GetTime()
+            local function refreshSoulstone()
+                local hasSoulstone = F.FindAuraByName and F.FindAuraByName(unit, "BUFF", SOULSTONE)
+                if not hasSoulstone and soulstones[guid] then
+                    C_Timer.After(0.1, function()
+                        soulstones[guid] = nil
+                    end)
+                elseif hasSoulstone then
+                    soulstones[guid] = GetTime()
+                end
+                F.HandleUnitButton("unit", unit, I.UpdateStatusIcon_Resurrection)
             end
-            -- Also refresh rez icon in case Resurrecting debuff changed
-            F.HandleUnitButton("unit", unit, I.UpdateStatusIcon_Resurrection)
+            if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
+                C_Timer.After(0, refreshSoulstone)
+            else
+                refreshSoulstone()
+            end
         elseif event == "UNIT_HEALTH" then
             local guid = UnitGUID(unit)
             if not guid then return end

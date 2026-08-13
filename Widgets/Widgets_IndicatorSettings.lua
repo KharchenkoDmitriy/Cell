@@ -2407,275 +2407,18 @@ local function CreateSetting_BlockColors(parent)
     local widget
 
     if not settingWidgets["blockColors"] then
-        widget = Cell.CreateFrame("CellIndicatorSettings_BlockColors", parent, 240, 136)
+        widget = Cell.CreateFrame("CellIndicatorSettings_BlockColors", parent, 240, 56)
         settingWidgets["blockColors"] = widget
 
-        -- colorBy
-        local colorBy = Cell.CreateDropdown(widget, 260)
-        colorBy:SetPoint("TOPLEFT", 5, -20)
-
-        colorByText = widget:CreateFontString(nil, "OVERLAY", font_name)
-        colorByText:SetText(L["Color By"])
-        colorByText:SetPoint("BOTTOMLEFT", colorBy, "TOPLEFT", 0, 1)
-
-        local normalColor = Cell.CreateColorPicker(widget, L["Normal"], true, function(r, g, b, a)
+        local fillColor = Cell.CreateColorPicker(widget, L["Color"], true, function(r, g, b, a)
             widget.colorsTable[2][1] = r
             widget.colorsTable[2][2] = g
             widget.colorsTable[2][3] = b
             widget.colorsTable[2][4] = a
             widget.func(widget.colorsTable)
         end)
-        normalColor:SetPoint("TOPLEFT", colorBy, "BOTTOMLEFT", 0, -8)
+        fillColor:SetPoint("TOPLEFT", 5, -8)
 
-        -- duration pane --------------------------------------------------------------------------
-        local durationPane = CreateFrame("Frame", nil, widget)
-        P.Size(durationPane, 260, 36)
-        durationPane:SetPoint("TOPLEFT", normalColor, "BOTTOMLEFT", 0, -8)
-
-        local percentColor, percentDropdown
-
-        local percentCB = Cell.CreateCheckButton(durationPane, "", function(checked)
-            widget.colorsTable[3][1] = checked
-            Cell.SetEnabled(checked, percentColor, percentDropdown)
-        end)
-        percentCB:SetPoint("TOPLEFT")
-
-        percentColor = Cell.CreateColorPicker(durationPane, L["Remaining Time"].." <", true, function(r, g, b, a)
-            widget.colorsTable[3][3][1] = r
-            widget.colorsTable[3][3][2] = g
-            widget.colorsTable[3][3][3] = b
-            widget.colorsTable[3][3][4] = a
-            widget.func(widget.colorsTable)
-        end)
-        percentColor:SetPoint("TOPLEFT", percentCB, "TOPRIGHT", 2, 0)
-
-        local secColor, secEditBox, secText
-
-        local secCB = Cell.CreateCheckButton(durationPane, "", function(checked)
-            widget.colorsTable[4][1] = checked
-            Cell.SetEnabled(checked, secColor, secEditBox, secText)
-        end)
-        secCB:SetPoint("TOPLEFT", percentCB, "BOTTOMLEFT", 0, -8)
-
-        secColor = Cell.CreateColorPicker(durationPane, L["Remaining Time"].." <", true, function(r, g, b, a)
-            widget.colorsTable[4][3][1] = r
-            widget.colorsTable[4][3][2] = g
-            widget.colorsTable[4][3][3] = b
-            widget.colorsTable[4][3][4] = a
-            widget.func(widget.colorsTable)
-        end)
-        secColor:SetPoint("TOPLEFT", secCB, "TOPRIGHT", 2, 0)
-
-        percentDropdown = Cell.CreateDropdown(durationPane, 60)
-        percentDropdown:SetPoint("LEFT", percentColor.label, "RIGHT", 5, 0)
-        percentDropdown:SetItems({
-            {
-                ["text"] = "75%",
-                ["value"] = 0.75,
-                ["onClick"] = function()
-                    widget.colorsTable[3][2] = 0.75
-                    widget.func(widget.colorsTable)
-                end,
-            },
-            {
-                ["text"] = "50%",
-                ["value"] = 0.5,
-                ["onClick"] = function()
-                    widget.colorsTable[3][2] = 0.5
-                    widget.func(widget.colorsTable)
-                end,
-            },
-            {
-                ["text"] = "30%",
-                ["value"] = 0.3,
-                ["onClick"] = function()
-                    widget.colorsTable[3][2] = 0.3
-                    widget.func(widget.colorsTable)
-                end,
-            },
-            {
-                ["text"] = "25%",
-                ["value"] = 0.25,
-                ["onClick"] = function()
-                    widget.colorsTable[3][2] = 0.25
-                    widget.func(widget.colorsTable)
-                end,
-            },
-        })
-
-        secEditBox = Cell.CreateEditBox(durationPane, 43, 20, false, false, true)
-        secEditBox:SetPoint("LEFT", secColor.label, "RIGHT", 5, 0)
-        secEditBox:SetMaxLetters(4)
-
-        secEditBox.confirmBtn = Cell.CreateButton(durationPane, "OK", "accent", {27, 20})
-        secEditBox.confirmBtn:SetPoint("LEFT", secEditBox, "RIGHT", -1, 0)
-        secEditBox.confirmBtn:Hide()
-        secEditBox.confirmBtn:SetScript("OnHide", function()
-            secEditBox.confirmBtn:Hide()
-        end)
-        secEditBox.confirmBtn:SetScript("OnClick", function()
-            local newSec = tonumber(secEditBox:GetText())
-            widget.colorsTable[4][2] = newSec
-            secEditBox:SetText(newSec)
-            secEditBox:ClearFocus()
-            secEditBox.confirmBtn:Hide()
-            widget.func(widget.colorsTable)
-        end)
-
-        secEditBox:SetScript("OnTextChanged", function(self, userChanged)
-            if userChanged then
-                local newSec = tonumber(self:GetText())
-                if newSec and newSec ~= widget.colorsTable[3][2] then
-                    secEditBox.confirmBtn:Show()
-                else
-                    secEditBox.confirmBtn:Hide()
-                end
-            end
-        end)
-
-        secText = durationPane:CreateFontString(nil, "OVERLAY", font_name)
-        secText:SetPoint("LEFT", secEditBox, "RIGHT", 5, 0)
-        secText:SetText(L["sec"])
-
-        -- stack pane -----------------------------------------------------------------------------
-        local stackPane = CreateFrame("Frame", nil, widget)
-        P.Size(stackPane, 260, 36)
-        stackPane:SetPoint("TOPLEFT", normalColor, "BOTTOMLEFT", 0, -8)
-
-        local stackColor1, stackEB1
-
-        local stackCB1 = Cell.CreateCheckButton(stackPane, "", function(checked)
-            widget.colorsTable[3][1] = checked
-            Cell.SetEnabled(checked, stackColor1, stackEB1)
-            widget.func(widget.colorsTable)
-        end)
-        stackCB1:SetPoint("TOPLEFT")
-
-        stackColor1 = Cell.CreateColorPicker(stackPane, L["Stack"].." >=", true, function(r, g, b, a)
-            widget.colorsTable[3][3][1] = r
-            widget.colorsTable[3][3][2] = g
-            widget.colorsTable[3][3][3] = b
-            widget.colorsTable[3][3][4] = a
-            widget.func(widget.colorsTable)
-        end)
-        stackColor1:SetPoint("TOPLEFT", stackCB1, "TOPRIGHT", 2, 0)
-
-        local stackColor2, stackEB2
-
-        local stackCB2 = Cell.CreateCheckButton(stackPane, "", function(checked)
-            widget.colorsTable[4][1] = checked
-            Cell.SetEnabled(checked, stackColor2, stackEB2)
-            widget.func(widget.colorsTable)
-        end)
-        stackCB2:SetPoint("TOPLEFT", stackCB1, "BOTTOMLEFT", 0, -8)
-
-        stackColor2 = Cell.CreateColorPicker(stackPane, L["Stack"].." >=", true, function(r, g, b, a)
-            widget.colorsTable[4][3][1] = r
-            widget.colorsTable[4][3][2] = g
-            widget.colorsTable[4][3][3] = b
-            widget.colorsTable[4][3][4] = a
-            widget.func(widget.colorsTable)
-        end)
-        stackColor2:SetPoint("TOPLEFT", stackCB2, "TOPRIGHT", 2, 0)
-
-        -- eb
-        stackEB1 = Cell.CreateEditBox(stackPane, 43, 20, false, false, true)
-        stackEB1:SetPoint("LEFT", stackColor1.label, "RIGHT", 5, 0)
-        stackEB1:SetMaxLetters(3)
-
-        stackEB1.confirmBtn = Cell.CreateButton(stackPane, "OK", "accent", {27, 20})
-        stackEB1.confirmBtn:SetPoint("LEFT", stackEB1, "RIGHT", -1, 0)
-        stackEB1.confirmBtn:Hide()
-        stackEB1.confirmBtn:SetScript("OnHide", function()
-            stackEB1.confirmBtn:Hide()
-        end)
-        stackEB1.confirmBtn:SetScript("OnClick", function()
-            local newStack = tonumber(stackEB1:GetText())
-            widget.colorsTable[3][2] = newStack
-            stackEB1:SetText(newStack)
-            stackEB1:ClearFocus()
-            stackEB1.confirmBtn:Hide()
-            widget.func(widget.colorsTable)
-        end)
-
-        stackEB1:SetScript("OnTextChanged", function(self, userChanged)
-            if userChanged then
-                local newStack = tonumber(self:GetText())
-                if newStack and newStack ~= widget.colorsTable[3][2] then
-                    stackEB1.confirmBtn:Show()
-                else
-                    stackEB1.confirmBtn:Hide()
-                end
-            end
-        end)
-
-        stackEB2 = Cell.CreateEditBox(stackPane, 43, 20, false, false, true)
-        stackEB2:SetPoint("LEFT", stackColor2.label, "RIGHT", 5, 0)
-        stackEB2:SetMaxLetters(3)
-
-        stackEB2.confirmBtn = Cell.CreateButton(stackPane, "OK", "accent", {27, 20})
-        stackEB2.confirmBtn:SetPoint("LEFT", stackEB2, "RIGHT", -1, 0)
-        stackEB2.confirmBtn:Hide()
-        stackEB2.confirmBtn:SetScript("OnHide", function()
-            stackEB2.confirmBtn:Hide()
-        end)
-        stackEB2.confirmBtn:SetScript("OnClick", function()
-            local newStack = tonumber(stackEB2:GetText())
-            widget.colorsTable[4][2] = newStack
-            stackEB2:SetText(newStack)
-            stackEB2:ClearFocus()
-            stackEB2.confirmBtn:Hide()
-            widget.func(widget.colorsTable)
-        end)
-
-        stackEB2:SetScript("OnTextChanged", function(self, userChanged)
-            if userChanged then
-                local newStack = tonumber(self:GetText())
-                if newStack and newStack ~= widget.colorsTable[4][2] then
-                    stackEB2.confirmBtn:Show()
-                else
-                    stackEB2.confirmBtn:Hide()
-                end
-            end
-        end)
-
-        -- control
-        colorBy:SetItems({
-            {
-                ["text"] = L["Duration"],
-                ["value"] = "duration",
-                ["onClick"] = function()
-                    if widget.colorsTable[1] == "duration" then return end
-                    durationPane:Show()
-                    stackPane:Hide()
-                    widget.colorsTable[1] = "duration"
-                    widget.colorsTable[3][1] = false
-                    widget.colorsTable[4][1] = false
-                    widget.colorsTable[3][2] = 0.5
-                    widget.colorsTable[4][2] = 3
-                    widget.func(widget.colorsTable)
-                    widget:SetDBValue(widget.colorsTable)
-                end,
-            },
-            {
-                ["text"] = L["Stack"],
-                ["value"] = "stack",
-                ["onClick"] = function()
-                    if widget.colorsTable[1] == "stack" then return end
-                    durationPane:Hide()
-                    stackPane:Show()
-                    widget.colorsTable[1] = "stack"
-                    widget.colorsTable[3][1] = false
-                    widget.colorsTable[4][1] = false
-                    widget.colorsTable[3][2] = 2
-                    widget.colorsTable[4][2] = 3
-                    widget.func(widget.colorsTable)
-                    widget:SetDBValue(widget.colorsTable)
-                end,
-            },
-        })
-
-        -- border color
         local borderColor = Cell.CreateColorPicker(widget, L["Border Color"], true, function(r, g, b, a)
             widget.colorsTable[5][1] = r
             widget.colorsTable[5][2] = g
@@ -2683,48 +2426,85 @@ local function CreateSetting_BlockColors(parent)
             widget.colorsTable[5][4] = a
             widget.func(widget.colorsTable)
         end)
-        borderColor:SetPoint("TOPLEFT", stackPane, "BOTTOMLEFT", 0, -8)
+        borderColor:SetPoint("TOPLEFT", fillColor, "BOTTOMLEFT", 0, -8)
 
-        -- callback
         function widget:SetFunc(func)
             widget.func = func
         end
 
-        -- show db value
         function widget:SetDBValue(colorsTable)
-            widget.colorsTable = colorsTable
-
-            colorBy:SetSelectedValue(colorsTable[1])
-            if colorsTable[1] == "duration" then
-                durationPane:Show()
-                stackPane:Hide()
-            else
-                durationPane:Hide()
-                stackPane:Show()
+            if type(colorsTable[2]) ~= "table" then
+                colorsTable[2] = {0, 1, 0, 1}
             end
-
-            normalColor:SetColor(colorsTable[2])
+            if type(colorsTable[5]) ~= "table" then
+                colorsTable[5] = {0, 0, 0, 1}
+            end
+            if type(colorsTable[3]) == "table" then
+                colorsTable[3][1] = false
+            end
+            if type(colorsTable[4]) == "table" then
+                colorsTable[4][1] = false
+            end
+            widget.colorsTable = colorsTable
+            fillColor:SetColor(colorsTable[2])
             borderColor:SetColor(colorsTable[5])
-
-            Cell.SetEnabled(colorsTable[3][1], percentColor, percentDropdown, stackColor1, stackEB1)
-            Cell.SetEnabled(colorsTable[4][1], secColor, secEditBox, secText, stackColor2, stackEB2)
-
-            percentCB:SetChecked(colorsTable[3][1])
-            percentColor:SetColor(colorsTable[3][3])
-            percentDropdown:SetSelectedValue(colorsTable[3][2])
-            secCB:SetChecked(colorsTable[4][1])
-            secColor:SetColor(colorsTable[4][3])
-            secEditBox:SetText(colorsTable[4][2])
-
-            stackCB1:SetChecked(colorsTable[3][1])
-            stackColor1:SetColor(colorsTable[3][3])
-            stackEB1:SetText(colorsTable[3][2])
-            stackCB2:SetChecked(colorsTable[4][1])
-            stackColor2:SetColor(colorsTable[4][3])
-            stackEB2:SetText(colorsTable[4][2])
         end
     else
         widget = settingWidgets["blockColors"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local function CreateSetting_RectColors(parent)
+    local widget
+
+    if not settingWidgets["rectColors"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_RectColors", parent, 240, 56)
+        settingWidgets["rectColors"] = widget
+
+        local fillColor = Cell.CreateColorPicker(widget, L["Color"], true, function(r, g, b, a)
+            widget.colorsTable[1][1] = r
+            widget.colorsTable[1][2] = g
+            widget.colorsTable[1][3] = b
+            widget.colorsTable[1][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        fillColor:SetPoint("TOPLEFT", 5, -8)
+
+        local borderColor = Cell.CreateColorPicker(widget, L["Border Color"], true, function(r, g, b, a)
+            widget.colorsTable[4][1] = r
+            widget.colorsTable[4][2] = g
+            widget.colorsTable[4][3] = b
+            widget.colorsTable[4][4] = a
+            widget.func(widget.colorsTable)
+        end)
+        borderColor:SetPoint("TOPLEFT", fillColor, "BOTTOMLEFT", 0, -8)
+
+        function widget:SetFunc(func)
+            widget.func = func
+        end
+
+        function widget:SetDBValue(colorsTable)
+            if type(colorsTable[1]) ~= "table" then
+                colorsTable[1] = {0, 1, 0, 1}
+            end
+            if type(colorsTable[4]) ~= "table" then
+                colorsTable[4] = {0, 0, 0, 1}
+            end
+            if type(colorsTable[2]) == "table" then
+                colorsTable[2][1] = false
+            end
+            if type(colorsTable[3]) == "table" then
+                colorsTable[3][1] = false
+            end
+            widget.colorsTable = colorsTable
+            fillColor:SetColor(colorsTable[1])
+            borderColor:SetColor(colorsTable[4])
+        end
+    else
+        widget = settingWidgets["rectColors"]
     end
 
     widget:Show()
@@ -7156,20 +6936,6 @@ local function CreateSetting_TargetedSpellsDisplayMode(parent)
                     widget.func("Icons")
                 end,
             },
-            {
-                ["text"] = L["Glow only"],
-                ["value"] = "Border",
-                ["onClick"] = function()
-                    widget.func("Border")
-                end,
-            },
-            {
-                ["text"] = L["Both"],
-                ["value"] = "Both",
-                ["onClick"] = function()
-                    widget.func("Both")
-                end,
-            },
         })
 
         widget.label = widget:CreateFontString(nil, "OVERLAY", font_name)
@@ -7181,7 +6947,7 @@ local function CreateSetting_TargetedSpellsDisplayMode(parent)
         end
 
         function widget:SetDBValue(value)
-            widget.dropdown:SetSelectedValue(value or "Both")
+            widget.dropdown:SetSelectedValue((value == "None") and "None" or "Icons")
         end
     else
         widget = settingWidgets["targetedSpellsDisplayMode"]
@@ -8122,6 +7888,7 @@ local builders = {
     ["color-alpha"] = CreateSetting_ColorAlpha,
     ["colors"] = CreateSetting_Colors,
     ["blockColors"] = CreateSetting_BlockColors,
+    ["rectColors"] = CreateSetting_RectColors,
     ["overlayColors"] = CreateSetting_OverlayColors,
     ["customColors"] = CreateSetting_CustomColors,
     ["color-class"] = CreateSetting_ClassColor,

@@ -34,7 +34,7 @@ local RETARGET_DELAY = 0.05
 
 local maxIcons = 1
 local showAllSpells = false
-local displayMode = "Both" -- "None", "Icons", "Border", "Both"
+local displayMode = "Icons" -- "None", "Icons"
 local enabled = false
 local SWIPE_COLOR = { 0.95, 0.95, 0.32, 1 }
 local targetedSpellsByName = {}
@@ -239,23 +239,14 @@ local function ShowCasts(b, showGlow, sortedCasts, num)
         return
     end
 
-    if displayMode ~= "Border" then
-        num = min(maxIcons, num)
-        for i = 1, num do
-            local cast = sortedCasts[i]
-            ts[i].cooldown:SetReverse(not cast.isChanneling)
-            ts[i]:SetCooldown(cast.startTime, cast.endTime - cast.startTime, cast.icon, cast.count)
-        end
-        ts:UpdateSize(num)
-    else
-        ts:UpdateSize(0)
+    num = min(maxIcons, num)
+    for i = 1, num do
+        local cast = sortedCasts[i]
+        ts[i].cooldown:SetReverse(not cast.isChanneling)
+        ts[i]:SetCooldown(cast.startTime, cast.endTime - cast.startTime, cast.icon, cast.count)
     end
-
-    if displayMode ~= "Icons" and (showGlow or showAllSpells) then
-        ts:ShowGlow(unpack(GetGlowOptions()))
-    else
-        ts:HideGlow()
-    end
+    ts:UpdateSize(num)
+    ts:HideGlow()
 end
 
 local function GetCastsOnUnit(targetUnit)
@@ -642,44 +633,6 @@ local function IgnoreGlowParentAlpha(glowFrame)
     end
 end
 
-local function ShowGlow(frame, glowType, color, arg1, arg2, arg3, arg4)
-    local glowFrame = EnsureTsGlowFrame(frame)
-    if not glowFrame then return end
-
-    if glowType == "None" or not glowType then
-        glowType, color, arg1, arg2, arg3, arg4 = unpack(I.GetDefaultTargetedSpellsGlow())
-    end
-
-    if glowType == "Normal" then
-        LCG.PixelGlow_Stop(glowFrame)
-        LCG.AutoCastGlow_Stop(glowFrame)
-        LCG.ProcGlow_Stop(glowFrame)
-        LCG.ButtonGlow_Start(glowFrame, color)
-    elseif glowType == "Pixel" then
-        LCG.ButtonGlow_Stop(glowFrame)
-        LCG.AutoCastGlow_Stop(glowFrame)
-        LCG.ProcGlow_Stop(glowFrame)
-        LCG.PixelGlow_Start(glowFrame, color, arg1, arg2, arg3, arg4)
-    elseif glowType == "Shine" then
-        LCG.ButtonGlow_Stop(glowFrame)
-        LCG.PixelGlow_Stop(glowFrame)
-        LCG.ProcGlow_Stop(glowFrame)
-        LCG.AutoCastGlow_Start(glowFrame, color, arg1, arg2, arg3)
-    elseif glowType == "Proc" then
-        LCG.ButtonGlow_Stop(glowFrame)
-        LCG.PixelGlow_Stop(glowFrame)
-        LCG.AutoCastGlow_Stop(glowFrame)
-        LCG.ProcGlow_Start(glowFrame, { color = color, duration = arg1, startAnim = false })
-    else
-        LCG.ButtonGlow_Stop(glowFrame)
-        LCG.PixelGlow_Stop(glowFrame)
-        LCG.AutoCastGlow_Stop(glowFrame)
-        LCG.ProcGlow_Stop(glowFrame)
-        return
-    end
-    IgnoreGlowParentAlpha(glowFrame)
-end
-
 local function HideGlow(frame)
     local glowFrame = frame.tsGlowFrame
     if not glowFrame then return end
@@ -687,6 +640,10 @@ local function HideGlow(frame)
     LCG.PixelGlow_Stop(glowFrame)
     LCG.AutoCastGlow_Stop(glowFrame)
     LCG.ProcGlow_Stop(glowFrame)
+end
+
+local function ShowGlow(frame, glowType, color, arg1, arg2, arg3, arg4)
+    HideGlow(frame)
 end
 
 local function ShowPreview(frame)
@@ -701,24 +658,12 @@ local function ShowPreview(frame)
         return
     end
 
-    if displayMode == "Border" then
-        for i = 1, #frame do
-            frame[i]:Hide()
-        end
-        frame:UpdateSize(0)
-    else
-        local num = min(maxIcons or 1, #frame)
-        for i = 1, num do
-            frame[i]:Show()
-        end
-        frame:UpdateSize(num)
+    local num = min(maxIcons or 1, #frame)
+    for i = 1, num do
+        frame[i]:Show()
     end
-
-    if displayMode == "Icons" then
-        frame:HideGlow()
-    else
-        frame:ShowGlow(unpack(GetGlowOptions()))
-    end
+    frame:UpdateSize(num)
+    frame:HideGlow()
 end
 
 local function HidePreview(frame)
@@ -846,10 +791,13 @@ function I.UpdateTargetedSpellsNum(num)
 end
 
 function I.UpdateTargetedSpellsDisplayMode(mode)
-    if mode == "None" or mode == "Icons" or mode == "Border" or mode == "Both" then
+    if mode == "Border" or mode == "Both" then
+        mode = "Icons"
+    end
+    if mode == "None" or mode == "Icons" then
         displayMode = mode
     else
-        displayMode = "Both"
+        displayMode = "Icons"
     end
     local seen = {}
     for _, castInfo in pairs(casts) do

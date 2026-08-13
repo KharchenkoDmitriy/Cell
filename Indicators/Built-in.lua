@@ -961,25 +961,7 @@ function I.GetDebuffOrder(spellName, spellId, count)
 end
 
 function I.GetDebuffGlow(spellName, spellId, count)
-    -- Midnight 12.0.0+: spellId/spellName may be secret; cannot use as table key
-    if not F.IsValueNonSecret(spellId) or not F.IsValueNonSecret(spellName) then return end
-    local t = currentAreaDebuffs[spellId] or currentAreaDebuffs[spellName]
-    if not t then return end
-
-    local showGlow
-    if t["glowCondition"] then
-        if t["glowCondition"][1] == "Stack" then
-            showGlow = CheckCondition(t["glowCondition"][2], t["glowCondition"][3], count)
-        end
-    else
-        showGlow = true
-    end
-
-    if showGlow then
-        return t["glowType"], t["glowOptions"]
-    else
-        return "None", nil
-    end
+    return "None", nil
 end
 
 -- 12.0+: return the currentAreaDebuffs table for pre-scanning secret auras
@@ -997,43 +979,10 @@ function I.IsDebuffUseElapsedTime(spellName, spellId)
 end
 
 local function RaidDebuffs_ShowGlow(self, glowType, glowOptions, noHiding)
-    if glowType == "Normal" then
-        if not noHiding then
-            LCG.PixelGlow_Stop(self.parent)
-            LCG.AutoCastGlow_Stop(self.parent)
-            LCG.ProcGlow_Stop(self.parent)
-        end
-        LCG.ButtonGlow_Start(self.parent, glowOptions[1])
-    elseif glowType == "Pixel" then
-        if not noHiding then
-            LCG.ButtonGlow_Stop(self.parent)
-            LCG.AutoCastGlow_Stop(self.parent)
-            LCG.ProcGlow_Stop(self.parent)
-        end
-        -- color, N, frequency, length, thickness
-        LCG.PixelGlow_Start(self.parent, glowOptions[1], glowOptions[2], glowOptions[3], glowOptions[4], glowOptions[5])
-    elseif glowType == "Shine" then
-        if not noHiding then
-            LCG.ButtonGlow_Stop(self.parent)
-            LCG.PixelGlow_Stop(self.parent)
-            LCG.ProcGlow_Stop(self.parent)
-        end
-        -- color, N, frequency, scale
-        LCG.AutoCastGlow_Start(self.parent, glowOptions[1], glowOptions[2], glowOptions[3], glowOptions[4])
-    elseif glowType == "Proc" then
-        if not noHiding then
-            LCG.ButtonGlow_Stop(self.parent)
-            LCG.PixelGlow_Stop(self.parent)
-            LCG.AutoCastGlow_Stop(self.parent)
-        end
-        -- color, duration
-        LCG.ProcGlow_Start(self.parent, {color=glowOptions[1], duration=glowOptions[2], startAnim=false})
-    else
-        LCG.ButtonGlow_Stop(self.parent)
-        LCG.PixelGlow_Stop(self.parent)
-        LCG.AutoCastGlow_Stop(self.parent)
-        LCG.ProcGlow_Stop(self.parent)
-    end
+    LCG.ButtonGlow_Stop(self.parent)
+    LCG.PixelGlow_Stop(self.parent)
+    LCG.AutoCastGlow_Stop(self.parent)
+    LCG.ProcGlow_Stop(self.parent)
 end
 
 local hiders = {
@@ -1044,12 +993,13 @@ local hiders = {
 }
 
 local function RaidDebuffs_HideGlow(self, glowType)
-    if not glowType then
-        for _, stop in pairs(hiders) do
-            stop(self.parent)
-        end
-    else
-        hiders[glowType](self.parent)
+    local stop = type(glowType) == "string" and hiders[glowType]
+    if stop then
+        stop(self.parent)
+        return
+    end
+    for _, fn in pairs(hiders) do
+        fn(self.parent)
     end
 end
 

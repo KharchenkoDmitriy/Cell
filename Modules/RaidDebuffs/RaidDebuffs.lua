@@ -1551,6 +1551,8 @@ local function CreateDetailsFrame()
 
     glowTypeDropdown = Cell.CreateDropdown(detailsContentFrame, 117)
     glowTypeDropdown:SetPoint("TOPLEFT", glowTypeText, "BOTTOMLEFT", 0, -1)
+    glowTypeText:Hide()
+    glowTypeDropdown:Hide()
     glowTypeDropdown:SetItems({
         {
             ["text"] = L["None"],
@@ -1960,141 +1962,21 @@ UpdateGlowType = function(newType)
 end
 
 ShowGlowPreview = function(glowType, glowOptions, refresh)
-    if not glowType or glowType == "None" then
-        LCG.ButtonGlow_Stop(previewButton)
-        LCG.PixelGlow_Stop(previewButton)
-        LCG.AutoCastGlow_Stop(previewButton)
-        LCG.ProcGlow_Stop(previewButton)
-        if previewButton:IsShown() then previewButton.fadeOut:Play() end
-        return
-    end
-
-    if previewButton.fadeOut:IsPlaying() then
-        previewButton.fadeOut:Stop()
-    end
-    if previewButton:IsShown() then
-        if glowType == "Normal" then
-            LCG.PixelGlow_Stop(previewButton)
-            LCG.AutoCastGlow_Stop(previewButton)
-            LCG.ProcGlow_Stop(previewButton)
-            LCG.ButtonGlow_Start(previewButton, glowOptions[1])
-        elseif glowType == "Pixel" then
-            LCG.ButtonGlow_Stop(previewButton)
-            LCG.AutoCastGlow_Stop(previewButton)
-            LCG.ProcGlow_Stop(previewButton)
-            -- color, N, frequency, length, thickness
-            LCG.PixelGlow_Start(previewButton, glowOptions[1], glowOptions[2], glowOptions[3], glowOptions[4], glowOptions[5])
-        elseif glowType == "Shine" then
-            LCG.ButtonGlow_Stop(previewButton)
-            LCG.PixelGlow_Stop(previewButton)
-            LCG.ProcGlow_Stop(previewButton)
-            if refresh then LCG.AutoCastGlow_Stop(previewButton) end
-            -- color, N, frequency, scale
-            LCG.AutoCastGlow_Start(previewButton, glowOptions[1], glowOptions[2], glowOptions[3], glowOptions[4])
-        elseif glowType == "Proc" then
-            LCG.ButtonGlow_Stop(previewButton)
-            LCG.PixelGlow_Stop(previewButton)
-            LCG.AutoCastGlow_Stop(previewButton)
-            -- color, duration
-            LCG.ProcGlow_Start(previewButton, {color=glowOptions[1], duration=glowOptions[2], startAnim=false})
-        end
-    else
-        previewButton.fadeIn:SetScript("OnFinished", function()
-            if glowType == "Normal" then
-                LCG.PixelGlow_Stop(previewButton)
-                LCG.AutoCastGlow_Stop(previewButton)
-                LCG.ProcGlow_Stop(previewButton)
-                LCG.ButtonGlow_Start(previewButton, glowOptions[1])
-            elseif glowType == "Pixel" then
-                LCG.ButtonGlow_Stop(previewButton)
-                LCG.AutoCastGlow_Stop(previewButton)
-                LCG.ProcGlow_Stop(previewButton)
-                -- color, N, frequency, length, thickness
-                LCG.PixelGlow_Start(previewButton, glowOptions[1], glowOptions[2], glowOptions[3], glowOptions[4], glowOptions[5])
-            elseif glowType == "Shine" then
-                LCG.ButtonGlow_Stop(previewButton)
-                LCG.PixelGlow_Stop(previewButton)
-                LCG.ProcGlow_Stop(previewButton)
-                -- color, N, frequency, scale
-                LCG.AutoCastGlow_Start(previewButton, glowOptions[1], glowOptions[2], glowOptions[3], glowOptions[4])
-            elseif glowType == "Proc" then
-                LCG.ButtonGlow_Stop(previewButton)
-                LCG.PixelGlow_Stop(previewButton)
-                LCG.AutoCastGlow_Stop(previewButton)
-                -- color, duration
-                LCG.ProcGlow_Start(previewButton, {color=glowOptions[1], duration=glowOptions[2], startAnim=false})
-            end
-        end)
-        previewButton:Show()
-        previewButton.fadeIn:Play()
-    end
+    LCG.ButtonGlow_Stop(previewButton)
+    LCG.PixelGlow_Stop(previewButton)
+    LCG.AutoCastGlow_Stop(previewButton)
+    LCG.ProcGlow_Stop(previewButton)
+    if previewButton:IsShown() then previewButton.fadeOut:Play() end
 end
 
 LoadGlowOptions = function(glowType, glowOptions)
-    if not glowType or glowType == "None" or not glowOptions then
-        glowTargetDropdown:Hide()
-        glowOptionsFrame:Hide()
-        ShowGlowPreview("None")
-        glowOptionsHeight = 0
-        detailsFrame.scrollFrame:SetContentHeight(225 + conditionHeight)
-        detailsFrame.scrollFrame:ResetScroll()
-        return
-    end
-
-    glowTargetDropdown:SetSelectedValue("button")
-    glowTargetDropdown:Show()
-    ShowGlowPreview(glowType, glowOptions)
-    glowColor:SetColor(glowOptions[1])
-
-    if glowType == "Normal" then
-        glowLines:Hide()
-        glowParticles:Hide()
-        glowDuration:Hide()
-        glowFrequency:Hide()
-        glowLength:Hide()
-        glowThickness:Hide()
-        glowScale:Hide()
-        glowOptionsHeight = 30
-    elseif glowType == "Pixel" then
-        glowLines:Show()
-        glowFrequency:Show()
-        glowLength:Show()
-        glowThickness:Show()
-        glowParticles:Hide()
-        glowDuration:Hide()
-        glowScale:Hide()
-        glowLines:SetValue(glowOptions[2])
-        glowFrequency:SetValue(glowOptions[3])
-        glowLength:SetValue(glowOptions[4])
-        glowThickness:SetValue(glowOptions[5])
-        glowOptionsHeight = 235
-    elseif glowType == "Shine" then
-        glowParticles:Show()
-        glowFrequency:Show()
-        glowScale:Show()
-        glowLines:Hide()
-        glowDuration:Hide()
-        glowLength:Hide()
-        glowThickness:Hide()
-        glowParticles:SetValue(glowOptions[2])
-        glowFrequency:SetValue(glowOptions[3])
-        glowScale:SetValue(glowOptions[4]*100)
-        glowOptionsHeight = 175
-    elseif glowType == "Proc" then
-        glowDuration:Show()
-        glowLines:Hide()
-        glowParticles:Hide()
-        glowFrequency:Hide()
-        glowLength:Hide()
-        glowThickness:Hide()
-        glowScale:Hide()
-        glowDuration:SetValue(glowOptions[2])
-        glowOptionsHeight = 30
-    end
-
-    glowOptionsFrame:Show()
-
-    detailsFrame.scrollFrame:SetContentHeight(225 + glowOptionsHeight + glowConditionHeight + conditionHeight)
+    if glowTypeText then glowTypeText:Hide() end
+    if glowTypeDropdown then glowTypeDropdown:Hide() end
+    glowTargetDropdown:Hide()
+    glowOptionsFrame:Hide()
+    ShowGlowPreview("None")
+    glowOptionsHeight = 0
+    detailsFrame.scrollFrame:SetContentHeight(225 + conditionHeight)
     detailsFrame.scrollFrame:ResetScroll()
 end
 
@@ -2242,6 +2124,7 @@ function F.GetDebuffList(instanceName)
                 if spellName then
                     -- list[spellName/spellId] = {order, glowType, glowOptions}
                     list[t["trackByID"] and t["id"] or spellName] = {
+                        ["id"] = t["id"],
                         ["order"] = t["order"],
                         ["condition"] = t["condition"],
                         ["glowType"] = t["glowType"],
@@ -2259,6 +2142,7 @@ function F.GetDebuffList(instanceName)
                     local spellName = F.GetSpellInfo(t["id"])
                     if spellName then -- check again
                         list[t["trackByID"] and t["id"] or spellName] = {
+                            ["id"] = t["id"],
                             ["order"] = t["order"]+n,
                             ["condition"] = t["condition"],
                             ["glowType"] = t["glowType"],

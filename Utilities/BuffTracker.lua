@@ -881,16 +881,44 @@ function buffTrackerFrame:PLAYER_ENTERING_WORLD()
 end
 
 local timer
+local auraPoll
+
+local function StopAuraPoll()
+    if auraPoll then
+        auraPoll:Cancel()
+        auraPoll = nil
+    end
+end
+
+local function StartAuraPoll()
+    if auraPoll then return end
+    if not (F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked()) then return end
+    auraPoll = C_Timer.NewTicker(1, function()
+        if enabled and IsInGroup() then
+            IterateAllUnits()
+        else
+            StopAuraPoll()
+        end
+    end)
+end
+
 function buffTrackerFrame:GROUP_ROSTER_UPDATE(immediate)
     if timer then timer:Cancel() end
     if IsInGroup() then
         buffTrackerFrame:RegisterEvent("READY_CHECK")
         buffTrackerFrame:RegisterEvent("UNIT_FLAGS")
         buffTrackerFrame:RegisterEvent("PLAYER_UNGHOST")
-        buffTrackerFrame:RegisterEvent("UNIT_AURA")
+        if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
+            buffTrackerFrame:UnregisterEvent("UNIT_AURA")
+            StartAuraPoll()
+        else
+            StopAuraPoll()
+            buffTrackerFrame:RegisterEvent("UNIT_AURA")
+        end
         buffTrackerFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
         buffTrackerFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     else
+        StopAuraPoll()
         buffTrackerFrame:UnregisterEvent("READY_CHECK")
         buffTrackerFrame:UnregisterEvent("UNIT_FLAGS")
         buffTrackerFrame:UnregisterEvent("PLAYER_UNGHOST")
@@ -987,6 +1015,7 @@ local function UpdateTools(which)
                 ShowMover(true)
             end
         else
+            StopAuraPoll()
             buffTrackerFrame:UnregisterAllEvents()
             LGI.UnregisterCallback(buffTrackerFrame, "GroupInfo_Update")
 

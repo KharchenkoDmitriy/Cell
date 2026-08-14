@@ -3484,6 +3484,71 @@ local function CreateSetting_CheckButton5(parent)
     return widget
 end
 
+local function CreateSetting_CheckButton6(parent)
+    local widget
+
+    if not settingWidgets["checkbutton6"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_CheckButton6", parent, 240, 30)
+        settingWidgets["checkbutton6"] = widget
+
+        widget.cb = Cell.CreateCheckButton(widget, "checkbutton6")
+        widget.cb:SetPoint("TOPLEFT", 5, -8)
+
+        function widget:SetFunc(func)
+            widget.cb.onClick = function(checked)
+                func(checked)
+            end
+        end
+
+        function widget:SetDBValue(settingName, checked, tooltip)
+            widget.cb:SetChecked(checked)
+            widget.cb:SetText(L[settingName])
+            if tooltip and tooltip ~= "" then
+                if settingName == "nonPlayerAuras" then
+                    Cell.ClearTooltips(widget.cb)
+                    if not widget.tips then
+                        widget.tips = Cell.CreateButton(widget, nil, "accent-hover", {16, 16})
+                        widget.tips.tex = widget.tips:CreateTexture(nil, "ARTWORK")
+                        widget.tips.tex:SetAllPoints(widget.tips)
+                        widget.tips.tex:SetTexture("Interface\\AddOns\\Cell\\Media\\Icons\\info2.tga")
+                        widget.tips:HookScript("OnEnter", function()
+                            local tip = widget._tipsText
+                            if not tip or tip == "" then return end
+                            CellTooltip:SetOwner(widget.tips, "ANCHOR_NONE")
+                            CellTooltip:SetPoint("BOTTOMLEFT", widget.tips, "TOPLEFT", 0, 3)
+                            CellTooltip:AddLine(L["nonPlayerAuras"])
+                            for _, line in ipairs({string.split("|", tip)}) do
+                                if line and line ~= "" then
+                                    CellTooltip:AddLine("|cffffffff" .. line)
+                                end
+                            end
+                            CellTooltip:Show()
+                        end)
+                        widget.tips:HookScript("OnLeave", function()
+                            CellTooltip:Hide()
+                        end)
+                    end
+                    widget._tipsText = tooltip
+                    widget.tips:ClearAllPoints()
+                    widget.tips:SetPoint("LEFT", widget.cb.label, "RIGHT", 6, 0)
+                    widget.tips:Show()
+                else
+                    if widget.tips then widget.tips:Hide() end
+                    Cell.SetTooltips(widget.cb, "ANCHOR_TOPLEFT", 0, 2, L[settingName], string.split("|", tooltip))
+                end
+            else
+                if widget.tips then widget.tips:Hide() end
+                Cell.ClearTooltips(widget.cb)
+            end
+        end
+    else
+        widget = settingWidgets["checkbutton6"]
+    end
+
+    widget:Show()
+    return widget
+end
+
 local function CreateSetting_Duration(parent)
     local widget
 
@@ -7956,6 +8021,8 @@ function Cell.CreateIndicatorSettings(parent, settingsTable)
             tinsert(widgetsTable, CreateSetting_FontNoOffset(parent))
         elseif string.find(setting, "^font") then
             tinsert(widgetsTable, CreateSetting_Font(parent, string.match(setting, "^(font%d?):?.*$")))
+        elseif string.find(setting, "^checkbutton6") then
+            tinsert(widgetsTable, CreateSetting_CheckButton6(parent))
         elseif string.find(setting, "^checkbutton5") then
             tinsert(widgetsTable, CreateSetting_CheckButton5(parent))
         elseif string.find(setting, "^checkbutton4") then

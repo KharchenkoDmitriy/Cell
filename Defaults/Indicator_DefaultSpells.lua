@@ -921,7 +921,6 @@ local function MakeHealersIndicatorTable(indicatorName)
         ["showStack"] = true,
         ["showDuration"] = false,
         ["showAnimation"] = true,
-        ["glowOptions"] = {"None", {0.95, 0.95, 0.32, 1}},
         ["auraType"] = "buff",
         ["castBy"] = "me",
         ["auras"] = F.Copy(spells),

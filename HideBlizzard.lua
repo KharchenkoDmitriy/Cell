@@ -22,6 +22,14 @@ local function ShouldHideBlizzardRaidManager()
     return CellDB and CellDB["general"] and CellDB["general"]["hideBlizzardRaidManager"]
 end
 
+local function SafeGetName(frame)
+    if not frame or not frame.GetName then return nil end
+    local ok, name = pcall(frame.GetName, frame)
+    if ok and type(name) == "string" then
+        return name
+    end
+end
+
 local function IsCompactLayoutFrame(frame)
     if not frame then return false end
     if frame == _G.CompactPartyFrame
@@ -30,8 +38,8 @@ local function IsCompactLayoutFrame(frame)
         or frame == _G.CompactRaidFrameManager then
         return true
     end
-    local name = frame.GetName and frame:GetName()
-    if type(name) ~= "string" then return false end
+    local name = SafeGetName(frame)
+    if not name then return false end
     return name:find("^CompactParty", 1, true) ~= nil
         or name:find("^CompactArena", 1, true) ~= nil
         or name:find("^CompactRaid", 1, true) ~= nil
@@ -152,9 +160,8 @@ local function NeutralizeCompactUnitFrameScripts(frame)
 end
 
 local function IsCompactRaidMemberFrame(frame)
-    if not frame or not frame.GetName then return false end
-    local name = frame:GetName()
-    if type(name) ~= "string" then return false end
+    local name = SafeGetName(frame)
+    if not name then return false end
     if name:find("^CompactRaidFrame%d+$") then return true end
     if name:find("^CompactRaidGroup%d+Member%d+") then return true end
     return false
@@ -256,8 +263,8 @@ end
 local function NeutralizeRaidGroupMembers(group)
     if not group then return end
     local MEMBERS_PER_GROUP = _G.MEMBERS_PER_RAID_GROUP or 5
-    local groupName = group.GetName and group:GetName()
-    if type(groupName) == "string" then
+    local groupName = SafeGetName(group)
+    if groupName then
         for i = 1, MEMBERS_PER_GROUP do
             NeutralizeCompactRaidMember(_G[groupName .. "Member" .. i])
         end

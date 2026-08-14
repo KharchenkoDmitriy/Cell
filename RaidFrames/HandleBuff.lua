@@ -1,17 +1,4 @@
--- HandleBuff.lua — Clasificación de auras secretas defensivas/externales.
---
--- Movida de UnitButton.lua para evitar el límite de 60 upvalues de WoW Lua 5.1.
--- UnitButton.lua tiene cientos de file-scope locals que WoW cuenta como upvalues
--- potenciales para TODA función en el archivo, incluso las que no los referencian.
---
--- Esta función vive en su propio archivo con SÓLO 2 file-scope locals (Cell y hb),
--- manteniendo los upvalues reales de HandleBuff en 1 (la tabla hb).
---
--- Lee todas sus dependencias de Cell._hb, que UnitButton.lua llena durante el
--- load. HandleBuff.lua se carga DESPUÉS de UnitButton.lua en todos los .toc.
-
 local _, Cell = ...
--- On Classic flavors UnitButton_* may not populate Cell._hb; keep a safe table.
 Cell._hb = Cell._hb or {}
 local hb = Cell._hb
 local F = Cell.funcs
@@ -20,8 +7,6 @@ local I = Cell.iFuncs
 local function HandleBuff(self, auraInfo)
     if not auraInfo then return end
 
-    -- 12.1 combat: spell-ID lookups may yield readable spellId with secret instance ID.
-    -- Still feed Healers/custom indicators; skip CD fingerprint paths that need instance ID.
     if not F.IsValueNonSecret(auraInfo.auraInstanceID) then
         if F.IsValueNonSecret(auraInfo.spellId) then
             I.UpdateCustomIndicators(self, auraInfo, "buff")
@@ -42,7 +27,6 @@ local function HandleBuff(self, auraInfo)
     -- Las auras secretas no se pueden comparar por spellId así que las salteo.
     if spellId and not auraInfo._hasSecrets and F.IsAuraBlacklisted and F.IsAuraBlacklisted(spellId, "HELPFUL") then return end
 
-    -- Duration handling for secret auras
     local start, duration
     if auraInfo._hasSecrets then
         start = 0
@@ -84,15 +68,11 @@ local function HandleBuff(self, auraInfo)
             isExternal = classified == "external"
         end
 
-        -- Step 1: Hardcoded spell ID tables — curated for Cell. Primary source
-        -- for all auras where name/spellId are readable (the common case).
         if not classified then
             isDefensive = I.IsDefensiveCooldown(name, spellId)
             isExternal = I.IsExternalCooldown(name, spellId, source, unit)
         end
 
-        -- Step 2: Filter fingerprint matching for opaque secret spellIds in combat.
-        -- Skip when spellId is readable — Step 1 (curated tables) already covers those.
         if not isDefensive and not isExternal and inCombat
             and auraInfo._hasSecrets and secretAuraUnitTrustworthy then
             if not F.IsValueNonSecret(spellId) then
@@ -111,7 +91,6 @@ local function HandleBuff(self, auraInfo)
             self._buffs._classified[auraInstanceID] = isDefensive and "defensive" or "external"
         end
 
-        -- Player cast detection.
         -- Usa filtros Blizzard con PLAYER para verificar source=player.
         -- CRÍTICO: type guards en cada resultado porque _IsAuraFilteredOut
         -- puede devolver nil para auras secretas en Midnight, y `not nil = true`.

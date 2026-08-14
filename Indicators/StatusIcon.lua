@@ -393,7 +393,11 @@ function I.EnableStatusIcon(enabled)
             -- Use UNIT_AURA for soulstone buff tracking and UNIT_HEALTH for
             -- death detection. INCOMING_RESURRECT_CHANGED (above) handles
             -- incoming rez detection via UnitHasIncomingResurrection().
-            cleuFrame:RegisterEvent("UNIT_AURA")
+            if not (F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked()) then
+                cleuFrame:RegisterEvent("UNIT_AURA")
+            else
+                cleuFrame:UnregisterEvent("UNIT_AURA")
+            end
             cleuFrame:RegisterEvent("UNIT_HEALTH")
         end
     else

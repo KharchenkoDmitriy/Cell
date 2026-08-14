@@ -9,7 +9,6 @@ local PANEL = { r = 0.08, g = 0.09, b = 0.11 }
 local CARD  = { r = 0.12, g = 0.13, b = 0.16 }
 
 local function GetAccent()
-    -- Cell accent = class color by default, or custom accent from Appearance
     if Cell.GetAccentColorRGB then
         local r, g, b = Cell.GetAccentColorRGB()
         return { r = r, g = g, b = b }
@@ -34,7 +33,6 @@ local function MakeFS(parent, template, text, r, g, b)
     return fs
 end
 
--- Options -> AddOns landing page
 local function RegisterSettingsCategory()
     if not Settings or not Settings.RegisterCanvasLayoutCategory or not Settings.RegisterAddOnCategory then
         return
@@ -74,7 +72,6 @@ local function RegisterSettingsCategory()
     topGlow:SetHeight(40)
     themed.topGlow = topGlow
 
-    -- icon only (no colored plate behind it)
     local icon = card:CreateTexture(nil, "ARTWORK")
     icon:SetSize(64, 64)
     icon:SetTexture(ICON)
@@ -106,11 +103,10 @@ local function RegisterSettingsCategory()
     authorLine:SetPoint("TOPLEFT", creditsLabel, "BOTTOMLEFT", 0, -10)
     authorLine:SetWidth(520)
 
-    local forkLine = MakeFS(card, "GameFontHighlightSmall", "Continued by NeRgY - r277.9.4 (from Krysio r277.7.5.3)", 0.65, 0.68, 0.74)
+    local forkLine = MakeFS(card, "GameFontHighlightSmall", "Continued by NeRgY - r277.9.5 (from Krysio r277.7.5.3)", 0.65, 0.68, 0.74)
     forkLine:SetPoint("TOPLEFT", authorLine, "BOTTOMLEFT", 0, -6)
     forkLine:SetWidth(520)
 
-    -- Cell-styled button (same look as in the addon options)
     local button
     if Cell.CreateButton then
         button = Cell.CreateButton(card, L["Open Options"], "accent-hover", {180, 24})

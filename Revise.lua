@@ -3715,6 +3715,27 @@ function F.Revise()
         end
     end
 
+    for _, layout in pairs(CellDB["layouts"]) do
+        local indicators = layout["indicators"]
+        if type(indicators) == "table" then
+            for _, t in pairs(indicators) do
+                if t and t["indicatorName"] == "debuffs" then
+                    if t["nonPlayerAuras"] == nil then
+                        t["nonPlayerAuras"] = false
+                    end
+                    if t["animationStyle"] == nil then
+                        if t["showAnimation"] == false then
+                            t["animationStyle"] = "none"
+                        else
+                            local cs = CellDB["appearance"] and CellDB["appearance"]["cooldownStyle"]
+                            t["animationStyle"] = (cs == "VERTICAL" or cs == "vertical") and "vertical" or "clock"
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     -- privateAuraOptions extension (dispel overlay options)
     do
         local privateAurasIndex = Cell.defaults.indicatorIndices["privateAuras"]

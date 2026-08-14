@@ -85,8 +85,93 @@ function F.ShowSpellTooltips(tooltip, spellID)
     tooltip:Show()
 end
 
+local playerInCombat = false
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_REGEN_DISABLED")
+    f:RegisterEvent("PLAYER_REGEN_ENABLED")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_DISABLED" then
+            playerInCombat = true
+        elseif event == "PLAYER_REGEN_ENABLED" then
+            playerInCombat = false
+        else
+            local ok, v = pcall(InCombatLockdown)
+            playerInCombat = ok and v == true
+        end
+    end)
+end
+
+local function IsPlayerInCombat()
+    if playerInCombat then return true end
+    local ok, v = pcall(InCombatLockdown)
+    return ok and v == true
+end
+
+local function UnitTooltipsEnabled()
+    return CellDB and CellDB["general"] and CellDB["general"]["enableTooltips"] and true or false
+end
+
+local function HideUnitTooltipsInCombat()
+    return CellDB and CellDB["general"] and CellDB["general"]["hideTooltipsInCombat"] and true or false
+end
+
+function F.ShouldShowUnitTooltip()
+    if not UnitTooltipsEnabled() then return false end
+    if HideUnitTooltipsInCombat() and IsPlayerInCombat() then return false end
+    return true
+end
+
+function F.ApplyEngineAuraButtonTooltip(button, noTooltip)
+    if not button then return end
+    if noTooltip ~= nil then
+        button._cellNoAuraTooltip = noTooltip and true or false
+    end
+    local wantMotion = (not button._cellNoAuraTooltip) and UnitTooltipsEnabled()
+    if button.SetMouseMotionEnabled then
+        pcall(button.SetMouseMotionEnabled, button, wantMotion)
+    end
+    if button.SetHideTooltipInCombat then
+        pcall(button.SetHideTooltipInCombat, button, wantMotion and HideUnitTooltipsInCombat())
+    end
+end
+
+function F.SetupEngineAuraButtonMouse(button, noTooltip)
+    if not button then return end
+    pcall(button.SetMouseClickEnabled, button, false)
+    F.ApplyEngineAuraButtonTooltip(button, noTooltip and true or false)
+end
+
+function F.RefreshEngineAuraButtonTooltips()
+    if not F.IterateAllUnitButtons then return end
+    local function walk(frame)
+        if not frame then return end
+        if frame._cellNoAuraTooltip ~= nil then
+            F.ApplyEngineAuraButtonTooltip(frame)
+        end
+        if frame.GetChildren then
+            local ok, children = pcall(function()
+                return { frame:GetChildren() }
+            end)
+            if ok then
+                for i = 1, #children do
+                    walk(children[i])
+                end
+            end
+        end
+    end
+    F.IterateAllUnitButtons(function(b)
+        walk(b)
+    end)
+end
+
 function F.ShowTooltips(anchor, tooltipType, unit, aura, filter)
-    if not CellDB["general"]["enableTooltips"] or (tooltipType == "unit" and CellDB["general"]["hideTooltipsInCombat"] and InCombatLockdown()) then return end
+    if tooltipType == "unit" then
+        if not F.ShouldShowUnitTooltip() then return end
+    elseif not UnitTooltipsEnabled() then
+        return
+    end
 
     if CellDB["general"]["tooltipsPosition"][2] == "Default" then
         GameTooltip_SetDefaultAnchor(GameTooltip, anchor)

@@ -286,6 +286,7 @@ L["DISPEL"] = "DISPEL"
 L["Dispel Request"] = "Richiesta di Dispel"
 L["Dispellable By Me"] = "Dispellabile Da Me"
 L["dispellableByMe"] = "Mostra solo debuff dispellabili da me"
+L["nonPlayerAuras"] = "Mostra solo aure non-giocatore"
 L["Dispels"] = "Dispel"
 L["Display a gradient texture when the unit receives a heal from your certain healing spells."] = "Mostra una texture a gradiente quando l'unità riceve cure da alcune abilità di cura AoE."
 --[[Translation missing --]]

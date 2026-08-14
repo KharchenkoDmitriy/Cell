@@ -6,7 +6,7 @@ local F = Cell.funcs
 local I = Cell.iFuncs
 
 local GROUP_KEY = "healers"
-local INIT_VERSION = 11
+local INIT_VERSION = 24
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -237,7 +237,7 @@ local function InitAuraButton(button)
     local cfg = cachedConfig
     local size = (cfg and cfg.size and cfg.size[1]) or 13
     pcall(button.SetSize, button, size, size)
-    pcall(button.SetMouseClickEnabled, button, false)
+    F.SetupEngineAuraButtonMouse(button)
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints(button)
@@ -303,14 +303,7 @@ local function InitAuraButton(button)
         duration:SetPoint("BOTTOMRIGHT", 2, -1)
         duration:SetJustifyH("RIGHT")
         StyleFont(duration, cfg.font and cfg.font[2], 11)
-        local opts = {}
-        local formatter = GetCellDurationFormatter()
-        if formatter then
-            opts.textFormatter = formatter
-        end
-        if not pcall(button.SetDurationText, button, duration, opts) then
-            pcall(button.SetDurationText, button, duration, { textFormatter = formatter })
-        end
+        F.BindAuraDurationText(button, duration, GetCellDurationFormatter(), cfg.auras)
     end
 end
 
@@ -635,6 +628,12 @@ if SUPPORTED then
 
     Cell.RegisterCallback("UpdateLayout", "HealersAuraDisplay_UpdateLayout", function()
         C_Timer.After(0, I.RefreshAllHealersAuraDisplays)
+    end)
+
+    Cell.RegisterCallback("UpdateAppearance", "HealersAuraDisplay_UpdateAppearance", function(which)
+        if which == nil or which == "icon" or which == "reset" then
+            C_Timer.After(0, I.RefreshAllHealersAuraDisplays)
+        end
     end)
 
     local boot = CreateFrame("Frame")

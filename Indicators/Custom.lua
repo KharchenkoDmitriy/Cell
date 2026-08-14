@@ -107,7 +107,6 @@ function I.CreateIndicator(parent, indicatorTable)
         indicator = I.CreateAura_Texture(nil, parent.widgets.indicatorFrame)
     elseif indicatorTable["type"] == "glow" then
         if Cell.isRetail then
-            -- 12.1: LCG cannot run on AuraContainer frames; the workaround lagged.
             indicator = CreateFrame("Frame", nil, parent)
             indicator:Hide()
             indicator.indicatorType = "glow"
@@ -321,8 +320,6 @@ function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
 
     local auraType = auraTypeOverride
     if not auraType then
-        -- Midnight 12.0.0+: bail only if aura type (isHelpful) is secret — we need it to classify buff/debuff.
-        -- spellId may still be secret for some auras even with hotfix; don't bail on spellId.
         if not F.IsValueNonSecret(auraInfo.isHelpful) then return end
         auraType = auraInfo.isHelpful and "buff" or "debuff"
     end
@@ -333,12 +330,10 @@ function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
     if not indicators or not next(indicators) then return end
 
     local icon = auraInfo.icon
-    -- Midnight 12.0.0+: dispelName may be secret; sanitize to avoid table-key/comparison crashes downstream
     local rawDispelName = auraInfo.dispelName
     local debuffType = auraInfo.isHarmful and ((rawDispelName and F.IsValueNonSecret(rawDispelName)) and rawDispelName or "") or nil
     local count = auraInfo.applications
     local duration = auraInfo.duration
-    -- Use per-aura check for duration: non-secret auras get real timers, secret ones get zeroed.
     local start
     if F.IsAuraNonSecret(auraInfo) then
         start = (auraInfo.expirationTime or 0) - auraInfo.duration
@@ -379,7 +374,6 @@ function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
                         local castByMe = sourceUnit == "player" or sourceUnit == "pet"
                         castByMatches = (castBy == "me" and castByMe) or (castBy == "others" and not castByMe)
                     elseif not castByMatches and F.IsValueNonSecret(auraInfo.isFromPlayerOrPlayerPet) then
-                        -- 12.1: sourceUnit often secret in combat; this flag stays readable
                         local fromPlayer = auraInfo.isFromPlayerOrPlayerPet
                         castByMatches = (castBy == "me" and fromPlayer) or (castBy == "others" and not fromPlayer)
                     end
@@ -403,12 +397,9 @@ function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
                 spell = auraInfo.spellId
             end
 
-            -- Healers indicator: skip spells already consumed by another custom indicator
             if indicatorTable["name"] == "Healers" and consumedSpell and F.IsValueNonSecret(spell)
                 and consumedSpell == spell then
-                -- consumed by another indicator — skip from Healers
             else
-                -- Midnight 12.0.0+: spell (name or spellId) may be secret; cannot use as table key
                 local matchedAura = spell and F.IsValueNonSecret(spell) and indicatorTable["auras"][spell]
                 -- Midnight: si spellId es secreto, probamos con el name lookup (trackByName=false)
                 if not matchedAura and not indicatorTable["trackByName"] and Cell.isMidnight
@@ -417,8 +408,6 @@ function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
                     matchedAura = indicatorTable["_nameLookup"] and indicatorTable["_nameLookup"][auraInfo.name]
                     if matchedAura then spell = auraInfo.name end
                 end
-                -- Midnight: secret auras may have duration zeroed for Lua safety, but
-                -- user wildcard custom indicators should still see the live aura.
                 if matchedAura or (indicatorTable["auras"][0] and (duration ~= 0 or auraInfo._hasSecrets)) then -- is in indicator spell list
                     -- check caster
                     local castBy = indicatorTable["castBy"]
@@ -427,7 +416,6 @@ function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
                         local castByMe = sourceUnit == "player" or sourceUnit == "pet"
                         castByMatches = (castBy == "me" and castByMe) or (castBy == "others" and not castByMe)
                     elseif not castByMatches and F.IsValueNonSecret(auraInfo.isFromPlayerOrPlayerPet) then
-                        -- 12.1: sourceUnit often secret in combat; this flag stays readable
                         local fromPlayer = auraInfo.isFromPlayerOrPlayerPet
                         castByMatches = (castBy == "me" and fromPlayer) or (castBy == "others" and not fromPlayer)
                     end

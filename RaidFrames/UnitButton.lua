@@ -35,8 +35,6 @@ local UnitHealthMax = UnitHealthMax
 local UnitGetIncomingHeals = UnitGetIncomingHeals
 local UnitGetTotalAbsorbs = UnitGetTotalAbsorbs
 local UnitGetTotalHealAbsorbs = UnitGetTotalHealAbsorbs
--- 12.0+ APIs: secret value globals are only referenced in Utils.lua wrappers.
--- All callsites use F.IsValueNonSecret() / F.HasAnySecretValues() instead.
 local UnitIsFriend = UnitIsFriend
 local UnitIsUnit = UnitIsUnit
 local UnitIsPlayer = UnitIsPlayer
@@ -239,30 +237,22 @@ end
 
 local CheckCLEURequired
 
--------------------------------------------------
--- 12.0+ aura annotation (read-only tagging)
--------------------------------------------------
 local function AnnotateAura(aura)
     if not aura then return nil end
 
-    -- auraInstanceID is the cache key — if secret, drop the aura
     if not F.IsValueNonSecret(aura.auraInstanceID) then return nil end
 
     aura = F.CopyAuraTable(aura)
 
-    -- Fast path: readable spellId means the aura is not opaque-secret.
-    -- Prefer curated tables over fingerprint matching in that case.
     if F.IsValueNonSecret(aura.spellId) then
         aura._hasSecrets = false
         return aura
     end
 
-    -- Slow path: opaque secret spellId
     aura._hasSecrets = true
     return aura
 end
 
--- Wrap aura data retrieval to annotate secret state (read-only tag only)
 GetAuraDataByAuraInstanceID = function(unit, id)
     return AnnotateAura(_GetAuraDataByAuraInstanceID(unit, id))
 end
@@ -487,6 +477,9 @@ local function ResetIndicators()
         if t["dispellableByMe"] ~= nil then
             indicatorBooleans[t["indicatorName"]] = t["dispellableByMe"]
         end
+        if t["indicatorName"] == "debuffs" then
+            indicatorBooleans["debuffsNonPlayer"] = t["nonPlayerAuras"] and true or false
+        end
         if t["onlyShowTopGlow"] ~= nil then
             indicatorBooleans[t["indicatorName"]] = t["onlyShowTopGlow"]
         end
@@ -589,7 +582,13 @@ local function HandleIndicators(b)
             if t["indicatorName"] == "healthText" then
                 B.UpdateHealthText(b)
             elseif t["indicatorName"] == "powerText" then
-                B.UpdatePowerText(b)
+                local showFn = Cell._shouldShowPowerText or ShouldShowPowerText
+                b._shouldShowPowerText = showFn and showFn(b)
+                if b._shouldShowPowerText then
+                    B.UpdatePowerText(b)
+                else
+                    indicator:Hide()
+                end
             end
         end
         -- update color
@@ -696,6 +695,14 @@ local function HandleIndicators(b)
         if t["indicatorName"] == "nameText" or t["indicatorName"] == "healthText" then
             if t["enabled"] then
                 indicator:Show()
+            else
+                indicator:Hide()
+            end
+        elseif t["indicatorName"] == "powerText" then
+            local showFn = Cell._shouldShowPowerText or ShouldShowPowerText
+            b._shouldShowPowerText = showFn and showFn(b)
+            if b._shouldShowPowerText then
+                B.UpdatePowerText(b)
             else
                 indicator:Hide()
             end
@@ -999,6 +1006,9 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     UpdateIndicatorParentVisibility(b, indicatorName, value)
                     if not value then
                         b.indicators[indicatorName]:Hide() -- hide indicators which is shown right now
+                        if I.DisableCombatAuraDisplay then
+                            I.DisableCombatAuraDisplay(b, indicatorName)
+                        end
                     end
                     UnitButton_UpdateAuras(b)
                 end, true)
@@ -1270,6 +1280,11 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end, true)
             elseif value == "dispellableByMe" then
                 indicatorBooleans[indicatorName] = value2
+                F.IterateAllUnitButtons(function(b)
+                    UnitButton_UpdateAuras(b)
+                end, true)
+            elseif value == "nonPlayerAuras" then
+                indicatorBooleans["debuffsNonPlayer"] = value2 and true or false
                 F.IterateAllUnitButtons(function(b)
                     UnitButton_UpdateAuras(b)
                 end, true)
@@ -1642,6 +1657,9 @@ local function HandleDebuff(self, auraInfo)
             local canShowDebuff = not indicatorBooleans["debuffs"]
             if not canShowDebuff then
                 canShowDebuff = GetCanPlayerDispelAura()
+            end
+            if canShowDebuff and indicatorBooleans["debuffsNonPlayer"] and auraInfo.isFromPlayerOrPlayerPet == true then
+                canShowDebuff = false
             end
             if canShowDebuff then
                 if isBig then
@@ -2458,7 +2476,6 @@ UnitButton_UpdateAuras = function(self, updateInfo)
         return
     end
 
-    -- 12.1+: isFullUpdate may be secret under aura restrictions — never boolean-test it raw.
     local isFullUpdate = true
     if updateInfo then
         local full = updateInfo.isFullUpdate
@@ -2505,10 +2522,6 @@ UnitButton_UpdateAuras = function(self, updateInfo)
                             isHarmful = (not isHelpful and not _IsAuraFilteredOut(unit, aura.auraInstanceID, "HARMFUL")) and true or nil
                         end
                     end
-                    -- Track ALL newly added secret auras (regardless of isHelpful/isHarmful
-                    -- resolution) for Step 2.5 fingerprint matching. This ensures auras
-                    -- that can't be classified as helpful/harmful (triggering needsFullUpdate)
-                    -- are still tracked for the fingerprint fallback path.
                     if aura._hasSecrets then
                         if not self._recentlyAddedAuraIDs then self._recentlyAddedAuraIDs = {} end
                         self._recentlyAddedAuraIDs[aura.auraInstanceID] = true
@@ -2613,7 +2626,6 @@ UnitButton_UpdateAuras = function(self, updateInfo)
             if buffsChanged then UnitButton_UpdateBuffs(self) end
             if debuffsChanged then UnitButton_UpdateDebuffs(self) end
         end
-        -- Clear recently-added tracking after processing (used by Step 2.5 fingerprint matching)
         if self._recentlyAddedAuraIDs then
             wipe(self._recentlyAddedAuraIDs)
         end
@@ -2653,12 +2665,13 @@ local function UnitButton_UpdateHealthStates(self, diff)
             -- class_color / class_color_dark modes don't use percent, so they still work.
             self.states.healthPercent = 0
         end
-        -- Death detection uses non-secret boolean
         self.states.wasDead = self.states.isDead
-        self.states.isDead = UnitIsDeadOrGhost(unit) or false
-        -- Fallback: use UnitIsDeadOrGhost which is always non-secret
         self.states.wasDeadOrGhost = self.states.isDeadOrGhost
-        self.states.isDeadOrGhost = UnitIsDeadOrGhost(unit) or false
+        local dead = UnitIsDeadOrGhost(unit)
+        if F.IsValueNonSecret(dead) then
+            self.states.isDead = dead
+            self.states.isDeadOrGhost = dead
+        end
 
         -- Health text: calculator values flow to C-level SetFormattedText/SetText
         if enabledIndicators["healthText"] then
@@ -2755,38 +2768,34 @@ end
 -- power filter funcs
 -------------------------------------------------
 local function GetRole(b)
-    if b.states.role and b.states.role ~= "NONE" then
+    if b.states.role and F.IsValueNonSecret(b.states.role) and b.states.role ~= "NONE" then
         return b.states.role
     end
 
-    -- For the player's own unit, get role from current spec directly
-    -- (UnitGroupRolesAssigned returns "NONE" when solo or in non-LFG groups)
-    -- UnitIsUnit may return a secret boolean; check before boolean test.
-    -- For player identity check, treat secret as false (safe fallback).
     local isPlayer = b.states.unit and UnitIsUnit(b.states.unit, "player")
     if GetSpecialization and GetSpecializationRole
         and b.states.unit and F.IsValueNonSecret(isPlayer) and isPlayer then
         local spec = GetSpecialization()
         if spec then
             local specRole = GetSpecializationRole(spec)
-            if specRole and specRole ~= "NONE" then
+            if specRole and F.IsValueNonSecret(specRole) and specRole ~= "NONE" then
                 return specRole
             end
         end
     end
 
-    -- Fresh UnitGroupRolesAssigned check (role may have been assigned after init)
     if b.states.unit then
         local freshRole = UnitGroupRolesAssigned(b.states.unit)
-        if freshRole and freshRole ~= "NONE" then
+        if freshRole and F.IsValueNonSecret(freshRole) and freshRole ~= "NONE" then
             b.states.role = freshRole
             return freshRole
         end
     end
 
     local info = LGI:GetCachedInfo(b.states.guid)
-    if not info then return end
-    return info.role
+    if info and F.IsValueNonSecret(info.role) then
+        return info.role
+    end
 end
 
 -- Evaluate a role filter table when the specific role is unknown.
@@ -2811,8 +2820,10 @@ local function GetClassAndRole(b)
     local guid = b.states.guid
     -- 12.0+: guid may be secret for NPC units — can't use string.find on secrets
     if guid and not F.IsValueNonSecret(guid) then
-        -- Fallback: use UnitInPartyIsAI to detect AI followers without needing guid
-        if b.states.unit and UnitInPartyIsAI(b.states.unit) then
+        if b.states.class and F.IsValueNonSecret(b.states.class) then
+            class = b.states.class
+            role = GetRole(b)
+        elseif b.states.unit and UnitInPartyIsAI(b.states.unit) then
             class = b.states.class
             role = GetRole(b)
         end
@@ -2842,29 +2853,25 @@ ShouldShowPowerText = function(b)
     if not enabledIndicators["powerText"] then return end
     if not (b:IsVisible() or b.isPreview) then return end
 
-    -- guid may be secret for NPC/follower units; `== nil` is safe on secrets.
     if b.states.guid == nil then
         return true
     end
 
     local class, role = GetClassAndRole(b)
-
-    if class then
-        local filter = indicatorCustoms["powerText"] and indicatorCustoms["powerText"][class]
-        if filter == nil then
-            return true
-        elseif type(filter) == "boolean" then
-            return filter
-        else
-            if role then
-                return filter[role]
-            else
-                return EvaluateFilterWithoutRole(filter)
-            end
-        end
+    if not (class and F.IsValueNonSecret(class)) then
+        return true
     end
 
-    return true
+    local filter = indicatorCustoms["powerText"] and indicatorCustoms["powerText"][class]
+    if filter == nil then
+        return true
+    elseif type(filter) == "boolean" then
+        return filter
+    elseif role and F.IsValueNonSecret(role) then
+        return filter[role]
+    else
+        return EvaluateFilterWithoutRole(filter)
+    end
 end
 
 ShouldShowPowerBar = function(b)
@@ -2993,7 +3000,9 @@ UnitButton_UpdateRole = function(self)
     if not unit then return end
 
     local role = UnitGroupRolesAssigned(unit)
-    self.states.role = role
+    if F.IsValueNonSecret(role) then
+        self.states.role = role
+    end
 
     local roleIcon = self.indicators.roleIcon
     if enabledIndicators["roleIcon"] then
@@ -3002,7 +3011,7 @@ UnitButton_UpdateRole = function(self)
 
         --! check vehicle root
         -- Midnight 12.0.0+: guid may be secret for NPC/boss units
-        if self.states.guid and F.IsValueNonSecret(self.states.guid) and strfind(self.states.guid, "^Vehicle") and not UnitInPartyIsAI(unit) then
+        if self.states.guid and F.IsValueNonSecret(self.states.guid) and strfind(self.states.guid, "^Vehicle") and not F.IsKnownTrue(UnitInPartyIsAI(unit)) then
             CheckVehicleRoot(self, unit)
         end
     else
@@ -3103,47 +3112,50 @@ local function UnitButton_FinishReadyCheck(self)
     end)
 end
 
+local function FitPowerTextFrame(frame)
+    local w = frame.text and frame.text:GetStringWidth()
+    frame:SetWidth((F.IsValueNonSecret(w) and w > 0) and w or 50)
+end
+
 UnitButton_UpdatePowerText = function(self)
     if not self._shouldShowPowerText then return end
 
+    local frame = self.indicators.powerText
+    if not frame then return end
+
     local power = self.states.power
     local powerMax = self.states.powerMax
-    -- 12.0+: power may be secret; == nil is safe on secrets
-    if power == nil or self.states.isDeadOrGhost then
-        self.indicators.powerText:Hide()
+    local dead = self.states.isDeadOrGhost
+    if power == nil or (F.IsValueNonSecret(dead) and dead) then
+        frame:Hide()
         return
     end
 
+    local unit = self.states.displayedUnit
+    local fmt = frame._format or "number"
     if not F.HasAnySecretValues(power, powerMax) then
-        self.indicators.powerText:SetValue(power, powerMax)
-    else
-        -- Pass secret values to C-level SetFormattedText directly.
-        local unit = self.states.displayedUnit
-        local fmt = self.indicators.powerText._format
-        if fmt == "percentage" then
-            -- UnitPowerPercent returns 0-1 by default; use ScaleTo100 curve for 0-100
-            local pct
-            if unit and UnitPowerPercent then
-                if CurveConstants and CurveConstants.ScaleTo100 then
-                    pct = UnitPowerPercent(unit, nil, true, CurveConstants.ScaleTo100)
-                else
-                    pct = UnitPowerPercent(unit)
-                end
-            end
-            if pct then
-                self.indicators.powerText.text:SetFormattedText("%d%%", pct)
+        frame:SetValue(power, powerMax)
+    elseif fmt == "percentage" then
+        local pct
+        if unit and UnitPowerPercent then
+            if CurveConstants and CurveConstants.ScaleTo100 then
+                pct = UnitPowerPercent(unit, nil, true, CurveConstants.ScaleTo100)
             else
-                self.indicators.powerText.text:SetFormattedText("%d", power)
+                pct = UnitPowerPercent(unit)
             end
-        elseif fmt == "number-short" and AbbreviateNumbers then
-            self.indicators.powerText.text:SetFormattedText("%s", AbbreviateNumbers(power))
-        else
-            -- "number" or "number-short" without AbbreviateNumbers: raw number
-            self.indicators.powerText.text:SetFormattedText("%d", power)
         end
-        -- GetStringWidth returns secret when text is tainted; skip SetWidth
-        self.indicators.powerText:Show()
+        if pct ~= nil then
+            frame.text:SetFormattedText("%d%%", pct)
+        else
+            frame.text:SetFormattedText("%d", power)
+        end
+    elseif fmt == "number-short" and AbbreviateNumbers then
+        frame.text:SetFormattedText("%s", AbbreviateNumbers(power))
+    else
+        frame.text:SetFormattedText("%d", power)
     end
+    FitPowerTextFrame(frame)
+    frame:Show()
 end
 
 UnitButton_UpdatePowerTextColor = function(self)
@@ -3152,12 +3164,15 @@ UnitButton_UpdatePowerTextColor = function(self)
     local unit = self.states.displayedUnit
     if not unit then return end
 
-    if indicatorColors["powerText"][1] == "power_color" then
+    local color = indicatorColors["powerText"]
+    if not color then return end
+
+    if color[1] == "power_color" then
         self.indicators.powerText:SetColor(F.GetPowerColor(unit))
-    elseif indicatorColors["powerText"][1] == "class_color" then
+    elseif color[1] == "class_color" then
         self.indicators.powerText:SetColor(F.GetUnitClassColor(unit))
-    else
-        self.indicators.powerText:SetColor(unpack(indicatorColors["powerText"][2]))
+    elseif color[2] then
+        self.indicators.powerText:SetColor(unpack(color[2]))
     end
 end
 
@@ -3198,7 +3213,8 @@ UnitButton_UpdatePowerType = function(self)
     local r, g, b, lossR, lossG, lossB
     local a = Cell.loaded and CellDB["appearance"]["lossAlpha"] or 1
 
-    if not UnitIsConnected(unit) then
+    local connected = UnitIsConnected(unit)
+    if F.IsValueNonSecret(connected) and not connected then
         r, g, b = 0.4, 0.4, 0.4
         lossR, lossG, lossB = 0.4, 0.4, 0.4
     else
@@ -3873,7 +3889,7 @@ UnitButton_UpdateStatusText = function(self)
     self.states.guid = UnitGUID(unit) -- update!
     if not self.states.guid then return end
 
-    if not UnitIsConnected(unit) and UnitIsPlayer(unit) then
+    if F.IsValueNonSecret(UnitIsConnected(unit)) and not UnitIsConnected(unit) and F.IsKnownTrue(UnitIsPlayer(unit)) then
         statusText:Show()
         statusText:SetStatus("OFFLINE")
         statusText:ShowTimer()
@@ -3882,14 +3898,14 @@ UnitButton_UpdateStatusText = function(self)
         statusText:Show()
         statusText:SetStatus("AFK")
         statusText:ShowTimer()
-    elseif UnitIsFeignDeath(unit) then
+    elseif F.IsKnownTrue(UnitIsFeignDeath(unit)) then
         statusText:Show()
         statusText:SetStatus("FEIGN")
         statusText:HideTimer(true)
-    elseif UnitIsDeadOrGhost(unit) then
+    elseif F.IsKnownTrue(UnitIsDeadOrGhost(unit)) then
         statusText:Show()
         statusText:HideTimer(true)
-        if UnitIsGhost(unit) then
+        if F.IsKnownTrue(UnitIsGhost(unit)) then
             statusText:SetStatus("GHOST")
         else
             statusText:SetStatus("DEAD")
@@ -3952,8 +3968,8 @@ UnitButton_UpdateNameTextColor = function(self)
     if enabledIndicators["nameText"] then
         local connected = UnitIsConnected(unit)
         local charmed = UnitIsCharmed(unit)
-        local charmedPlayer = (UnitIsPlayer(unit) or UnitInPartyIsAI(unit))
-            and F.IsValueNonSecret(charmed) and charmed
+        local charmedPlayer = F.IsPlayerOrPartyAI(unit)
+            and F.IsKnownTrue(charmed)
         if indicatorColors["nameText"][1] == "class_color"
             or (F.IsValueNonSecret(connected) and not connected)
             or charmedPlayer
@@ -4008,13 +4024,13 @@ UnitButton_UpdateHealthColor = function(self)
     if Cell.isMidnight and self.widgets.healthBarColorCurve and UnitHealthPercent then
         local useCurve = false
 
-        if UnitIsPlayer(unit) or UnitInPartyIsAI(unit) then
+        if F.IsPlayerOrPartyAI(unit) then
             local connected = UnitIsConnected(unit)
             local charmed = UnitIsCharmed(unit)
             if F.IsValueNonSecret(connected) and not connected then
                 barR, barG, barB = 0.4, 0.4, 0.4
                 lossR, lossG, lossB = 0.4, 0.4, 0.4
-            elseif F.IsValueNonSecret(charmed) and charmed then
+            elseif F.IsKnownTrue(charmed) then
                 barR, barG, barB, barA = 0.5, 0, 1, 1
                 lossR, lossG, lossB, lossA = barR*0.2, barG*0.2, barB*0.2, 1
             else
@@ -4050,10 +4066,12 @@ UnitButton_UpdateHealthColor = function(self)
                 end
             end
             -- deathColor override
-            if (self.states.isDeadOrGhost or self.states.isDead) and Cell.vars.useDeathColor then
-                lossR = CellDB["appearance"]["deathColor"][2][1]
-                lossG = CellDB["appearance"]["deathColor"][2][2]
-                lossB = CellDB["appearance"]["deathColor"][2][3]
+            if F.IsKnownTrue(self.states.isDeadOrGhost) or F.IsKnownTrue(self.states.isDead) then
+                if Cell.vars.useDeathColor then
+                    lossR = CellDB["appearance"]["deathColor"][2][1]
+                    lossG = CellDB["appearance"]["deathColor"][2][2]
+                    lossB = CellDB["appearance"]["deathColor"][2][3]
+                end
             end
         end
 
@@ -4074,22 +4092,24 @@ UnitButton_UpdateHealthColor = function(self)
     end
 
     -- PRE-MIDNIGHT PATH: original Lua-based color logic
-    if UnitIsPlayer(unit) or UnitInPartyIsAI(unit) then -- player
-        if not UnitIsConnected(unit) then
+    if F.IsPlayerOrPartyAI(unit) then
+        local connected = UnitIsConnected(unit)
+        local charmed = UnitIsCharmed(unit)
+        if F.IsValueNonSecret(connected) and not connected then
             barR, barG, barB = 0.4, 0.4, 0.4
             lossR, lossG, lossB = 0.4, 0.4, 0.4
-        elseif UnitIsCharmed(unit) then
+        elseif F.IsKnownTrue(charmed) then
             barR, barG, barB, barA = 0.5, 0, 1, 1
             lossR, lossG, lossB, lossA = barR*0.2, barG*0.2, barB*0.2, 1
         elseif self.states.inVehicle then
-            barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(self.states.healthPercent, self.states.isDeadOrGhost or self.states.isDead, 0, 1, 0.2)
+            barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(self.states.healthPercent, F.IsKnownTrue(self.states.isDeadOrGhost) or F.IsKnownTrue(self.states.isDead), 0, 1, 0.2)
         else
-            barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(self.states.healthPercent, self.states.isDeadOrGhost or self.states.isDead, F.GetClassColor(self.states.class))
+            barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(self.states.healthPercent, F.IsKnownTrue(self.states.isDeadOrGhost) or F.IsKnownTrue(self.states.isDead), F.GetClassColor(self.states.class))
         end
-    elseif F.IsPet(self.states.guid, self.states.unit) then -- pet
-        barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(self.states.healthPercent, self.states.isDeadOrGhost or self.states.isDead, 0.5, 0.5, 1)
-    else -- npc
-        barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(self.states.healthPercent, self.states.isDeadOrGhost or self.states.isDead, 0, 1, 0.2)
+    elseif F.IsPet(self.states.guid, self.states.unit) then
+        barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(self.states.healthPercent, F.IsKnownTrue(self.states.isDeadOrGhost) or F.IsKnownTrue(self.states.isDead), 0.5, 0.5, 1)
+    else
+        barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(self.states.healthPercent, F.IsKnownTrue(self.states.isDeadOrGhost) or F.IsKnownTrue(self.states.isDead), 0, 1, 0.2)
     end
 
     self.widgets.healthBar:SetStatusBarColor(barR, barG, barB, barA)
@@ -4131,6 +4151,7 @@ Cell_._getRecentSecretHelpfulCastKind = GetRecentSecretHelpfulCastKind
 Cell_._updateHealthStates = UnitButton_UpdateHealthStates
 Cell_._finishReadyCheck = UnitButton_FinishReadyCheck
 Cell_._shouldShowPowerBar = ShouldShowPowerBar
+Cell_._shouldShowPowerText = ShouldShowPowerText
 Cell_._hidePowerBar = HidePowerBar
 Cell_._showPowerBar = ShowPowerBar
 Cell_._updateCombatIcon = UnitButton_UpdateCombatIcon
@@ -4188,6 +4209,7 @@ local UnitButton_UpdateThreat = Cell_._updateThreat
 local UnitButton_UpdateThreatBar = Cell_._updateThreatBar
 local UnitButton_UpdatePowerStates = Cell_._updatePowerStates
 local ShouldShowPowerBar = Cell_._shouldShowPowerBar
+local ShouldShowPowerText = Cell_._shouldShowPowerText
 
 -- Import vars desde seg 1
 local enabledIndicators = Cell_._enabledIndicators
@@ -4384,7 +4406,11 @@ local function UnitButton_RegisterEvents(self)
     self:RegisterEvent("UNIT_MAXPOWER")
     self:RegisterEvent("UNIT_DISPLAYPOWER")
 
-    self:RegisterEvent("UNIT_AURA")
+    if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
+        self:UnregisterEvent("UNIT_AURA")
+    else
+        self:RegisterEvent("UNIT_AURA")
+    end
     if Cell.isMidnight then
         self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
     end
@@ -4779,6 +4805,7 @@ local function UnitButton_OnEnter(self)
     local unit = self.states.displayedUnit
     if not unit then return end
 
+    if F.ShouldShowUnitTooltip and not F.ShouldShowUnitTooltip() then return end
     F.ShowTooltips(self, "unit", unit)
 end
 
@@ -5448,18 +5475,17 @@ end
 
 -- powerText
 function B.UpdatePowerText(button)
-    -- displayedUnit is set by UnitButton_UpdateAll (OnShow/vehicle check).
-    -- When enabling the indicator at runtime, buttons may not have gone
-    -- through UpdateAll yet. Fall back to states.unit so power APIs work.
     if not button.states.displayedUnit and button.states.unit then
         button.states.displayedUnit = button.states.unit
     end
-    -- If still no unit, try GetAttribute (secure header always sets this)
     if not button.states.displayedUnit then
         local attrUnit = button:GetAttribute("unit")
         if attrUnit then
             button.states.displayedUnit = attrUnit
         end
+    end
+    if button._shouldShowPowerText == nil and ShouldShowPowerText then
+        button._shouldShowPowerText = ShouldShowPowerText(button)
     end
     if button.states.displayedUnit then
         UnitButton_UpdatePowerStates(button)

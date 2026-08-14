@@ -479,7 +479,11 @@ local function QuickAssist_RegisterEvents(self)
     self:RegisterEvent("UNIT_HEALTH")
     self:RegisterEvent("UNIT_MAXHEALTH")
 
-    self:RegisterEvent("UNIT_AURA")
+    if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
+        self:UnregisterEvent("UNIT_AURA")
+    else
+        self:RegisterEvent("UNIT_AURA")
+    end
     self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 
     self:RegisterEvent("UNIT_CONNECTION") -- offline

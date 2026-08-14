@@ -4,9 +4,7 @@ local _, Cell = ...
 local F = Cell.funcs
 
 -------------------------------------------------
--- Aura timing / display helpers (Midnight+)
--- Duration objects let cooldown swipes work when start/duration are secret.
--- Based on Blizzard C_UnitAuras APIs only — Cell-native wrappers.
+-- aura timing
 -------------------------------------------------
 
 function F.GetAuraTiming(auraInfo)

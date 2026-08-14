@@ -1795,12 +1795,16 @@ if Cell.isRetail or Cell.isMists then
         ["allCooldowns"] = {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["tankActiveMitigation"] = {"|cffb7b7b7"..I.GetTankActiveMitigationString(), "enabled", "color-class", "size", "position", "frameLevel"},
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
-        ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["debuffs"] = Cell.isRetail
+            and {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "size-square", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
+            or {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "privateAuraOrientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["privateAuras"] = {"|cffb7b7b7"..L["Due to restrictions of the private aura system, this indicator can only use Blizzard style."], "warning:"..L["Private auras are controlled by Blizzard. Positioning and style are limited, and changes may be delayed until combat ends."], "enabled", "privateAuraOptions", "size-square", "numPerLine:5", "spacing", "privateAuraOrientation", "position", "frameLevel"},
         ["targetedSpells"] = {TARGETED_SPELLS_PTR_WARNING, TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "warning:"..L["Target Counter depends on visible enemy nameplates and can be inaccurate when nameplates are hidden or restricted."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
-        ["crowdControls"] = {"enabled", "builtInCrowdControls", "customCrowdControls", midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["crowdControls"] = Cell.isRetail
+            and {"warning:"..(L["crowdControlsApiWarning"] or ""), "enabled", midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
+            or {"enabled", "builtInCrowdControls", "customCrowdControls", midnightDurationVisibility, "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["actions"] = {"|cffb7b7b7"..L["Play animation when the unit uses a specific spell/item. The list is global shared, not layout-specific."], "enabled", "actionsPreview", "actionsList"},
         ["healthThresholds"] = {"enabled", "thresholds", "thickness"},
         ["missingBuffs"] = {"|cffb7b7b7"..(L["%s in Utilities must be enabled to make this indicator work."]:format(Cell.GetAccentColorString()..L["Buff Tracker"].."|r")), "enabled", "size-square", "orientation", "position", "frameLevel"},
@@ -1839,7 +1843,7 @@ elseif Cell.isCata or Cell.isWrath then
         ["defensiveCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInDefensives", "customDefensives", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["allCooldowns"] = {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
-        ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "privateAuraOrientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["targetedSpells"] = {TARGETED_SPELLS_PTR_WARNING, TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
@@ -1875,7 +1879,7 @@ elseif Cell.isVanilla or Cell.isTBC then
         ["defensiveCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInDefensives", "customDefensives", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["allCooldowns"] = {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
-        ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "privateAuraOrientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["targetedSpells"] = {TARGETED_SPELLS_PTR_WARNING, TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
@@ -2030,6 +2034,9 @@ local function ShowIndicatorSettings(id)
             local _, setting, tooltip = string.split(":", currentSetting)
             if indicatorName == "debuffs" and setting == "showStack" and indicatorTable[setting] == nil then
                 indicatorTable[setting] = true
+            end
+            if indicatorName == "debuffs" and setting == "nonPlayerAuras" and indicatorTable[setting] == nil then
+                indicatorTable[setting] = false
             end
             w:SetDBValue(setting, indicatorTable[setting], tooltip)
             w:SetFunc(function(value)
@@ -2224,6 +2231,18 @@ local function ShowIndicatorSettings(id)
             w:SetDBValue(indicatorTable["glowOptions"], indicatorType == "glow")
             w:SetFunc(function(value)
                 Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, currentSetting, value)
+            end)
+
+        elseif currentSetting == "size" and indicatorName == "debuffs" and Cell.isRetail then
+            local size = indicatorTable["size"]
+            if type(size) == "table" and type(size[1]) == "table" then
+                w:SetDBValue({size[1][1], size[1][2]})
+            else
+                w:SetDBValue(size)
+            end
+            w:SetFunc(function(value)
+                indicatorTable["size"] = {{value[1], value[2]}, {value[1], value[2]}}
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "size", indicatorTable["size"])
             end)
 
         -- size-border

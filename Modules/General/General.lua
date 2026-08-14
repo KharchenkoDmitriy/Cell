@@ -104,6 +104,8 @@ local function CreateTooltipsPane()
 
     enableTooltipsCB = Cell.CreateCheckButton(tooltipsPane, L["Enabled"], function(checked, self)
         CellDB["general"]["enableTooltips"] = checked
+        if F.RefreshEngineAuraButtonTooltips then F.RefreshEngineAuraButtonTooltips() end
+        if not checked then GameTooltip:Hide() end
         hideTooltipsInCombatCB:SetEnabled(checked)
         -- enableAuraTooltipsCB:SetEnabled(checked)
         tooltipsAnchor:SetEnabled(checked)
@@ -123,6 +125,10 @@ local function CreateTooltipsPane()
 
     hideTooltipsInCombatCB = Cell.CreateCheckButton(tooltipsPane, L["Hide in Combat"], function(checked, self)
         CellDB["general"]["hideTooltipsInCombat"] = checked
+        if F.RefreshEngineAuraButtonTooltips then F.RefreshEngineAuraButtonTooltips() end
+        if checked and F.ShouldShowUnitTooltip and not F.ShouldShowUnitTooltip() then
+            GameTooltip:Hide()
+        end
     end, L["Hide in Combat"], L["Hide tooltips for units"], L["This will not affect aura tooltips"])
     hideTooltipsInCombatCB:SetPoint("TOPLEFT", enableTooltipsCB, "BOTTOMLEFT", 0, -7)
 

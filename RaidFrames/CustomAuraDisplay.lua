@@ -5,7 +5,7 @@ local F = Cell.funcs
 ---@type CellIndicatorFuncs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 11
+local INIT_VERSION = 19
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -432,14 +432,7 @@ local function AttachStackAndDuration(button, cfg, host, animFrame)
         else
             duration:SetTextColor(1, 1, 1, 1)
         end
-        local opts = {}
-        local formatter = GetCellDurationFormatter()
-        if formatter then
-            opts.textFormatter = formatter
-        end
-        if not pcall(button.SetDurationText, button, duration, opts) then
-            pcall(button.SetDurationText, button, duration, { textFormatter = formatter })
-        end
+        F.BindAuraDurationText(button, duration, GetCellDurationFormatter(), cfg.auras)
     end
     return textHost
 end
@@ -564,7 +557,7 @@ end
 local function MakeInitColorButton(cfg, unitButton)
     return function(button)
         pcall(button.SetSize, button, 0.001, 0.001)
-        pcall(button.SetMouseClickEnabled, button, false)
+        F.SetupEngineAuraButtonMouse(button, true)
 
         local dummy = button:CreateTexture(nil, "ARTWORK")
         dummy:SetAllPoints(button)
@@ -605,7 +598,7 @@ end
 local function MakeInitBorderButton(cfg, unitButton)
     return function(button)
         pcall(button.SetSize, button, 0.001, 0.001)
-        pcall(button.SetMouseClickEnabled, button, false)
+        F.SetupEngineAuraButtonMouse(button, true)
 
         local dummy = button:CreateTexture(nil, "ARTWORK")
         dummy:SetAllPoints(button)
@@ -655,7 +648,7 @@ local function MakeInitTextButton(cfg)
     return function(button)
         local size = (type(cfg.font) == "table" and cfg.font[2]) or 12
         pcall(button.SetSize, button, size, size)
-        pcall(button.SetMouseClickEnabled, button, false)
+        F.SetupEngineAuraButtonMouse(button)
         AttachHiddenIcon(button)
 
         local text = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
@@ -667,14 +660,7 @@ local function MakeInitTextButton(cfg)
         local showDuration = cfg.duration and cfg.duration[1]
         local showStack = not (cfg.stack and cfg.stack[1] == false)
         if showDuration then
-            local opts = {}
-            local formatter = GetCellDurationFormatter()
-            if formatter then
-                opts.textFormatter = formatter
-            end
-            if not pcall(button.SetDurationText, button, text, opts) then
-                pcall(button.SetDurationText, button, text, { textFormatter = formatter })
-            end
+            F.BindAuraDurationText(button, text, GetCellDurationFormatter(), cfg.auras)
             if showStack then
                 local stack = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
                 stack:SetPoint("TOPRIGHT", 2, 1)
@@ -693,7 +679,7 @@ local function MakeInitRectButton(cfg)
         local sizeW = (cfg.size and cfg.size[1]) or 11
         local sizeH = (cfg.size and cfg.size[2]) or 4
         pcall(button.SetSize, button, sizeW, sizeH)
-        pcall(button.SetMouseClickEnabled, button, false)
+        F.SetupEngineAuraButtonMouse(button)
         AttachHiddenIcon(button)
 
         local r, g, b, a = GetCfgColor(cfg, { 0, 1, 0, 1 })
@@ -724,7 +710,7 @@ local function MakeInitBarButton(cfg)
         local sizeW = (cfg.size and cfg.size[1]) or 18
         local sizeH = (cfg.size and cfg.size[2]) or 4
         pcall(button.SetSize, button, sizeW, sizeH)
-        pcall(button.SetMouseClickEnabled, button, false)
+        F.SetupEngineAuraButtonMouse(button)
         local icon = AttachHiddenIcon(button)
 
         local bgr, bgg, bgb, bga = 0.07, 0.07, 0.07, 0.9
@@ -760,7 +746,7 @@ local function MakeInitBlockButton(cfg)
         local sizeW = (cfg.size and cfg.size[1]) or 10
         local sizeH = (cfg.size and cfg.size[2]) or 10
         pcall(button.SetSize, button, sizeW, sizeH)
-        pcall(button.SetMouseClickEnabled, button, false)
+        F.SetupEngineAuraButtonMouse(button)
         local icon = AttachHiddenIcon(button)
 
         local texMap, firstColor = BuildTextureColorMap(cfg.auras)
@@ -804,7 +790,7 @@ local function MakeInitTextureButton(cfg, unitButton)
         local sizeW = (cfg.size and cfg.size[1]) or 16
         local sizeH = (cfg.size and cfg.size[2]) or 16
         pcall(button.SetSize, button, sizeW, sizeH)
-        pcall(button.SetMouseClickEnabled, button, false)
+        F.SetupEngineAuraButtonMouse(button)
         AttachHiddenIcon(button)
 
         local tex = button:CreateTexture(nil, "ARTWORK")
@@ -832,7 +818,7 @@ end
 local function MakeInitOverlayButton(cfg, unitButton)
     return function(button)
         pcall(button.SetSize, button, 0.001, 0.001)
-        pcall(button.SetMouseClickEnabled, button, false)
+        F.SetupEngineAuraButtonMouse(button, true)
         AttachHiddenIcon(button)
 
         local health = unitButton.widgets and unitButton.widgets.healthBar
@@ -869,7 +855,7 @@ local function MakeInitAuraButton(cfg)
         local sizeW = (cfg.size and cfg.size[1]) or 13
         local sizeH = (cfg.size and cfg.size[2]) or sizeW
         pcall(button.SetSize, button, sizeW, sizeH)
-        pcall(button.SetMouseClickEnabled, button, false)
+        F.SetupEngineAuraButtonMouse(button)
 
         local icon = button:CreateTexture(nil, "ARTWORK")
         icon:SetAllPoints(button)
@@ -917,14 +903,7 @@ local function MakeInitAuraButton(cfg)
             else
                 duration:SetTextColor(1, 1, 1, 1)
             end
-            local opts = {}
-            local formatter = GetCellDurationFormatter()
-            if formatter then
-                opts.textFormatter = formatter
-            end
-            if not pcall(button.SetDurationText, button, duration, opts) then
-                pcall(button.SetDurationText, button, duration, { textFormatter = formatter })
-            end
+            F.BindAuraDurationText(button, duration, GetCellDurationFormatter(), cfg.auras)
         end
     end
 end
@@ -1284,7 +1263,6 @@ function I.ShouldSkipLegacyCustom(indicatorTable)
     if IsSupportedCustomCfg(indicatorTable) then
         return true
     end
-    -- Custom.lua runtime tables omit enabled/auraType/indicatorName
     if indicatorTable.name == "Healers" then
         return false
     end
@@ -1346,6 +1324,12 @@ if SUPPORTED then
 
     Cell.RegisterCallback("UpdateLayout", "CustomAuraDisplay_UpdateLayout", function()
         C_Timer.After(0, I.RefreshAllCustomAuraDisplays)
+    end)
+
+    Cell.RegisterCallback("UpdateAppearance", "CustomAuraDisplay_UpdateAppearance", function(which)
+        if which == nil or which == "icon" or which == "reset" then
+            C_Timer.After(0, I.RefreshAllCustomAuraDisplays)
+        end
     end)
 
     local boot = CreateFrame("Frame")

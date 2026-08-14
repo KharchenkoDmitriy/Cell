@@ -435,6 +435,7 @@ Cell.defaults.layout = {
             ["size"] = {{13, 13}, {17, 17}},
             ["showDuration"] = false,
             ["showAnimation"] = true,
+            ["animationStyle"] = "clock",
             ["showStack"] = true,
             ["showTooltip"] = false,
             ["enableBlacklistShortcut"] = false,
@@ -444,6 +445,7 @@ Cell.defaults.layout = {
                 {"Cell ".._G.DEFAULT, 11, "Outline", false, "BOTTOMRIGHT", 2, -1, {1, 1, 1}},
             },
             ["dispellableByMe"] = false,
+            ["nonPlayerAuras"] = false,
             ["orientation"] = "left-to-right",
         }, -- 23
         {

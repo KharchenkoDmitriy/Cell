@@ -24,6 +24,8 @@ select(2, ...).L = setmetatable({
     ["showTimer"] = "Show timer",
     ["showBackground"] = "Show background",
     ["dispellableByMe"] = "Only show debuffs dispellable by me",
+    ["nonPlayerAuras"] = "Only show non-player auras",
+    ["nonPlayerAurasTip"] = "Only shows debuffs that were not applied by a player or a player pet.|This hides player effects such as Exhaustion, Forbearance and Temporal Displacement, and keeps most dungeon and raid debuffs.|Turn this off in PvP.",
     ["Private Dispel Overlay"] = "Private Dispel Overlay",
     ["Show private dispel overlay"] = "Show private dispel overlay",
     ["Only dispellable by me"] = "Only dispellable by me",
@@ -36,7 +38,9 @@ select(2, ...).L = setmetatable({
     ["trackByName"] = "Track by name",
     ["keepInHealers"] = "Keep in Healers indicator",
     ["keepInHealersTip"] = "When enabled, this buff also stays visible in the Healers indicator.|When disabled, it only shows here and is removed from Healers.",
+    ["sec"] = "sec",
     ["glowDisabledApiWarning"] = "Unfortunately Glow cannot be implemented right now due to API changes. I have disabled this indicator for now, until a solution is found.",
+    ["crowdControlsApiWarning"] = "Cell can no longer use a custom CC list. Blizzard decides which debuffs are crowd control, and this indicator shows those automatically.",
     ["Healers indicator is up to date."] = "Healers indicator is up to date.",
     ["Healers indicator already exists. Add new spells?"] = "Healers indicator already exists. Add |cFFFFB5C5%d|r new spell(s)?",
     ["Create Healers indicator"] = "Create Healers indicator",
@@ -108,6 +112,22 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.5 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Fixed remaining Cooldown Viewer / Tracked Bars errors.</p>
+        <p>* Disabling Debuffs (and other built-in aura indicators) now hides their icons.</p>
+        <p>* Debuffs: new option to show only non-player auras (hides player-caused debuffs like Exhaustion).</p>
+        <p>* Big Debuffs removed (the new aura icons can no longer use two sizes).</p>
+        <p>* Debuffs: animation is now None / Top to bottom / Circular. Blacklist shortcut removed.</p>
+        <p>* Crowd Controls: custom spell list removed. Blizzard decides which debuffs count as CC.</p>
+        <p>* Color Duration Text (Aura Icon Options) now applies to custom HoTs, Healers, and built-in aura icons.</p>
+        <p>* Fixed Power Text not showing on unit frames after enabling it.</p>
+        <p>* Fixed a Role Icon error when the assigned role was hidden from addons.</p>
+        <p>* Fixed an error when hiding Blizzard raid frames (GetName on a protected Compact Unit Frame).</p>
+        <p>* Fixed a health-bar color error when UnitIsPlayer/connection state was hidden from addons.</p>
+        <p>* Fixed General tab Tooltips: Enabled and Hide in Combat work again.</p>
+        <br/>
+
         <h1>r277.9.4 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Fixed errors from the Blizzard Cooldown Viewer and Buff Frame that could pop up while playing with Cell.</p>
@@ -119,7 +139,7 @@ select(2, ...).L = setmetatable({
         <p>* All custom indicator types now update in combat, including Border.</p>
         <p>* Duration text for Bar, Bars, Rect, Block and Blocks is now a simple on/off checkbox.</p>
         <p>* Rect, Block and Blocks: choose how the cooldown looks - none, top to bottom, or circular.</p>
-        <p>* Custom Glow removed on 12.1 (custom indicator, Defensives, Externals, Raid Debuffs, Targeted Spells). LibCustomGlow on unit buttons caused taint and lag.</p>
+        <p>* Custom Glow removed (custom indicator, Defensives, Externals, Raid Debuffs, Targeted Spells). LibCustomGlow on unit buttons caused taint and lag.</p>
         <br/>
 
         <h1>r277.9.3 - NeRgY</h1>
@@ -147,7 +167,7 @@ select(2, ...).L = setmetatable({
         <br/>
 
         <h1>r277.9 - NeRgY</h1>
-        <h2>Retail PTR (12.1.0)</h2>
+        <h2>Retail</h2>
         <p>* Important buffs and debuffs (defensives, externals, crowd controls, healers, and more) now show correctly in and out of combat.</p>
         <p>* Dispels can highlight the health bar as a solid color or with a fade from the top or bottom.</p>
         <p>* Healers: choose how the cooldown looks - none, top to bottom, or circular.</p>

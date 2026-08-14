@@ -2280,51 +2280,40 @@ end
 -------------------------------------------------
 -- power text
 -------------------------------------------------
-local function SetPower_Percentage(self, current, max)
-    -- 12.0+: UnitPower() may return secret values in combat.
-    -- SetFormattedText is C-level (AllowedWhenTainted) and handles secrets.
-    if not F.IsValueNonSecret(current) or not F.IsValueNonSecret(max) then
-        self.text:SetFormattedText("%d%%", current)
-        local w = self.text:GetStringWidth()
-        self:SetWidth((F.IsValueNonSecret(w) and w > 0) and w or 50)
-        self:Show()
-        return
-    end
-    self.text:SetFormattedText("%d%%", current/max*100)
+local function FitPowerTextWidth(self)
     local w = self.text:GetStringWidth()
-    self:SetWidth(F.IsValueNonSecret(w) and w or 50)
+    self:SetWidth((F.IsValueNonSecret(w) and w > 0) and w or 50)
+end
+
+local function SetPower_Percentage(self, current, max)
+    if F.IsValueNonSecret(current) and F.IsValueNonSecret(max) and max ~= 0 then
+        self.text:SetFormattedText("%d%%", current / max * 100)
+    else
+        self.text:SetFormattedText("%d%%", current)
+    end
+    FitPowerTextWidth(self)
     self:Show()
 end
 
 local function SetPower_Number(self, current, max)
-    if not F.IsValueNonSecret(current) or not F.IsValueNonSecret(max) then
+    if F.IsValueNonSecret(current) then
         self.text:SetText(current)
-        local w = self.text:GetStringWidth()
-        self:SetWidth((F.IsValueNonSecret(w) and w > 0) and w or 50)
-        self:Show()
-        return
+    else
+        self.text:SetFormattedText("%d", current)
     end
-    self.text:SetText(current)
-    local w = self.text:GetStringWidth()
-    self:SetWidth(F.IsValueNonSecret(w) and w or 50)
+    FitPowerTextWidth(self)
     self:Show()
 end
 
 local function SetPower_Number_Short(self, current, max)
-    if not F.IsValueNonSecret(current) or not F.IsValueNonSecret(max) then
-        if AbbreviateNumbers then
-            self.text:SetFormattedText("%s", AbbreviateNumbers(current))
-        else
-            self.text:SetText(current)
-        end
-        local w = self.text:GetStringWidth()
-        self:SetWidth((F.IsValueNonSecret(w) and w > 0) and w or 50)
-        self:Show()
-        return
+    if F.IsValueNonSecret(current) then
+        self.text:SetText(F.FormatNumber(current))
+    elseif AbbreviateNumbers then
+        self.text:SetFormattedText("%s", AbbreviateNumbers(current))
+    else
+        self.text:SetFormattedText("%d", current)
     end
-    self.text:SetText(F.FormatNumber(current))
-    local w = self.text:GetStringWidth()
-    self:SetWidth(F.IsValueNonSecret(w) and w or 50)
+    FitPowerTextWidth(self)
     self:Show()
 end
 
@@ -2350,9 +2339,8 @@ local function PowerText_SetFont(self, font, size, outline, shadow)
         self.text:SetShadowColor(0, 0, 0, 0)
     end
 
-    -- 12.0+: GetStringWidth returns secret when text is tainted; use fallback
-    local w = self.text:GetStringWidth()
-    self:SetSize((F.IsValueNonSecret(w) and w > 0) and w or 50, size)
+    FitPowerTextWidth(self)
+    self:SetHeight(size)
 end
 
 local function PowerText_SetPoint(self, point, relativeTo, relativePoint, x, y)
@@ -2368,13 +2356,14 @@ local function PowerText_SetPoint(self, point, relativeTo, relativePoint, x, y)
 end
 
 local function PowerText_SetFormat(self, format)
-    self._format = format -- store for secret value fallback path
+    self._format = format
     if format == "percentage" then
         self.SetValue = SetPower_Percentage
-    elseif format == "number" then
-        self.SetValue = SetPower_Number
     elseif format == "number-short" then
         self.SetValue = SetPower_Number_Short
+    else
+        self._format = "number"
+        self.SetValue = SetPower_Number
     end
 end
 
@@ -2409,9 +2398,10 @@ function I.CreatePowerText(parent)
     powerText.SetPoint = PowerText_SetPoint
     powerText.SetFormat = PowerText_SetFormat
     powerText.SetColor = PowerText_SetColor
-    powerText.SetHideIfEmptyOrFull = function() end -- no-op, feature removed
+    powerText.SetHideIfEmptyOrFull = function() end
     powerText.UpdatePreviewColor = PowerText_UpdatePreviewColor
-    powerText.SetValue = noop
+    powerText.SetValue = SetPower_Number
+    powerText._format = "number"
 end
 
 -------------------------------------------------
@@ -2440,6 +2430,10 @@ local function GetTexCoordsForRoleSmall(role)
 end
 
 local function RoleIcon_SetRole(self, role)
+    if role ~= nil and not F.IsValueNonSecret(role) then
+        return
+    end
+
     self.tex:SetTexCoord(0, 1, 0, 1)
     self.tex:SetVertexColor(1, 1, 1)
 

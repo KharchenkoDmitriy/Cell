@@ -1310,8 +1310,11 @@ CreateQuickCastButton = function(parent, name, isPreview)
             b:RegisterUnitEvent("UNIT_IN_RANGE_UPDATE", unit)
             QuickCast_UpdateInRange(b, UnitInRange(unit))
 
-            --! check buffs now
-            b:RegisterEvent("UNIT_AURA")
+            if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
+                b:UnregisterEvent("UNIT_AURA")
+            else
+                b:RegisterEvent("UNIT_AURA")
+            end
             QuickCast_UpdateAuras(b)
 
             --! casts glow

@@ -374,7 +374,6 @@ local StopGlow = {
 }
 
 local function Shared_SetupGlow(frame, glowOptions)
-    -- 12.1: LibCustomGlow is not used on unit buttons (taint / lag).
     ButtonGlow_Stop(frame)
     PixelGlow_Stop(frame)
     AutoCastGlow_Stop(frame)

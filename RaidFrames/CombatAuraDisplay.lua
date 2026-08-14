@@ -5,7 +5,7 @@ local F = Cell.funcs
 ---@type CellIndicatorFuncs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 15
+local INIT_VERSION = 25
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -281,10 +281,14 @@ local function BuildGroupsForIndicator(indicatorName, cfg)
         else
             filter = "HARMFUL"
         end
+        local extra
+        if cfg.nonPlayerAuras then
+            extra = { isFromPlayerOrPlayerPet = false }
+        end
         groups[#groups + 1] = {
             key = "deb",
             filter = filter,
-            candidateFilters = cand(),
+            candidateFilters = cand(extra),
             maxFrameCount = cfg.num or 3,
         }
     elseif indicatorName == "dispels" then
@@ -428,7 +432,7 @@ local function MakeInitDispelAuraButton(cfg, token, unitButton)
         else
             pcall(button.SetSize, button, 0.001, 0.001)
         end
-        pcall(button.SetMouseClickEnabled, button, false)
+        F.SetupEngineAuraButtonMouse(button, not showIcons)
 
         if health then
             local overlay = button:CreateTexture(nil, "ARTWORK", nil, 3)
@@ -457,25 +461,44 @@ local function MakeInitDispelAuraButton(cfg, token, unitButton)
     end
 end
 
+local function ResolveAnimationStyle(cfg)
+    if type(cfg) == "table" and type(cfg.animationStyle) == "string" then
+        local s = cfg.animationStyle
+        if s == "none" or s == "vertical" or s == "clock" then
+            return s
+        end
+    end
+    if type(cfg) == "table" and cfg.showAnimation == false then
+        return "none"
+    end
+end
+
 local function MakeInitAuraButton(cfg)
     return function(button)
         local sizeW, sizeH = ResolveSize(cfg)
         pcall(button.SetSize, button, sizeW, sizeH)
-        pcall(button.SetMouseClickEnabled, button, false)
+        F.SetupEngineAuraButtonMouse(button)
 
         local icon = button:CreateTexture(nil, "ARTWORK")
         icon:SetAllPoints(button)
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         button:SetIcon(icon)
 
-        local showAnimation = cfg.showAnimation ~= false
-        local cooldownStyle = (CellDB and CellDB.appearance and CellDB.appearance.cooldownStyle)
-            or CELL_COOLDOWN_STYLE or "VERTICAL"
-        local useVertical = showAnimation and cooldownStyle ~= "CLOCK" and type(button.SetDurationBar) == "function"
+        local style = ResolveAnimationStyle(cfg)
+        local showAnimation, useVertical
+        if style then
+            showAnimation = style ~= "none"
+            useVertical = style == "vertical"
+        else
+            showAnimation = cfg.showAnimation ~= false
+            local cooldownStyle = (CellDB and CellDB.appearance and CellDB.appearance.cooldownStyle)
+                or CELL_COOLDOWN_STYLE or "VERTICAL"
+            useVertical = showAnimation and cooldownStyle ~= "CLOCK" and type(button.SetDurationBar) == "function"
+        end
         local animFrame
 
         if showAnimation then
-            if useVertical then
+            if useVertical and type(button.SetDurationBar) == "function" then
                 local bar = CreateFrame("StatusBar", nil, button)
                 bar:SetAllPoints(button)
                 bar:EnableMouse(false)
@@ -545,14 +568,7 @@ local function MakeInitAuraButton(cfg)
             duration:SetPoint("BOTTOMRIGHT", textHost, "BOTTOMRIGHT", ox, oy)
             duration:SetJustifyH("RIGHT")
             StyleFont(duration, fontCfg, 11)
-            local opts = {}
-            local formatter = GetCellDurationFormatter()
-            if formatter then
-                opts.textFormatter = formatter
-            end
-            if not pcall(button.SetDurationText, button, duration, opts) then
-                pcall(button.SetDurationText, button, duration, { textFormatter = formatter })
-            end
+            F.BindAuraDurationText(button, duration, GetCellDurationFormatter(), cfg.auras)
         end
     end
 end
@@ -595,16 +611,29 @@ local function ShowLegacy(unitButton, indicatorName)
     if ind.SetAlpha then ind:SetAlpha(1) end
 end
 
+local function StopContainer(st)
+    if not (st and st.container) then return end
+    pcall(st.container.SetEnabled, st.container, false)
+    pcall(st.container.Hide, st.container)
+    if st.container.SetUnit then
+        pcall(st.container.SetUnit, st.container, nil)
+    end
+    if st.hlContainer then
+        pcall(st.hlContainer.SetEnabled, st.hlContainer, false)
+        pcall(st.hlContainer.Hide, st.hlContainer)
+        if st.hlContainer.SetUnit then
+            pcall(st.hlContainer.SetUnit, st.hlContainer, nil)
+        end
+    end
+end
+
 local function DestroyContainer(st)
     if not (st and st.container) then return end
-    st.container:SetEnabled(false)
-    st.container:Hide()
-    st.container:SetParent(nil)
+    StopContainer(st)
+    pcall(st.container.SetParent, st.container, nil)
     st.container = nil
     if st.hlContainer then
-        st.hlContainer:SetEnabled(false)
-        st.hlContainer:Hide()
-        st.hlContainer:SetParent(nil)
+        pcall(st.hlContainer.SetParent, st.hlContainer, nil)
         st.hlContainer = nil
     end
 end
@@ -759,9 +788,8 @@ local function DriveContainer(unitButton, indicatorName, cfg, enable)
         end
         HideLegacy(unitButton, indicatorName)
     else
-        st.container:SetEnabled(false)
-        st.container:Hide()
-        ShowLegacy(unitButton, indicatorName)
+        StopContainer(st)
+        HideLegacy(unitButton, indicatorName)
     end
 end
 
@@ -922,11 +950,10 @@ local function SyncButton(unitButton, allowCreate)
                 if not InCombatLockdown() then
                     DestroyContainer(st)
                     map[name] = nil
-                elseif st.container then
-                    st.container:SetEnabled(false)
-                    st.container:Hide()
+                else
+                    StopContainer(st)
                 end
-                ShowLegacy(unitButton, name)
+                HideLegacy(unitButton, name)
             end
         end
     end
@@ -980,13 +1007,46 @@ function I.RefreshAllCombatAuraDisplays()
     end, true)
 end
 
+function I.DisableCombatAuraDisplay(unitButton, indicatorName)
+    if not SUPPORTED or not unitButton or not indicatorName then return end
+    local map = stateByButton[unitButton]
+    local st = map and map[indicatorName]
+    if st then
+        if not InCombatLockdown() then
+            DestroyContainer(st)
+            map[indicatorName] = nil
+        else
+            StopContainer(st)
+        end
+    end
+    HideLegacy(unitButton, indicatorName)
+end
+
+function I.DisableAllCombatAuraDisplays(indicatorName)
+    if not SUPPORTED or not indicatorName then return end
+    RefreshCachedLayouts()
+    F.IterateAllUnitButtons(function(b)
+        I.DisableCombatAuraDisplay(b, indicatorName)
+    end, true)
+end
+
 if SUPPORTED then
-    Cell.RegisterCallback("UpdateIndicators", "CombatAuraDisplay_UpdateIndicators", function()
+    Cell.RegisterCallback("UpdateIndicators", "CombatAuraDisplay_UpdateIndicators", function(_, indicatorName, setting, value)
+        if setting == "enabled" and value == false and indicatorName then
+            I.DisableAllCombatAuraDisplays(indicatorName)
+            return
+        end
         C_Timer.After(0, I.RefreshAllCombatAuraDisplays)
     end)
 
     Cell.RegisterCallback("UpdateLayout", "CombatAuraDisplay_UpdateLayout", function()
         C_Timer.After(0, I.RefreshAllCombatAuraDisplays)
+    end)
+
+    Cell.RegisterCallback("UpdateAppearance", "CombatAuraDisplay_UpdateAppearance", function(which)
+        if which == nil or which == "icon" or which == "reset" then
+            C_Timer.After(0, I.RefreshAllCombatAuraDisplays)
+        end
     end)
 
     Cell.RegisterCallback("RaidDebuffsChanged", "CombatAuraDisplay_RaidDebuffs", function()

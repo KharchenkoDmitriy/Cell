@@ -22,7 +22,7 @@ Cell.isCata = WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC
 Cell.isMists = WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC
 Cell.isTWW = LE_EXPANSION_LEVEL_CURRENT == LE_EXPANSION_WAR_WITHIN
 
-local CELL_VERSION_FALLBACK = "r277.9.4"
+local CELL_VERSION_FALLBACK = "r277.9.5"
 
 function F.InitAddonVersion()
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
@@ -1293,28 +1293,29 @@ end
 
 function F.GetPowerColor(unit)
     local r, g, b, t
-    -- https://wow.gamepedia.com/API_UnitPowerType
     local powerType, powerToken, altR, altG, altB = UnitPowerType(unit)
     t = powerType
 
-    local info = PowerBarColor[powerToken]
-    if powerType == 0 then -- MANA
-        info = {r=0, g=0.5, b=1} -- default mana color is too dark!
-    elseif powerType == 13 then -- INSANITY
+    local info
+    if powerToken and F.IsValueNonSecret(powerToken) then
+        info = PowerBarColor[powerToken]
+    end
+    if F.IsValueNonSecret(powerType) and powerType == 0 then
+        info = {r=0, g=0.5, b=1}
+    elseif F.IsValueNonSecret(powerType) and powerType == 13 then
         info = {r=0.6, g=0.2, b=1}
     end
 
     if info then
-        --The PowerBarColor takes priority
         r, g, b = info.r, info.g, info.b
+    elseif altR and F.IsValueNonSecret(altR) then
+        r, g, b = altR, altG, altB
     else
-        if not altR then
-            -- Couldn't find a power token entry. Default to indexing by power type or just mana if  we don't have that either.
-            info = PowerBarColor[powerType] or PowerBarColor["MANA"]
-            r, g, b = info.r, info.g, info.b
-        else
-            r, g, b = altR, altG, altB
+        if F.IsValueNonSecret(powerType) then
+            info = PowerBarColor[powerType]
         end
+        info = info or PowerBarColor["MANA"]
+        r, g, b = info.r, info.g, info.b
     end
     return r, g, b, t
 end
@@ -1700,6 +1701,443 @@ function F.GetBarTextureByName(name)
     return "Interface\\AddOns\\Cell\\Media\\statusbar.tga"
 end
 
+local durationRemainProp
+local durationCurveCache = {}
+
+local function ColorFromOpt(c, fb)
+    if type(c) ~= "table" then
+        return CreateColor(fb[1], fb[2], fb[3], 1)
+    end
+    return CreateColor(c[1] or fb[1], c[2] or fb[2], c[3] or fb[3], 1)
+end
+
+local durationPercentProp
+
+local function GetRemainProp()
+    if durationRemainProp ~= nil then
+        return durationRemainProp
+    end
+    local e = Enum and Enum.DurationTextBindingProperty
+    local remain = e and e.RemainingDuration
+    if remain == nil then
+        remain = 0
+    end
+    durationRemainProp = remain
+    return remain
+end
+
+local function GetPercentProp()
+    if durationPercentProp ~= nil then
+        return durationPercentProp
+    end
+    local e = Enum and Enum.DurationTextBindingProperty
+    local pct = e and e.RemainingPercent
+    if pct == nil then
+        pct = e and e.RemainingDurationPercent
+    end
+    if pct == nil then
+        pct = e and e.PercentRemaining
+    end
+    if pct == nil then
+        pct = 1
+    end
+    durationPercentProp = pct
+    return pct
+end
+
+local function MakePercentColorCurve(sec, pct, c1, c2, c3, scale)
+    if not (C_CurveUtil and C_CurveUtil.CreateColorCurve and CreateColor) then
+        return nil
+    end
+    sec = tonumber(sec) or 0
+    pct = tonumber(pct) or 0
+    scale = tonumber(scale) or 1
+    if pct <= 0 then
+        return nil
+    end
+    local mid = pct * scale
+    if mid <= 0 then
+        return nil
+    end
+    local curve = C_CurveUtil.CreateColorCurve()
+    local stepType = Enum and Enum.LuaCurveType and Enum.LuaCurveType.Step
+    if stepType then
+        curve:SetType(stepType)
+    end
+    if sec > 0 then
+        local redEnd = mid * 0.2
+        if scale == 1 then
+            if redEnd < 0.02 then
+                redEnd = 0.02
+            end
+        elseif redEnd < 1 then
+            redEnd = 1
+        end
+        curve:AddPoint(0, ColorFromOpt(c3, { 1, 0, 0 }))
+        curve:AddPoint(redEnd, ColorFromOpt(c2, { 1, 1, 0 }))
+        curve:AddPoint(mid, ColorFromOpt(c1, { 0, 1, 0 }))
+    else
+        curve:AddPoint(0, ColorFromOpt(c2, { 1, 1, 0 }))
+        curve:AddPoint(mid, ColorFromOpt(c1, { 0, 1, 0 }))
+    end
+    return curve
+end
+
+local function IsPlainNumber(v)
+    return type(v) == "number" and not (issecretvalue and issecretvalue(v))
+end
+
+local function MakeRemainColorCurve(sec, yellowUntil, c1, c2, c3)
+    if not (C_CurveUtil and C_CurveUtil.CreateColorCurve and CreateColor) then
+        return nil
+    end
+    sec = tonumber(sec) or 0
+    yellowUntil = tonumber(yellowUntil) or 0
+    local key = string.format("%s|%s|%s,%s,%s|%s,%s,%s|%s,%s,%s",
+        tostring(sec), tostring(yellowUntil),
+        tostring(c1 and c1[1]), tostring(c1 and c1[2]), tostring(c1 and c1[3]),
+        tostring(c2 and c2[1]), tostring(c2 and c2[2]), tostring(c2 and c2[3]),
+        tostring(c3 and c3[1]), tostring(c3 and c3[2]), tostring(c3 and c3[3]))
+    local cached = durationCurveCache[key]
+    if cached then
+        return cached
+    end
+    local curve = C_CurveUtil.CreateColorCurve()
+    local stepType = Enum and Enum.LuaCurveType and Enum.LuaCurveType.Step
+    if stepType then
+        curve:SetType(stepType)
+    end
+    if sec > 0 and yellowUntil > sec then
+        curve:AddPoint(0, ColorFromOpt(c3, { 1, 0, 0 }))
+        curve:AddPoint(sec, ColorFromOpt(c2, { 1, 1, 0 }))
+        curve:AddPoint(yellowUntil, ColorFromOpt(c1, { 0, 1, 0 }))
+    elseif sec > 0 then
+        curve:AddPoint(0, ColorFromOpt(c3, { 1, 0, 0 }))
+        curve:AddPoint(sec, ColorFromOpt(c1, { 0, 1, 0 }))
+    elseif yellowUntil > 0 then
+        curve:AddPoint(0, ColorFromOpt(c2, { 1, 1, 0 }))
+        curve:AddPoint(yellowUntil, ColorFromOpt(c1, { 0, 1, 0 }))
+    else
+        return nil
+    end
+    durationCurveCache[key] = curve
+    return curve
+end
+
+local function ResolveAuraUnit(button)
+    local p = button
+    for _ = 1, 8 do
+        if not p then
+            break
+        end
+        if p.states and p.states.unit then
+            return p.states.unit
+        end
+        if p.unit then
+            return p.unit
+        end
+        if p.GetAttribute then
+            local ok, unit = pcall(p.GetAttribute, p, "unit")
+            if ok and type(unit) == "string" and unit ~= "" then
+                return unit
+            end
+        end
+        p = p.GetParent and p:GetParent()
+    end
+end
+
+local function CollectSpellIds(auras)
+    local ids, seen = {}, {}
+    if type(auras) ~= "table" then
+        return ids
+    end
+    for k, v in pairs(auras) do
+        local n = tonumber(v)
+        if not n and type(v) == "table" then
+            n = tonumber(v[1]) or tonumber(v.id) or tonumber(v.spellId)
+        end
+        if not n then
+            n = tonumber(k)
+        end
+        if n and n > 0 and not seen[n] then
+            seen[n] = true
+            ids[#ids + 1] = n
+        end
+    end
+    return ids
+end
+
+local function NormalizeDuration(v)
+    if not IsPlainNumber(v) or v <= 0 then
+        return nil
+    end
+    if v > 1000 then
+        v = v / 1000
+    end
+    if v > 0 and v < 36000 then
+        return v
+    end
+end
+
+local function ReadCooldownTotal(button)
+    local function fromCooldown(cd)
+        if not cd then
+            return
+        end
+        if cd.GetCooldownTimes then
+            local ok, start, duration = pcall(cd.GetCooldownTimes, cd)
+            if ok then
+                local total = NormalizeDuration(duration)
+                if total then
+                    return total
+                end
+            end
+        end
+        if cd.GetCooldownDuration then
+            local ok, duration = pcall(cd.GetCooldownDuration, cd)
+            if ok then
+                local total = NormalizeDuration(duration)
+                if total then
+                    return total
+                end
+            end
+        end
+    end
+    if button.GetDurationCooldown then
+        local ok, cd = pcall(button.GetDurationCooldown, button)
+        if ok then
+            local total = fromCooldown(cd)
+            if total then
+                return total
+            end
+        end
+    end
+    local kids = { button:GetChildren() }
+    for i = 1, #kids do
+        local child = kids[i]
+        if child and child.GetObjectType then
+            local ok, ty = pcall(child.GetObjectType, child)
+            if ok and ty == "Cooldown" then
+                local total = fromCooldown(child)
+                if total then
+                    return total
+                end
+            end
+        end
+    end
+end
+
+local function ResolveAuraDuration(button, unit, spellIds)
+    if button.GetAuraDuration then
+        local ok, dur = pcall(button.GetAuraDuration, button)
+        if ok and dur then
+            return dur
+        end
+    end
+    local iid
+    if button.GetAuraInstance then
+        local ok, u, data = pcall(button.GetAuraInstance, button)
+        if ok then
+            unit = unit or u
+            iid = data and data.auraInstanceID
+        end
+    end
+    if not iid and button.GetAuraInstanceID then
+        local ok, id = pcall(button.GetAuraInstanceID, button)
+        if ok then
+            iid = id
+        end
+    end
+    unit = unit or ResolveAuraUnit(button)
+    if unit and iid and C_UnitAuras and C_UnitAuras.GetAuraDuration then
+        local ok, dur = pcall(C_UnitAuras.GetAuraDuration, unit, iid)
+        if ok and dur then
+            return dur
+        end
+    end
+    if unit and spellIds and C_UnitAuras then
+        for i = 1, #spellIds do
+            local data
+            if C_UnitAuras.GetUnitAuraBySpellID then
+                local ok, d = pcall(C_UnitAuras.GetUnitAuraBySpellID, unit, spellIds[i])
+                if ok then
+                    data = d
+                end
+            end
+            if not data and C_UnitAuras.GetPlayerAuraBySpellID and (unit == "player" or UnitIsUnit and UnitIsUnit(unit, "player")) then
+                local ok, d = pcall(C_UnitAuras.GetPlayerAuraBySpellID, spellIds[i])
+                if ok then
+                    data = d
+                end
+            end
+            if data and data.auraInstanceID and C_UnitAuras.GetAuraDuration then
+                local ok, dur = pcall(C_UnitAuras.GetAuraDuration, unit, data.auraInstanceID)
+                if ok and dur then
+                    return dur
+                end
+            end
+        end
+    end
+end
+
+local function ReadAuraTotalDuration(dur)
+    if not dur then
+        return nil
+    end
+    if dur.GetTotalDuration then
+        local ok, total = pcall(dur.GetTotalDuration, dur)
+        if ok then
+            total = NormalizeDuration(total)
+            if total then
+                return total
+            end
+        end
+    end
+    local remain, pct
+    if dur.GetRemainingDuration then
+        local ok, v = pcall(dur.GetRemainingDuration, dur)
+        if ok and IsPlainNumber(v) then
+            remain = v
+        end
+    end
+    if dur.GetRemainingPercent then
+        local ok, v = pcall(dur.GetRemainingPercent, dur)
+        if ok and IsPlainNumber(v) and v > 0 then
+            pct = v > 1 and (v / 100) or v
+        end
+    end
+    if remain and pct and pct > 0 then
+        return NormalizeDuration(remain / pct)
+    end
+end
+
+local function ReadSpellAuraTotal(unit, spellIds)
+    if not (unit and spellIds and C_UnitAuras) then
+        return
+    end
+    for i = 1, #spellIds do
+        local data
+        if C_UnitAuras.GetUnitAuraBySpellID then
+            local ok, d = pcall(C_UnitAuras.GetUnitAuraBySpellID, unit, spellIds[i])
+            if ok then
+                data = d
+            end
+        end
+        if not data and C_UnitAuras.GetPlayerAuraBySpellID and (unit == "player" or (UnitIsUnit and UnitIsUnit(unit, "player"))) then
+            local ok, d = pcall(C_UnitAuras.GetPlayerAuraBySpellID, spellIds[i])
+            if ok then
+                data = d
+            end
+        end
+        if data then
+            local total = NormalizeDuration(data.duration)
+            if total then
+                return total
+            end
+            if data.auraInstanceID then
+                if C_UnitAuras.GetAuraBaseDuration then
+                    local ok, base = pcall(C_UnitAuras.GetAuraBaseDuration, unit, data.auraInstanceID)
+                    if ok then
+                        total = NormalizeDuration(base)
+                        if total then
+                            return total
+                        end
+                    end
+                end
+                if C_UnitAuras.GetAuraDuration then
+                    local ok, dur = pcall(C_UnitAuras.GetAuraDuration, unit, data.auraInstanceID)
+                    if ok then
+                        total = ReadAuraTotalDuration(dur)
+                        if total then
+                            return total
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function ReadButtonTotalDuration(button, spellIds)
+    local unit = ResolveAuraUnit(button)
+    local total = ReadAuraTotalDuration(ResolveAuraDuration(button, unit, spellIds))
+    if total then
+        return total
+    end
+    total = ReadCooldownTotal(button)
+    if total then
+        return total
+    end
+    return ReadSpellAuraTotal(unit, spellIds)
+end
+
+local function TrySetDurationText(button, fontString, formatter, curve, prop)
+    local opts = {}
+    if formatter then
+        opts.textFormatter = formatter
+    end
+    if curve then
+        opts.textColor = { curve = curve, property = prop }
+        if pcall(button.SetDurationText, button, fontString, opts) then
+            return true, true
+        end
+        opts.textColor = nil
+    end
+    if pcall(button.SetDurationText, button, fontString, opts) then
+        return true, false
+    end
+    if pcall(button.SetDurationText, button, fontString, {}) then
+        return true, false
+    end
+    return false, false
+end
+
+local function BindColorCurve(button, fontString, formatter, curve, prop)
+    if not curve then
+        return false
+    end
+    local _, colorLanded = TrySetDurationText(button, fontString, formatter, curve, prop)
+    return colorLanded
+end
+
+function F.BindAuraDurationText(button, fontString, formatter, auras)
+    if not (button and fontString and button.SetDurationText) then
+        return
+    end
+
+    local driver = fontString._cellDurColorDriver
+    if driver then
+        driver:SetScript("OnUpdate", nil)
+        driver:Hide()
+        fontString._cellDurColorDriver = nil
+    end
+
+    local colors = Cell.vars.iconDurationColors
+    if not colors then
+        TrySetDurationText(button, fontString, formatter, nil, nil)
+        return
+    end
+
+    local sec = (colors[3] and tonumber(colors[3][4])) or 0
+    local pct = (colors[2] and tonumber(colors[2][4])) or 0
+    local c1, c2, c3 = colors[1], colors[2], colors[3]
+    local total = ReadButtonTotalDuration(button, CollectSpellIds(auras))
+
+    local yellowUntil = 0
+    if pct > 0 then
+        if BindColorCurve(button, fontString, formatter, MakePercentColorCurve(sec, pct, c1, c2, c3, 100), GetPercentProp()) then
+            return
+        end
+        if total then
+            yellowUntil = pct * total
+            if sec > 0 and yellowUntil <= sec then
+                yellowUntil = sec + 0.1
+            end
+        end
+    end
+    BindColorCurve(button, fontString, formatter, MakeRemainColorCurve(sec, yellowUntil, c1, c2, c3), GetRemainProp())
+end
+
 -- Helper: choose font based on locale and "Use Game Font" setting (shared with Widgets.lua)
 -- NOTE: Accidental_Presidency.ttf has incomplete Latin glyph coverage and causes []
 -- boxes for many names. Always use GameFontNormal which supports all scripts.
@@ -1895,12 +2333,12 @@ function F.GetTextures()
 end
 
 function F.GetDefaultRoleIcon(role)
-    if not role or role == "NONE" then return "" end
+    if not role or not F.IsValueNonSecret(role) or role == "NONE" then return "" end
     return "Interface\\AddOns\\Cell\\Media\\Roles\\Default_" .. role
 end
 
 function F.GetDefaultRoleIconEscapeSequence(role, size)
-    if not role or role == "NONE" then return "" end
+    if not role or not F.IsValueNonSecret(role) or role == "NONE" then return "" end
     return "|TInterface\\AddOns\\Cell\\Media\\Roles\\Default_" .. role .. ":" .. (size or 0) .. "|t"
 end
 
@@ -2142,7 +2580,6 @@ local function predicate(...)
 end
 
 function F.FindAuraById(unit, type, spellId)
-    -- 12.0+: skip when aura data is restricted (secret values)
     if Cell.isMidnight and F.IsAuraRestricted() then return nil end
     if type == "BUFF" then
         return AuraUtil.FindAura(predicate, unit, "HELPFUL", spellId)
@@ -2774,21 +3211,12 @@ end
 -------------------------------------------------
 -- Secret value utilities (Patch 12.0.0+)
 -------------------------------------------------
--- issecretvalue() and hasanysecretvalues() are native WoW APIs available in 12.0.0+.
--- Convention: these globals are ONLY referenced inside Utils.lua wrapper implementations.
--- All other files use F.IsValueNonSecret(), F.HasAnySecretValues(), etc.
-
--- Varargs check: returns true if ANY argument is a secret value.
--- Wraps the global hasanysecretvalues() with a Cell.isMidnight guard.
 function F.HasAnySecretValues(...)
     if not Cell.isMidnight then return false end
     if not hasanysecretvalues then return false end
     return hasanysecretvalues(...)
 end
 
--- GetRestrictedActionStatus() returns non-secret boolean
--- Enum.RestrictedActionType.SecretAuras = 0
--- Enum.RestrictedActionType.SecretCooldowns = 1
 function F.IsAuraRestricted()
     if GetRestrictedActionStatus and Enum and Enum.RestrictedActionType then
         local isRestricted = GetRestrictedActionStatus(Enum.RestrictedActionType.SecretAuras)
@@ -2796,8 +3224,6 @@ function F.IsAuraRestricted()
             return true
         end
     end
-    -- 12.1+: GetAuraSlots errors while secret+tainted even when the enum flag
-    -- briefly reports false (combat / vehicles / encounters). Prefer no scan.
     local build = select(4, GetBuildInfo())
     if Cell.isRetail and build and build >= 120100 and InCombatLockdown() then
         return true
@@ -2818,33 +3244,33 @@ function F.IsCooldownRestricted()
     return false
 end
 
--- Per-aura non-secret check: returns true if the aura's fields are real (non-secret) values.
--- On Midnight 12.0.0+, Blizzard flags certain spells as non-secret; their auraInfo fields
--- (spellId, expirationTime, duration, etc.) return real values instead of secrets.
--- If spellId is readable (non-secret), ALL fields for this aura are non-secret.
 function F.IsAuraNonSecret(auraInfo)
     if not Cell.isMidnight then return true end
     if not issecretvalue then return true end
     return not issecretvalue(auraInfo.spellId)
 end
 
--- Proactive check: queries whether a spell ID will produce secret aura values.
--- Uses C_Secrets.ShouldSpellAuraBeSecret() if available (Midnight 12.0.0+).
--- Returns true if the spell's aura data will be non-secret (readable).
 function F.IsSpellAuraNonSecret(spellId)
     if not Cell.isMidnight then return true end
     if C_Secrets and C_Secrets.ShouldSpellAuraBeSecret then
         return not C_Secrets.ShouldSpellAuraBeSecret(spellId)
     end
-    return false -- assume secret if API unavailable
+    return false
 end
 
--- Generic check: returns true if a given value is NOT a secret value.
--- Works for any return value from WoW APIs that may produce secrets on Midnight 12.0.0+.
 function F.IsValueNonSecret(val)
     if not Cell.isMidnight then return true end
     if not issecretvalue then return true end
     return not issecretvalue(val)
+end
+
+function F.IsKnownTrue(value)
+    return F.IsValueNonSecret(value) and value and true or false
+end
+
+function F.IsPlayerOrPartyAI(unit)
+    if not unit then return false end
+    return F.IsKnownTrue(UnitIsPlayer(unit)) or F.IsKnownTrue(UnitInPartyIsAI(unit))
 end
 
 function F.GetRemain(start, duration)

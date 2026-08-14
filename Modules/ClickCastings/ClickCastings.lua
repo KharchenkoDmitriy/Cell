@@ -62,41 +62,21 @@ local slotNames = {
     [17] = _G.INVTYPE_WEAPONOFFHAND,
 }
 
--- ============================================================
--- 12.0.7 Click Gate Workaround (target / menu via ungated proxy)
--- In 12.0.7, Blizzard gates "target", "menu", "togglemenu" actions
--- on unit buttons when not on default interaction buttons (plain
--- left/right). Modifier+click (Ctrl+Left, Shift+Right, etc.) and
--- non-default buttons (Middle, Button4, Button5, Scroll) silently fail.
--- Workaround: route gated actions through a secure proxy button using
--- the "click" action type (not gated).
--- ============================================================
-
--- Lazily create the per-frame proxy button (out of combat only).
--- useparent-unit makes the proxy inherit the frame's real unit token.
--- Register for both AnyDown and AnyUp to match frame's click direction
--- (frames use AnyDown when click casting is enabled, proxy needs both).
 local function EnsureClickProxy(frame)
     if frame.cellClickProxy then return frame.cellClickProxy end
     if InCombatLockdown() then return nil end
     local proxy = CreateFrame("Button", nil, frame, "SecureActionButtonTemplate")
-    proxy:EnableMouse(false)                       -- only clicked programmatically
-    proxy:RegisterForClicks("AnyDown", "AnyUp")    -- match frame's click direction
+    proxy:EnableMouse(false)
+    proxy:RegisterForClicks("AnyDown", "AnyUp")
     proxy:SetAttribute("useparent-unit", true)
     proxy:SetAttribute("useOnKeyDown", false)
     frame.cellClickProxy = proxy
     return proxy
 end
 
--- Route a gated action (target / togglemenu) through the proxy.
--- typeAttr is the action attribute on the frame (e.g. "shift-type2").
--- clickbuttonAttr is its matching clickbutton attribute.
--- The proxy carries the real action under the SAME suffix.
 local function RouteProxyAction(frame, typeAttr, clickbuttonAttr, realAction)
     local proxy = EnsureClickProxy(frame)
     if not proxy then
-        -- In combat the proxy can't be created. Fall back to direct action;
-        -- the whole binding set is reapplied after combat which installs proxy.
         frame:SetAttribute(typeAttr, realAction)
         return
     end
@@ -107,8 +87,6 @@ local function RouteProxyAction(frame, typeAttr, clickbuttonAttr, realAction)
     frame.cellProxyRoutes[#frame.cellProxyRoutes + 1] = { typeAttr = typeAttr, clickbuttonAttr = clickbuttonAttr }
 end
 
--- Clear proxy routes from a frame: wipe frame's click/clickbutton attrs
--- and the proxy's action attrs.
 local function ClearProxyRoutes(frame)
     if frame.cellProxyRoutes then
         for _, r in ipairs(frame.cellProxyRoutes) do
@@ -122,22 +100,17 @@ local function ClearProxyRoutes(frame)
     end
 end
 
--- Check if a bindKey represents a gated action for target/menu.
--- Returns: isGated, actionType ("target" or "togglemenu")
 local function IsGatedAction(bindKey, actionType)
     if actionType ~= "target" and actionType ~= "togglemenu" and actionType ~= "menu" then
         return false
     end
-    -- Parse modifier prefix and button number from bindKey (e.g. "shift-type2")
     local modifier, dash, key = strmatch(bindKey, "^(.*)type(-*)(.+)$")
-    if not modifier then return false end -- keyboard binding, not gated
+    if not modifier then return false end
     local hasModifier = modifier and modifier ~= ""
     local buttonNum = tonumber(key)
     if actionType == "target" then
-        -- target is gated when: has modifier OR not plain left-click (button 1)
         return hasModifier or (buttonNum and buttonNum ~= 1)
-    else -- togglemenu / menu
-        -- menu is gated when: has modifier OR not plain right-click (button 2)
+    else
         return hasModifier or (buttonNum and buttonNum ~= 2)
     end
 end
@@ -553,7 +526,6 @@ end
 local previousClickCastings
 local function ClearClickCastings(b)
     if not previousClickCastings then return end
-    -- Clear proxy routes first (for 12.0.7 click gate workaround)
     ClearProxyRoutes(b)
     b:SetAttribute("cell", nil)
     b:SetAttribute("menu", nil)
@@ -572,7 +544,6 @@ local function ClearClickCastings(b)
         b:SetAttribute(attr, nil)
         attr = string.gsub(bindKey, "type", "item")
         b:SetAttribute(attr, nil)
-        -- Also clear clickbutton attributes (for proxy routes)
         local clickbuttonAttr = string.gsub(bindKey, "type", "clickbutton")
         b:SetAttribute(clickbuttonAttr, nil)
         -- attr = string.gsub(bindKey, "type", "click")
@@ -620,33 +591,25 @@ local function ApplyClickCastings(b)
             bindKey = GetMouseWheelBindKey(t[1])
         end
 
-        -- Helper to set attribute via proxy if gated, otherwise direct
         local function SetActionAttr(bindKey, actionType, actionValue)
-            -- "menu" is an alias for togglemenu in SecureActionButtonTemplate
             local realAction = actionType
             if actionType == "menu" then realAction = "togglemenu" end
 
-            -- Check if this action is gated for this bindKey
             if IsGatedAction(bindKey, realAction) then
-                -- Gated: route through proxy
                 local typeAttr = bindKey
                 local clickbuttonAttr = string.gsub(bindKey, "type", "clickbutton")
                 RouteProxyAction(b, typeAttr, clickbuttonAttr, realAction)
             else
-                -- Not gated: set directly
                 b:SetAttribute(bindKey, realAction)
             end
         end
 
         if t[2] == "togglemenu_nocombat" then
             -- togglemenu_nocombat sets the "menu" attribute to the bindKey
-            -- This is a togglemenu action, check if gated
             if IsGatedAction(bindKey, "togglemenu") then
-                -- Route through proxy: set type attribute to "click" and clickbutton to proxy
                 local typeAttr = bindKey
                 local clickbuttonAttr = string.gsub(bindKey, "type", "clickbutton")
                 RouteProxyAction(b, typeAttr, clickbuttonAttr, "togglemenu")
-                -- Clear the menu attribute since we're handling it via proxy
                 b:SetAttribute("menu", nil)
             else
                 b:SetAttribute("menu", bindKey)

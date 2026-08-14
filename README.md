@@ -8,7 +8,13 @@
 <img src="https://img.shields.io/github/last-commit/NeeRgY/Cell?style=for-the-badge" />
 <img src="https://img.shields.io/github/issues/NeeRgY/Cell?style=for-the-badge" />
 <img src="https://img.shields.io/github/stars/NeeRgY/Cell?style=for-the-badge" />
+<br><br>
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/neergy)
+
+**This is a community fork. Donations / tips support my maintenance, not the original Cell authors.**
+
+---
 <br>
 
 A maintained fork of **Cell**, continued from **Krysio (krysiolol)** / jdtoppin, originally by **enderneko**.

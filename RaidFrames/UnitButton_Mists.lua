@@ -183,6 +183,9 @@ local function ResetIndicators()
         if t["dispellableByMe"] ~= nil then
             indicatorBooleans[t["indicatorName"]] = t["dispellableByMe"]
         end
+        if t["indicatorName"] == "debuffs" then
+            indicatorBooleans["debuffsNonPlayer"] = t["nonPlayerAuras"] and true or false
+        end
         if t["onlyShowTopGlow"] ~= nil then
             indicatorBooleans[t["indicatorName"]] = t["onlyShowTopGlow"]
         end
@@ -922,6 +925,11 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 F.IterateAllUnitButtons(function(b)
                     UnitButton_UpdateAuras(b)
                 end, true)
+            elseif value == "nonPlayerAuras" then
+                indicatorBooleans["debuffsNonPlayer"] = value2 and true or false
+                F.IterateAllUnitButtons(function(b)
+                    UnitButton_UpdateAuras(b)
+                end, true)
             elseif value == "showTooltip" then
                 F.IterateAllUnitButtons(function(b)
                     b.indicators[indicatorName]:ShowTooltip(value2)
@@ -1142,12 +1150,13 @@ local function HandleDebuffs(self, auraInfo)
         self._debuffs_cache[auraInstanceID] = auraInfo
 
         if enabledIndicators["debuffs"] and not Cell.vars.debuffBlacklist[spellId] and FilterWeakenedSoul(spellId) then
-            -- all debuffs / only dispellableByMe
             if not indicatorBooleans["debuffs"] or I.CanDispel(debuffType) then
-                if Cell.vars.bigDebuffs[spellId] then
-                    self._debuffs_big[auraInstanceID] = true
-                else
-                    self._debuffs_normal[auraInstanceID] = true
+                if not (indicatorBooleans["debuffsNonPlayer"] and auraInfo.isFromPlayerOrPlayerPet == true) then
+                    if Cell.vars.bigDebuffs[spellId] then
+                        self._debuffs_big[auraInstanceID] = true
+                    else
+                        self._debuffs_normal[auraInstanceID] = true
+                    end
                 end
             end
         end

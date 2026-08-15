@@ -38,9 +38,14 @@ local function CreateTooltip(name, hasIcon)
 
     if Cell.isRetail then
         tooltip:RegisterEvent("TOOLTIP_DATA_UPDATE")
-        tooltip:SetScript("OnEvent", function()
-            -- Interface\FrameXML\GameTooltip.lua line924
-            tooltip:RefreshData()
+        tooltip:SetScript("OnEvent", function(self, event)
+            if event ~= "TOOLTIP_DATA_UPDATE" then return end
+            if not self:IsShown() then return end
+            -- Midnight raid: tooltip line colors can be secret. RefreshData then
+            -- errors in GameTooltip_AddColoredLine while tainted by Cell.
+            if not pcall(self.RefreshData, self) then
+                self:Hide()
+            end
         end)
     end
 
@@ -81,7 +86,10 @@ CreateTooltip("CellSpellTooltip", true)
 
 function F.ShowSpellTooltips(tooltip, spellID)
     local tooltipInfo = CreateBaseTooltipInfo("GetSpellByID", spellID)
-    tooltip:ProcessInfo(tooltipInfo)
+    if not pcall(tooltip.ProcessInfo, tooltip, tooltipInfo) then
+        tooltip:Hide()
+        return
+    end
     tooltip:Show()
 end
 

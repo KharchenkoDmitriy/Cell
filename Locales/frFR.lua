@@ -181,6 +181,7 @@ L["Debug Mode"] = "Mode debogage"
 L["DECLINED"] = "DÉCLINÉ"
 L["Default layout"] = "Mise en page par défaut"
 L["Defensive Cooldowns"] = "Temps de recharge défensifs"
+L["Offensive Cooldowns"] = "Temps de recharge offensifs"
 L["Delete"] = "Supprimer"
 --[[Translation missing --]]
 --[[ L["Delete backup"] = ""--]]

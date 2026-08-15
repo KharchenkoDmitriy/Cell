@@ -147,6 +147,9 @@ local function DoImport(noReload)
     F.FilterInvalidSpells(imported["aoeHealings"] and imported["aoeHealings"]["custom"])
     F.FilterInvalidSpells(imported["defensives"]["custom"])
     F.FilterInvalidSpells(imported["externals"]["custom"])
+    if imported["offensives"] and imported["offensives"]["custom"] then
+        F.FilterInvalidSpells(imported["offensives"]["custom"])
+    end
     F.FilterInvalidSpells(imported["targetedSpellsList"])
     -- F.FilterInvalidSpells(imported["cleuAuras"])
 
@@ -336,6 +339,7 @@ local function CreateImportConfirmationFrame()
         ignoredIndices["aoeHealings"] = not checked
         ignoredIndices["defensives"] = not checked
         ignoredIndices["externals"] = not checked
+        ignoredIndices["offensives"] = not checked
         ignoredIndices["targetedSpellsList"] = not checked
         ignoredIndices["targetedSpellsGlow"] = not checked
         ignoredIndices["crowdControls"] = not checked

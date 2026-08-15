@@ -1,7 +1,7 @@
 local addonName, Cell = ...
 
 -- number of built-in indicators
-Cell.defaults.builtIns = 30
+Cell.defaults.builtIns = 31
 
 Cell.defaults.indicatorIndices = {
     ["nameText"] = 1,
@@ -23,17 +23,18 @@ Cell.defaults.indicatorIndices = {
     ["aoeHealing"] = 17,
     ["externalCooldowns"] = 18,
     ["defensiveCooldowns"] = 19,
-    ["allCooldowns"] = 20,
-    ["tankActiveMitigation"] = 21,
-    ["dispels"] = 22,
-    ["debuffs"] = 23,
-    ["raidDebuffs"] = 24,
-    ["privateAuras"] = 25,
-    ["targetedSpells"] = 26,
-    ["targetCounter"] = 27,
-    ["crowdControls"] = 28,
-    ["actions"] = 29,
-    ["missingBuffs"] = 30,
+    ["offensiveCooldowns"] = 20,
+    ["allCooldowns"] = 21,
+    ["tankActiveMitigation"] = 22,
+    ["dispels"] = 23,
+    ["debuffs"] = 24,
+    ["raidDebuffs"] = 25,
+    ["privateAuras"] = 26,
+    ["targetedSpells"] = 27,
+    ["targetCounter"] = 28,
+    ["crowdControls"] = 29,
+    ["actions"] = 30,
+    ["missingBuffs"] = 31,
 }
 
 Cell.defaults.layout = {
@@ -351,6 +352,7 @@ Cell.defaults.layout = {
             ["size"] = {12, 20},
             ["showDuration"] = false,
             ["showAnimation"] = true,
+            ["animationStyle"] = "clock",
             ["num"] = 2,
             ["orientation"] = "right-to-left",
             ["font"] = {
@@ -369,6 +371,7 @@ Cell.defaults.layout = {
             ["size"] = {12, 20},
             ["showDuration"] = false,
             ["showAnimation"] = true,
+            ["animationStyle"] = "clock",
             ["num"] = 2,
             ["orientation"] = "left-to-right",
             ["font"] = {
@@ -377,6 +380,25 @@ Cell.defaults.layout = {
             },
             ["glowOptions"] = {"None", {0.95, 0.95, 0.32, 1}}
         }, -- 19
+        {
+            ["name"] = "Offensive Cooldowns",
+            ["indicatorName"] = "offensiveCooldowns",
+            ["type"] = "built-in",
+            ["enabled"] = false,
+            ["position"] = {"BOTTOM", "button", "BOTTOM", 0, 4},
+            ["frameLevel"] = 10,
+            ["size"] = {20, 20},
+            ["showDuration"] = false,
+            ["showAnimation"] = true,
+            ["animationStyle"] = "clock",
+            ["num"] = 2,
+            ["orientation"] = "left-to-right",
+            ["font"] = {
+                {"Cell ".._G.DEFAULT, 11, "Outline", false, "TOPRIGHT", 2, 1, {1, 1, 1}},
+                {"Cell ".._G.DEFAULT, 11, "Outline", false, "BOTTOMRIGHT", 2, -1, {1, 1, 1}},
+            },
+            ["glowOptions"] = {"None", {0.95, 0.95, 0.32, 1}}
+        }, -- 20
         {
             ["name"] = "Externals + Defensives",
             ["indicatorName"] = "allCooldowns",
@@ -387,6 +409,7 @@ Cell.defaults.layout = {
             ["size"] = {12, 20},
             ["showDuration"] = false,
             ["showAnimation"] = true,
+            ["animationStyle"] = "clock",
             ["num"] = 2,
             ["orientation"] = "left-to-right",
             ["font"] = {
@@ -394,7 +417,7 @@ Cell.defaults.layout = {
                 {"Cell ".._G.DEFAULT, 11, "Outline", false, "BOTTOMRIGHT", 2, -1, {1, 1, 1}},
             },
             ["glowOptions"] = {"None", {0.95, 0.95, 0.32, 1}}
-        }, -- 20
+        }, -- 21
         {
             ["name"] = "Tank Active Mitigation",
             ["indicatorName"] = "tankActiveMitigation",
@@ -404,7 +427,7 @@ Cell.defaults.layout = {
             ["frameLevel"] = 5,
             ["size"] = {20, 6},
             ["color"] = {"class_color", {0.25, 1, 0}},
-        }, -- 21
+        }, -- 22
         {
             ["name"] = "Dispels",
             ["indicatorName"] = "dispels",
@@ -424,7 +447,7 @@ Cell.defaults.layout = {
             ["highlightType"] = "edge-bottom",
             ["iconStyle"] = "blizzard",
             ["orientation"] = "right-to-left",
-        }, -- 22
+        }, -- 23
         {
             ["name"] = "Debuffs",
             ["indicatorName"] = "debuffs",
@@ -447,7 +470,7 @@ Cell.defaults.layout = {
             ["dispellableByMe"] = false,
             ["nonPlayerAuras"] = false,
             ["orientation"] = "left-to-right",
-        }, -- 23
+        }, -- 24
         {
             ["name"] = "Raid Debuffs",
             ["indicatorName"] = "raidDebuffs",
@@ -466,7 +489,7 @@ Cell.defaults.layout = {
             ["onlyShowTopGlow"] = false,
             ["orientation"] = "left-to-right",
             ["showTooltip"] = false,
-        }, -- 24
+        }, -- 25
         {
             ["name"] = "Private Auras",
             ["indicatorName"] = "privateAuras",
@@ -479,7 +502,7 @@ Cell.defaults.layout = {
             ["numPerLine"] = 1,
             ["spacing"] = {1, 1},
             ["orientation"] = "left-to-right",
-        }, -- 25
+        }, -- 26
         {
             ["name"] = "Targeted Spells",
             ["indicatorName"] = "targetedSpells",
@@ -494,7 +517,7 @@ Cell.defaults.layout = {
             ["num"] = 1,
             ["font"] = {"Cell ".._G.DEFAULT, 12, "Outline", false, "TOPRIGHT", 2, 1, {1, 1, 1}},
             ["orientation"] = "left-to-right",
-        }, -- 26
+        }, -- 27
         {
             ["name"] = "Target Counter",
             ["indicatorName"] = "targetCounter",
@@ -509,7 +532,7 @@ Cell.defaults.layout = {
                 ["pve"] = false,
                 ["pvp"] = true,
             },
-        }, -- 27
+        }, -- 28
         {
             ["name"] = "Crowd Controls",
             ["indicatorName"] = "crowdControls",
@@ -527,14 +550,14 @@ Cell.defaults.layout = {
             },
             ["dispellableByMe"] = false,
             ["orientation"] = "left-to-right",
-        }, -- 28
+        }, -- 29
         {
             ["name"] = "Actions",
             ["indicatorName"] = "actions",
             ["type"] = "built-in",
             ["enabled"] = true,
             ["speed"] = 1,
-        }, -- 29
+        }, -- 30
         {
             ["name"] = "Missing Buffs",
             ["indicatorName"] = "missingBuffs",
@@ -544,7 +567,7 @@ Cell.defaults.layout = {
             ["frameLevel"] = 10,
             ["size"] = {13, 13},
             ["orientation"] = "right-to-left",
-        }, -- 30
+        }, -- 31
     },
 }
 

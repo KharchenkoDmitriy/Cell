@@ -45,6 +45,7 @@ local function HandleBuff(self, auraInfo)
 
         local isDefensive = false
         local isExternal = false
+        local isOffensive = false
         local secretAuraUnitTrustworthy = F.IsSecretAuraUnitTrustworthy and F.IsSecretAuraUnitTrustworthy(unit, self)
 
         -- Combat guard: fuera de combate solo confío en Step 1 (tablas curadas)
@@ -66,11 +67,13 @@ local function HandleBuff(self, auraInfo)
         if classified and (inCombat or not auraInfo._hasSecrets) then
             isDefensive = classified == "defensive"
             isExternal = classified == "external"
+            isOffensive = classified == "offensive"
         end
 
         if not classified then
             isDefensive = I.IsDefensiveCooldown(name, spellId)
             isExternal = I.IsExternalCooldown(name, spellId, source, unit)
+            isOffensive = I.IsOffensiveCooldown and I.IsOffensiveCooldown(name, spellId)
         end
 
         if not isDefensive and not isExternal and inCombat
@@ -81,21 +84,23 @@ local function HandleBuff(self, auraInfo)
                     isDefensive = true
                 elseif kind == "external" then
                     isExternal = true
+                elseif kind == "offensive" then
+                    isOffensive = true
                 end
             end
         end
 
         -- Cacheo la clasificación.
-        if not classified and (isDefensive or isExternal) then
+        if not classified and (isDefensive or isExternal or isOffensive) then
             self._buffs._classified = self._buffs._classified or {}
-            self._buffs._classified[auraInstanceID] = isDefensive and "defensive" or "external"
+            self._buffs._classified[auraInstanceID] = isDefensive and "defensive" or (isExternal and "external" or "offensive")
         end
 
         -- Usa filtros Blizzard con PLAYER para verificar source=player.
         -- CRÍTICO: type guards en cada resultado porque _IsAuraFilteredOut
         -- puede devolver nil para auras secretas en Midnight, y `not nil = true`.
         local isPlayerCast = false
-        if isExternal or isDefensive then
+        if isExternal or isDefensive or isOffensive then
             if not auraInfo._hasSecrets then
                 isPlayerCast = source == "player" or source == "pet"
             elseif hb._IsAuraFilteredOut then
@@ -141,6 +146,21 @@ local function HandleBuff(self, auraInfo)
             and self._buffs.externalFound < hb.indicatorNums["externalCooldowns"] then
             self._buffs.externalFound = self._buffs.externalFound + 1
             local frame = self.indicators.externalCooldowns[self._buffs.externalFound]
+            if Cell.isMidnight then
+                frame:SetCooldownFromAura(unit, auraInstanceID, icon, auraInfo.refreshing)
+                if frame.border then frame.border:SetColorTexture(borderR, borderG, borderB); frame.border:Show() end
+                if frame.cooldown and frame.cooldown.SetSwipeColor then frame.cooldown:SetSwipeColor(0, 0, 0) end
+            else
+                frame:SetCooldown(start, duration, nil, icon, count, auraInfo.refreshing)
+            end
+            frame.auraInstanceID = auraInstanceID
+        end
+
+        if hb.enabledIndicators["offensiveCooldowns"] and isOffensive
+            and not (skipLegacy and skipLegacy("offensiveCooldowns"))
+            and self._buffs.offensiveFound < hb.indicatorNums["offensiveCooldowns"] then
+            self._buffs.offensiveFound = self._buffs.offensiveFound + 1
+            local frame = self.indicators.offensiveCooldowns[self._buffs.offensiveFound]
             if Cell.isMidnight then
                 frame:SetCooldownFromAura(unit, auraInstanceID, icon, auraInfo.refreshing)
                 if frame.border then frame.border:SetColorTexture(borderR, borderG, borderB); frame.border:Show() end

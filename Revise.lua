@@ -3732,6 +3732,19 @@ function F.Revise()
                         end
                     end
                 end
+                if t and (t["indicatorName"] == "externalCooldowns" or t["indicatorName"] == "defensiveCooldowns" or t["indicatorName"] == "offensiveCooldowns" or t["indicatorName"] == "allCooldowns") then
+                    if t["animationStyle"] == nil then
+                        if t["showAnimation"] == false then
+                            t["animationStyle"] = "none"
+                        else
+                            local cs = CellDB["appearance"] and CellDB["appearance"]["cooldownStyle"]
+                            t["animationStyle"] = (cs == "VERTICAL" or cs == "vertical") and "vertical" or "clock"
+                        end
+                    end
+                    if type(t["showDuration"]) == "number" then
+                        t["showDuration"] = true
+                    end
+                end
             end
         end
     end
@@ -3752,6 +3765,44 @@ function F.Revise()
                 if opts[11] == nil then opts[11] = 0 end   -- gradient direction
             end
         end
+    end
+
+    -- Place Offensive Cooldowns after Defensive Cooldowns (index 20)
+    if Cell.isRetail and GetCompatibilityDB().offensiveCooldownsSlot ~= 1 then
+        for _, layout in pairs(CellDB["layouts"]) do
+            local indicators = layout["indicators"]
+            if type(indicators) == "table" then
+                local byName = {}
+                local customs = {}
+                for _, t in ipairs(indicators) do
+                    if t["type"] == "built-in" and t["indicatorName"] then
+                        byName[t["indicatorName"]] = t
+                    elseif t["type"] ~= "built-in" then
+                        tinsert(customs, t)
+                    end
+                end
+
+                local rebuilt = {}
+                for i = 1, Cell.defaults.builtIns do
+                    local def = Cell.defaults.layout.indicators[i]
+                    local name = def and def["indicatorName"]
+                    rebuilt[i] = (name and byName[name]) or F.Copy(def)
+                end
+
+                local offensiveIndex = Cell.defaults.indicatorIndices["offensiveCooldowns"]
+                local offensive = offensiveIndex and rebuilt[offensiveIndex]
+                if offensive then
+                    offensive["size"] = {20, 20}
+                    offensive["position"] = {"BOTTOM", "button", "BOTTOM", 0, 4}
+                end
+
+                for _, t in ipairs(customs) do
+                    tinsert(rebuilt, t)
+                end
+                layout["indicators"] = rebuilt
+            end
+        end
+        GetCompatibilityDB().offensiveCooldownsSlot = 1
     end
 
     -- ----------------------------------------------------------------------- --

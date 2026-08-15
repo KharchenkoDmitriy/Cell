@@ -5,7 +5,7 @@ local F = Cell.funcs
 ---@type CellIndicatorFuncs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 25
+local INIT_VERSION = 28
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -89,6 +89,7 @@ local TRACKED = {
     "debuffs",
     "dispels",
     "defensiveCooldowns",
+    "offensiveCooldowns",
     "externalCooldowns",
     "allCooldowns",
     "raidDebuffs",
@@ -219,6 +220,15 @@ local function BuildExternalSpellMap()
     return map
 end
 
+local function BuildOffensiveSpellMap()
+    local map = CollectSpellIds(Cell.vars and Cell.vars.builtInOffensives, {})
+    CollectSpellIds(Cell.vars and Cell.vars.customOffensives, map)
+    if not next(map) and I.GetOffensives then
+        CollectSpellIds(I.GetOffensives(), map)
+    end
+    return map
+end
+
 local function BuildRaidDebuffSpellMap()
     local map = {}
     local current = I.GetCurrentAreaDebuffs and I.GetCurrentAreaDebuffs()
@@ -315,6 +325,16 @@ local function BuildGroupsForIndicator(indicatorName, cfg)
         if next(map) then
             groups[#groups + 1] = {
                 key = "def",
+                filter = "HELPFUL",
+                candidateFilters = cand({ includeSpellIDs = map }),
+                maxFrameCount = cfg.num or 5,
+            }
+        end
+    elseif indicatorName == "offensiveCooldowns" then
+        local map = BuildOffensiveSpellMap()
+        if next(map) then
+            groups[#groups + 1] = {
+                key = "off",
                 filter = "HELPFUL",
                 candidateFilters = cand({ includeSpellIDs = map }),
                 maxFrameCount = cfg.num or 5,
@@ -471,6 +491,19 @@ local function ResolveAnimationStyle(cfg)
     if type(cfg) == "table" and cfg.showAnimation == false then
         return "none"
     end
+    return "clock"
+end
+
+local function AttachInvisibleCooldown(button)
+    local cooldown = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
+    cooldown:SetAllPoints(button)
+    cooldown:EnableMouse(false)
+    cooldown:SetHideCountdownNumbers(true)
+    cooldown:SetDrawEdge(false)
+    cooldown:SetDrawBling(false)
+    cooldown:SetSwipeColor(0, 0, 0, 0)
+    pcall(button.SetDurationCooldown, button, cooldown)
+    return cooldown
 end
 
 local function MakeInitAuraButton(cfg)
@@ -485,53 +518,44 @@ local function MakeInitAuraButton(cfg)
         button:SetIcon(icon)
 
         local style = ResolveAnimationStyle(cfg)
-        local showAnimation, useVertical
-        if style then
-            showAnimation = style ~= "none"
-            useVertical = style == "vertical"
-        else
-            showAnimation = cfg.showAnimation ~= false
-            local cooldownStyle = (CellDB and CellDB.appearance and CellDB.appearance.cooldownStyle)
-                or CELL_COOLDOWN_STYLE or "VERTICAL"
-            useVertical = showAnimation and cooldownStyle ~= "CLOCK" and type(button.SetDurationBar) == "function"
-        end
         local animFrame
 
-        if showAnimation then
-            if useVertical and type(button.SetDurationBar) == "function" then
-                local bar = CreateFrame("StatusBar", nil, button)
-                bar:SetAllPoints(button)
-                bar:EnableMouse(false)
-                bar:SetOrientation("VERTICAL")
-                bar:SetReverseFill(true)
-                bar:SetStatusBarTexture(Cell.vars.whiteTexture)
-                local barTex = bar:GetStatusBarTexture()
-                if barTex then
-                    barTex:SetVertexColor(0, 0, 0, 0.77)
-                end
-                local barOpts = {}
-                if Enum and Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.ElapsedTime then
-                    barOpts.direction = Enum.StatusBarTimerDirection.ElapsedTime
-                end
-                if Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate then
-                    barOpts.interpolation = Enum.StatusBarInterpolation.Immediate
-                end
-                pcall(button.SetDurationBar, button, bar, barOpts)
-                animFrame = bar
-            else
-                local cooldown = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
-                cooldown:SetAllPoints(button)
-                cooldown:EnableMouse(false)
-                cooldown:SetHideCountdownNumbers(true)
-                cooldown:SetDrawEdge(false)
-                cooldown:SetReverse(true)
-                if Cell.vars and Cell.vars.whiteTexture then
-                    cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
-                    cooldown:SetSwipeColor(0, 0, 0, 0.77)
-                end
-                pcall(button.SetDurationCooldown, button, cooldown)
-                animFrame = cooldown
+        if style == "none" then
+            animFrame = AttachInvisibleCooldown(button)
+        elseif style == "vertical" and type(button.SetDurationBar) == "function" then
+            local bar = CreateFrame("StatusBar", nil, button)
+            bar:SetAllPoints(button)
+            bar:EnableMouse(false)
+            bar:SetOrientation("VERTICAL")
+            bar:SetReverseFill(true)
+            bar:SetStatusBarTexture(Cell.vars.whiteTexture)
+            local barTex = bar:GetStatusBarTexture()
+            if barTex then
+                barTex:SetVertexColor(0, 0, 0, 0.77)
             end
+            local barOpts = {}
+            if Enum and Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.ElapsedTime then
+                barOpts.direction = Enum.StatusBarTimerDirection.ElapsedTime
+            end
+            if Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate then
+                barOpts.interpolation = Enum.StatusBarInterpolation.Immediate
+            end
+            pcall(button.SetDurationBar, button, bar, barOpts)
+            animFrame = bar
+        else
+            local cooldown = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
+            cooldown:SetAllPoints(button)
+            cooldown:EnableMouse(false)
+            cooldown:SetHideCountdownNumbers(true)
+            cooldown:SetDrawEdge(false)
+            cooldown:SetDrawBling(false)
+            cooldown:SetReverse(true)
+            if Cell.vars and Cell.vars.whiteTexture then
+                cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
+                cooldown:SetSwipeColor(0, 0, 0, 0.77)
+            end
+            pcall(button.SetDurationCooldown, button, cooldown)
+            animFrame = cooldown
         end
 
         local textHost = CreateFrame("Frame", nil, button)

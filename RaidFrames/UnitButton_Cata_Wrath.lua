@@ -162,6 +162,9 @@ local function ResetIndicators()
         if t["dispellableByMe"] ~= nil then
             indicatorBooleans[t["indicatorName"]] = t["dispellableByMe"]
         end
+        if t["indicatorName"] == "debuffs" then
+            indicatorBooleans["debuffsNonPlayer"] = t["nonPlayerAuras"] and true or false
+        end
         if t["onlyShowTopGlow"] ~= nil then
             indicatorBooleans[t["indicatorName"]] = t["onlyShowTopGlow"]
         end
@@ -885,6 +888,11 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 F.IterateAllUnitButtons(function(b)
                     UnitButton_UpdateAuras(b)
                 end, true)
+            elseif value == "nonPlayerAuras" then
+                indicatorBooleans["debuffsNonPlayer"] = value2 and true or false
+                F.IterateAllUnitButtons(function(b)
+                    UnitButton_UpdateAuras(b)
+                end, true)
             elseif value == "showTooltip" then
                 F.IterateAllUnitButtons(function(b)
                     b.indicators[indicatorName]:ShowTooltip(value2)
@@ -1074,10 +1082,13 @@ local function UnitButton_UpdateDebuffs(self)
 
             if enabledIndicators["debuffs"] and not Cell.vars.debuffBlacklist[spellId] and FilterWeakenedSoul(spellId) then
                 if not indicatorBooleans["debuffs"] or I.CanDispel(debuffType) then
-                    if Cell.vars.bigDebuffs[spellId] then  -- isBigDebuff
-                        self._debuffs_big[i] = refreshing
-                    else
-                        self._debuffs_normal[i] = refreshing
+                    local fromPlayer = source and (UnitIsPlayer(source) or UnitPlayerControlled(source))
+                    if not (indicatorBooleans["debuffsNonPlayer"] and fromPlayer) then
+                        if Cell.vars.bigDebuffs[spellId] then
+                            self._debuffs_big[i] = refreshing
+                        else
+                            self._debuffs_normal[i] = refreshing
+                        end
                     end
                 end
             end

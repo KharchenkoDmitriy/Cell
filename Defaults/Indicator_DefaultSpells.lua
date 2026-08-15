@@ -222,84 +222,107 @@ end
 -------------------------------------------------
 local externals = { -- true: track by name, false: track by id
     ["DEATHKNIGHT"] = {
-        [51052] = true, -- 反魔法领域 - Anti-Magic Zone
+        [51052] = { -- 反魔法领域 - Anti-Magic Zone
+            [145629] = true,
+        },
+        [454863] = true, -- Lesser Anti-Magic Shell
     },
 
     ["DEMONHUNTER"] = {
-        [196718] = true, -- 黑暗 - Darkness
+        [196718] = { -- 黑暗 - Darkness
+            [209426] = true,
+        },
     },
 
     ["DRUID"] = {
         [102342] = true, -- 铁木树皮 - Ironbark
+        [33891] = true, -- 化身：生命之树 - Incarnation: Tree of Life
+        [740] = { -- 宁静 - Tranquility
+            [157982] = true,
+            [1264623] = true,
+        },
     },
 
     ["EVOKER"] = {
         [374227] = true, -- 微风 - Zephyr
         [357170] = true, -- 时间膨胀 - Time Dilation
         [363534] = true, -- 回溯 - Rewind
-        [360995] = true, -- 翠绿拥抱 - Verdant Embrace
-        [378441] = true, -- 时间停止 - Time Stop (pvp)
-        [374348] = true, -- 新生光焰 - Renewing blaze
+        [410651] = true, -- Molten Blood
+        [359816] = { -- 梦境飞行 - Dream Flight
+            [362361] = true,
+            [363502] = true,
+        },
     },
 
-    ["MAGE"] = {
-        [198158] = true, -- 群体隐形 - Mass Invisibility
-        [414660] = { -- 群体屏障 - Mass Barrier
-            [414661] = false, -- 寒冰护体 - Ice Barrier
-            [414662] = false, -- 烈焰护体 - Blazing Barrier
-            [414663] = false, -- 棱光护体 - Prismatic Barrier
-            -- [11426] = false, -- 寒冰护体 (self)
-            -- [235313] = false, -- 烈焰护体 (self)
-            -- [235450] = false, -- 棱光护体 (self)
-        },
+    ["HUNTER"] = {
+        [53480] = true, -- 牺牲咆哮 - Roar of Sacrifice
     },
 
     ["MONK"] = {
         [116849] = true, -- 作茧缚命 - Life Cocoon
-        [406139] = true, -- 真气之茧 - Chi Cocoon (Yu'lon)
-        [406220] = true, -- 真气之茧 - Chi Cocoon (Chi-Ji)
-        [116841] = true, -- 迅如猛虎 - Tiger's Lust
-        [202248] = false, -- 偏转冥想 - Guided Meditation
+        [322118] = true, -- 青龙下凡 - Invoke Yu'lon
+        [325197] = true, -- 朱鹤下凡 - Invoke Chi-Ji
+        [443028] = { -- 天神御身 - Celestial Conduit
+            [1248992] = true,
+        },
+        [1260681] = { -- Chi Cocoon
+            [406139] = true,
+            [406220] = true,
+            [451299] = true,
+            [432772] = true,
+        },
     },
 
     ["PALADIN"] = {
-        [1022] = true, -- 保护祝福 - Blessing of Protection
+        [1022] = { -- 保护祝福 - Blessing of Protection
+            [1309794] = true,
+        },
         [6940] = true, -- 牺牲祝福 - Blessing of Sacrifice
         [204018] = true, -- 破咒祝福 - Blessing of Spellwarding
-        [1044] = true, -- 自由祝福 - Blessing of Freedom
-        [31821] = true, -- 光环掌握 - Aura Mastery
-        [210256] = true, -- 庇护祝福 - Blessing of Sanctuary
-        [228050] = false, -- 圣盾术 (被遗忘的女王护卫) - Divine Shield
-        [432496] = true, -- 圣洁壁垒 - Holy Bulwark (Holy Armaments shield variant)
-        [432502] = true, -- 圣洁武器 - Holy Armaments (Sacred Weapon variant)
-        -- [211210] = true, -- 提尔的保护
-        -- [216328] = true, -- 光之优雅
+        [387804] = true, -- Echoing Protection
+        [387792] = true, -- Empyreal Ward
+        [461499] = true, -- Overflowing Light
+        [211210] = true, -- Protection of Tyr
+        [200652] = { -- 提尔的拯救 - Tyr's Deliverance
+            [200654] = true,
+        },
+        [31821] = { -- 光环掌握 - Aura Mastery
+            [317929] = true,
+        },
+        [31884] = { -- 复仇之怒 - Avenging Wrath
+            [454351] = true,
+        },
+        [216331] = true, -- 复仇十字军 - Avenging Crusader
     },
 
     ["PRIEST"] = {
         [33206] = true, -- 痛苦压制 - Pain Suppression
         [47788] = true, -- 守护之魂 - Guardian Spirit
         [10060] = true, -- 能量灌注 - Power Infusion
-        [62618] = true, -- 真言术：障 - Power Word: Barrier
-        [213610] = true, -- 神圣守卫 - Holy Ward
-        [197268] = true, -- 希望之光 - Ray of Hope
-    },
-
-    ["ROGUE"] = {
-        [114018] = true, -- 潜伏帷幕 - Shroud of Concealment
+        [62618] = { -- 真言术：障 - Power Word: Barrier
+            [81782] = true,
+        },
+        [64843] = { -- 神圣赞美诗 - Divine Hymn
+            [64844] = true,
+        },
+        [472433] = true, -- Evangelism
+        [200183] = true, -- 神圣化身 - Apotheosis
+        [15286] = true, -- 吸血鬼的拥抱 - Vampiric Embrace
+        [421453] = true, -- Ultimate Penitence
     },
 
     ["SHAMAN"] = {
-        [98008] = true, -- 灵魂链接图腾 - Spirit Link Totem
-        [201633] = true, -- 大地之墙图腾 - Earthen Wall
-        [8178] = true, -- 根基图腾 - Grounding Totem
-        [383018] = true, -- 石肤图腾 - Stoneskin
+        [98008] = { -- 灵魂链接图腾 - Spirit Link Totem
+            [325174] = true,
+        },
+        [114052] = true, -- 升腾 - Ascendance
+        [462568] = true, -- Elemental Resistance
     },
 
     ["WARRIOR"] = {
-        [97462] = true, -- 集结呐喊 - Rallying Cry
-        [3411] = true, -- 援护 - Intervene
-        [213871] = true, -- 护卫 - Bodyguard
+        [97462] = { -- 集结呐喊 - Rallying Cry
+            [97463] = true,
+        },
     },
 }
 
@@ -382,69 +405,108 @@ end
 -------------------------------------------------
 local defensives = { -- true: track by name, false: track by id
     ["DEATHKNIGHT"] = {
-        [48707] = true, -- 反魔法护罩 - Anti-Magic Shell
+        [48707] = { -- 反魔法护罩 - Anti-Magic Shell
+            [444741] = true,
+            [410358] = true,
+        },
         [48792] = true, -- 冰封之韧 - Icebound Fortitude
-        [49028] = true, -- 符文刃舞 - Dancing Rune Weapon
-        [55233] = true, -- 吸血鬼之血 - Vampiric Blood
         [49039] = false, -- 巫妖之躯 - Lichborne
-        [194679] = true, -- 符文分流 - Rune Tap
+        [55233] = true, -- 吸血鬼之血 - Vampiric Blood
+        [49028] = { -- 符文刃舞 - Dancing Rune Weapon
+            [81256] = true,
+        },
+        [434107] = { -- Vampiric Aura
+            [434105] = true,
+        },
     },
 
     ["DEMONHUNTER"] = {
-        [196555] = true, -- 虚空行走 - Netherwalk
-        [198589] = true, -- 疾影 - Blur
-        [187827] = false, -- 恶魔变形 162264(DPS) - Metamorphosis
+        [198589] = { -- 疾影 - Blur
+            [212800] = true,
+        },
+        [187827] = true, -- 恶魔变形 - Metamorphosis
+        [263648] = true, -- 灵魂壁障 - Soul Barrier
+        [204021] = { -- 烈火烙印 - Fiery Brand
+            [207771] = true,
+        },
+        [442715] = true, -- Blade Ward
+        [1266616] = { -- Demon Muzzle
+            [394933] = true,
+        },
+        [427912] = true, -- Infernal Armor
     },
 
     ["DRUID"] = {
         [22812] = true, -- 树皮术 - Barkskin
         [61336] = true, -- 生存本能 - Survival Instincts
-        [200851] = true, -- 沉睡者之怒 - Rage of the Sleeper
-        [102558] = true, -- 化身：乌索克的守护者 - Incarnation: Guardian of Ursoc
         [22842] = true, -- 狂暴回复 - Frenzied Regeneration
+        [192081] = true, -- 铁鬃 - Ironfur
+        [102558] = true, -- 化身：乌索克的守护者 - Incarnation: Guardian of Ursoc
+        [1253799] = true, -- Sundering Roar
+        [393903] = true, -- Ursine Vigor
+        [5487] = true, -- 熊形态 - Bear Form
     },
 
     ["EVOKER"] = {
         [363916] = true, -- 黑曜鳞片 - Obsidian Scales
-        [374348] = true, -- 新生光焰 - Renewing Blaze
-        [370960] = true, -- 翡翠交融 - Emerald Communion
-        [431872] = false, -- 瞬息之隔 - Temporality (Chronowarden Hero Talent)
-        [377088] = false, -- 活力迸射 - Rush of Vitality
+        [374348] = { -- 新生光焰 - Renewing Blaze
+            [374349] = true,
+        },
+        [404381] = true, -- Defy Fate
     },
 
     ["HUNTER"] = {
         [186265] = true, -- 灵龟守护 - Aspect of the Turtle
         [264735] = true, -- 优胜劣汰 - Survival of the Fittest
+        [109304] = true, -- 意气风发 - Exhilaration
     },
 
     ["MAGE"] = {
         [45438] = true, -- 寒冰屏障 - Ice Block
-        [414658] = true, -- 深寒凝冰 - Ice Cold
-        [113862] = false, -- 强化隐形术 - Greater Invisibility
-        [55342] = false, -- 镜像（使用 CLEU 而非 UNIT_AURA） - Mirror Image
+        [414658] = { -- 深寒凝冰 - Ice Cold
+            [414659] = true,
+        },
         [342246] = true, -- 操控时间 - Alter Time
+        [11426] = true, -- 寒冰护体 - Ice Barrier
+        [235313] = true, -- 烈焰护体 - Blazing Barrier
+        [235450] = true, -- 棱光护体 - Prismatic Barrier
+        [66] = true, -- 隐形术 - Invisibility
+        [110960] = { -- 强化隐形 - Greater Invisibility
+            [113862] = true,
+        },
+        [55342] = true, -- 镜像 - Mirror Image
     },
 
     ["MONK"] = {
-        [115176] = false, -- 禅悟冥想 - Zen Meditation
-        [115203] = true, -- 壮胆酒 - Fortifying Brew
-        [122278] = true, -- 躯不坏 - Dampen Harm
+        [115203] = { -- 壮胆酒 - Fortifying Brew
+            [120954] = true,
+        },
         [122783] = true, -- 散魔功 - Diffuse Magic
-        [125174] = true, -- 业报之触 - Touch of Karma
-        [443113] = true, -- 黑牛之力 - Strength of the Black Ox
+        [322507] = { -- 天神酒 - Celestial Brew
+            [425965] = true,
+        },
+        [1241059] = true, -- Celestial Infusion
+        [132578] = true, -- 召唤玄牛雕像 - Invoke Niuzao, the Black Ox
+        [122470] = { -- 业报之触 - Touch of Karma
+            [125174] = true,
+        },
+        [455179] = true, -- Elixir of Determination
     },
 
     ["PALADIN"] = {
-        [498] = true, -- 圣佑术 - Divine Protection (Holy/Protection)
-        [403876] = true, -- Protección Divina (cast de Retribution en TWW+, el 498 ya no funciona para Ret)
+        [498] = true, -- 圣佑术 - Divine Protection
+        [403876] = true, -- Divine Protection
         [642] = true, -- 圣盾术 - Divine Shield
+        [184662] = true, -- 复仇之盾 - Shield of Vengeance
         [31850] = true, -- 炽热防御者 - Ardent Defender
-        [86659] = true, -- 远古列王守卫 - Guardian of Ancient Kings (base buff)
-        [212641] = true, -- 远古列王守卫 - Guardian of Ancient Kings
-        [205191] = true, -- 以眼还眼 - Eye for an Eye
-        [389539] = true, -- 戒卫 - Sentinel
-        [184662] = true, -- 复仇之盾 - Shield of Vengeance (legacy ID)
-        [1261562] = true, -- Escudo de Venganza (buff ID de TWW+, el 184662 ya no funciona en Midnight)
+        [86659] = { -- 远古列王守卫 - Guardian of Ancient Kings
+            [393108] = true,
+        },
+        [389539] = true, -- Sentinel
+        [461867] = true, -- Sacrosanct Crusade
+        [209388] = { -- Bulwark of Order
+            [453043] = true,
+        },
     },
 
     ["PRIEST"] = {
@@ -452,33 +514,52 @@ local defensives = { -- true: track by name, false: track by id
         [19236] = true, -- 绝望祷言 - Desperate Prayer
         [586] = true, -- 渐隐术 -- TODO: 373446 通透影像 - Fade
         [193065] = true, -- 防护圣光 - Protective Light
-        [27827] = true, -- 救赎之魂 - Spirit of Redemption
+        [114216] = { -- Angelic Bulwark
+            [114214] = true,
+        },
+        [45242] = { -- Focused Will
+            [426401] = true,
+        },
     },
 
     ["ROGUE"] = {
         [1966] = true, -- 佯攻 - Feint
         [5277] = true, -- 闪避 - Evasion
         [31224] = false, -- 暗影斗篷 - Cloak of Shadows
+        [185311] = true, -- 猩红之瓶 - Crimson Vial
     },
 
     ["SHAMAN"] = {
         [108271] = true, -- 星界转移 - Astral Shift
-        [409293] = true, -- 掘地三尺 - Burrow (PVP)
-        [114893] = true, -- 石壁 - Stone Bulwark
+        [457387] = true, -- Wind Barrier
+        [381755] = true, -- Primordial Bond
     },
 
     ["WARLOCK"] = {
         [104773] = true, -- 不灭决心 - Unending Resolve
-        [212295] = true, -- 虚空守卫 - Nether Ward (PVP)
         [108416] = true, -- 黑暗契约 - Dark Pact
+        [387847] = true, -- 邪甲术 - Fel Armor
+        [108366] = true, -- 灵魂榨取 - Soul Leech
     },
 
     ["WARRIOR"] = {
-        [871] = true, -- 盾墙 - Shield Wall
-        [12975] = true, -- 破釜沉舟 - Last Stand
-        [23920] = true, -- 法术反射 - Spell Reflection
+        [23920] = { -- 法术反射 - Spell Reflection
+            [385391] = true,
+        },
         [118038] = true, -- 剑在人在 - Die by the Sword
         [184364] = true, -- 狂怒回复 - Enraged Regeneration
+        [190456] = { -- 无视痛苦 - Ignore Pain
+            [1277297] = true,
+        },
+        [871] = true, -- 盾墙 - Shield Wall
+        [12975] = true, -- 破釜沉舟 - Last Stand
+        [3411] = { -- 援护 - Intervene
+            [147833] = true,
+        },
+        [386208] = { -- 防御姿态 - Defensive Stance
+            [1261776] = true,
+            [1243856] = true,
+        },
     },
 }
 
@@ -489,21 +570,30 @@ end
 local builtInDefensives = {}
 local customDefensives = {}
 
+local function UpdateDefensive(id, trackByName)
+    if trackByName then
+        local name = F.GetSpellInfo(id)
+        if name then
+            builtInDefensives[name] = true
+        end
+    end
+    builtInDefensives[id] = true
+end
+
 function I.UpdateDefensives(t)
     -- user disabled
     wipe(builtInDefensives)
     for class, spells in pairs(defensives) do
-        for id, trackByName in pairs(spells) do
+        for id, v in pairs(spells) do
             if not t["disabled"][id] then -- not disabled
-                if trackByName then
-                    local name = F.GetSpellInfo(id)
-                    if name then
-                        builtInDefensives[name] = true
+                if type(v) == "table" then
+                    builtInDefensives[id] = true
+                    for subId, subTrackByName in pairs(v) do
+                        UpdateDefensive(subId, subTrackByName)
                     end
+                else
+                    UpdateDefensive(id, v)
                 end
-                -- Also store by ID (in addition to name when trackByName is true)
-    -- so IsExternalCooldown/IsDefensiveCooldown can match by ID directly
-                builtInDefensives[id] = true
             end
         end
     end
@@ -529,6 +619,200 @@ function I.IsDefensiveCooldown(name, id)
     if F.IsValueNonSecret(id) then
         return builtInDefensives[id] or customDefensives[id]
     end
+end
+
+-------------------------------------------------
+-- offensiveCooldowns
+-------------------------------------------------
+local offensives = {
+    ["DEATHKNIGHT"] = {
+        [42650] = true, -- 亡者大军 - Army of the Dead
+        [1249658] = { -- Breath of Sindragosa
+            [152279] = true,
+        },
+        [51271] = true, -- 冰霜之柱 - Pillar of Frost
+    },
+    ["DEMONHUNTER"] = {
+        [191427] = { -- 恶魔变形 - Metamorphosis
+            [162264] = true,
+        },
+        [1225789] = { -- Void Metamorphosis
+            [1217607] = true,
+        },
+        [1241937] = true, -- Soul Immolation
+        [370965] = { -- The Hunt
+            [1246167] = true,
+            [1259431] = true,
+        },
+    },
+    ["DRUID"] = {
+        [194223] = true, -- 超凡之盟 - Celestial Alignment
+        [106951] = true, -- 狂暴 - Berserk
+        [102560] = true, -- 化身：艾露恩之眷 - Incarnation: Chosen of Elune
+        [391528] = true, -- 万灵之召 - Convoke the Spirits
+        [202770] = true, -- 艾露恩之怒 - Fury of Elune
+        [204066] = true, -- Lunar Beam
+    },
+    ["EVOKER"] = {
+        [375087] = true, -- 龙怒 - Dragonrage
+        [442204] = { -- 亘古吐息 - Breath of Eons
+            [403631] = true,
+        },
+        [357210] = { -- 深呼吸 - Deep Breath
+            [433874] = true,
+        },
+    },
+    ["HUNTER"] = {
+        [288613] = true, -- 百发百中 - Trueshot
+        [1250646] = true, -- Takedown
+        [1265063] = true, -- Bloody Frenzy
+        [459808] = true, -- Wailing Arrow
+        [1261193] = true, -- Boomstick
+        [1258344] = { -- Stampede
+            [1258345] = true,
+        },
+    },
+    ["MAGE"] = {
+        [190319] = true, -- 燃烧 - Combustion
+        [365350] = { -- 奥术涌动 - Arcane Surge
+            [365362] = true,
+        },
+    },
+    ["MONK"] = {
+        [1249625] = true, -- 天顶 - Zenith
+        [325153] = true, -- Exploding Keg
+    },
+    ["PALADIN"] = {
+        [1234189] = true, -- Execution Sentence
+    },
+    ["PRIEST"] = {
+        [194249] = true, -- 虚空形态 - Voidform
+    },
+    ["ROGUE"] = {
+        [13750] = true, -- 冲动 - Adrenaline Rush
+        [121471] = true, -- 暗影之刃 - Shadow Blades
+        [185422] = true, -- 暗影之舞 - Shadow Dance
+        [51690] = true, -- 影舞步 - Killing Spree
+        [394095] = { -- Kingsbane
+            [385627] = true,
+        },
+        [13877] = true, -- 剑刃乱舞 - Blade Flurry
+    },
+    ["SHAMAN"] = {
+        [114050] = { -- 升腾 - Ascendance
+            [114051] = true,
+            [1219480] = true,
+        },
+        [466772] = true, -- Doom Winds
+        [191634] = true, -- 风暴守护者 - Stormkeeper
+    },
+    ["WARLOCK"] = {
+        [265187] = true, -- 召唤恶魔暴君 - Summon Demonic Tyrant
+        [205180] = true, -- 召唤暗眼 - Summon Darkglare
+        [111685] = true, -- 召唤地狱火 - Summon Infernal
+        [442726] = true, -- Malevolence
+        [1257052] = true, -- Dark Harvest
+    },
+    ["WARRIOR"] = {
+        [107574] = true, -- 天神下凡 - Avatar
+        [1719] = true, -- 鲁莽 - Recklessness
+        [446035] = { -- 剑刃风暴 - Bladestorm
+            [227847] = true,
+        },
+    },
+}
+
+function I.GetOffensives()
+    return offensives
+end
+
+local builtInOffensives = {}
+local customOffensives = {}
+
+local function UpdateOffensive(id, trackByName)
+    if trackByName then
+        local name = F.GetSpellInfo(id)
+        if name then
+            builtInOffensives[name] = true
+        end
+    end
+    builtInOffensives[id] = true
+end
+
+function I.UpdateOffensives(t)
+    wipe(builtInOffensives)
+    if type(t) ~= "table" then
+        t = {["disabled"] = {}, ["custom"] = {}}
+    end
+    t["disabled"] = t["disabled"] or {}
+    t["custom"] = t["custom"] or {}
+    for class, spells in pairs(offensives) do
+        for id, v in pairs(spells) do
+            if not t["disabled"][id] then
+                if type(v) == "table" then
+                    builtInOffensives[id] = true
+                    for subId, subTrackByName in pairs(v) do
+                        UpdateOffensive(subId, subTrackByName)
+                    end
+                else
+                    UpdateOffensive(id, v)
+                end
+            end
+        end
+    end
+
+    wipe(customOffensives)
+    for _, id in pairs(t["custom"]) do
+        customOffensives[id] = true
+    end
+    Cell.vars.builtInOffensives = builtInOffensives
+    Cell.vars.customOffensives = customOffensives
+end
+
+function I.IsOffensiveCooldown(name, id)
+    if F.IsValueNonSecret(name) and builtInOffensives[name] then
+        return true
+    end
+
+    if F.IsValueNonSecret(id) then
+        return builtInOffensives[id] or customOffensives[id]
+    end
+end
+
+local defaultDisabledDefensives = {
+    192081, 386208, 461867, 209388, 45242, 193065, 393903, 5487, 387847, 108366, 427912, 434107,
+}
+
+local defaultDisabledExternals = {
+    200183, 15286, 421453, 31884, 216331, 114052, 740, 325197, 462568,
+}
+
+local defaultDisabledOffensives = {
+    370965, 391528, 202770, 442204, 357210, 1261193, 191634, 1257052, 1258344, 204066, 325153,
+}
+
+local function SeedDisabledSpells(dbKey, ids)
+    if type(CellDB[dbKey]) ~= "table" then
+        CellDB[dbKey] = {["disabled"] = {}, ["custom"] = {}}
+    end
+    CellDB[dbKey]["disabled"] = CellDB[dbKey]["disabled"] or {}
+    for _, id in ipairs(ids) do
+        CellDB[dbKey]["disabled"][id] = true
+    end
+end
+
+function I.ApplyDefaultDisabledCooldowns()
+    if type(CellDB) ~= "table" then return end
+    if type(CellDB["compatibility"]) ~= "table" then
+        CellDB["compatibility"] = {}
+    end
+    if CellDB["compatibility"].optionalCdSeed == 2 then return end
+
+    SeedDisabledSpells("defensives", defaultDisabledDefensives)
+    SeedDisabledSpells("externals", defaultDisabledExternals)
+    SeedDisabledSpells("offensives", defaultDisabledOffensives)
+
+    CellDB["compatibility"].optionalCdSeed = 2
 end
 
 -------------------------------------------------

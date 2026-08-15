@@ -1,6 +1,6 @@
 ## Interface: 120100
 ## Title: Cell
-## Version: r277.9.5
+## Version: r277.9.6
 ## Author: enderneko, Krysio, NeRgY
 ## X-Flavor: Mainline
 ## SavedVariables: CellDB, CellDBBackup

@@ -112,6 +112,14 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.6 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>+ New indicator: Offensive Cooldowns (off by default).</p>
+        <p>* Updated External, Defensive, and Offensive cooldown lists.</p>
+        <p>* External/Defensives Cooldowns show CDs again.</p>
+        <p>* Fixed a spell tooltip error in raid combat (secret tooltip colors).</p>
+        <br/>
+
         <h1>r277.9.5 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Fixed remaining Cooldown Viewer / Tracked Bars errors.</p>

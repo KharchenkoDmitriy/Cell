@@ -337,6 +337,34 @@ function I.CreateDefensiveCooldowns(parent)
 end
 
 -------------------------------------------------
+-- CreateOffensiveCooldowns
+-------------------------------------------------
+function I.CreateOffensiveCooldowns(parent)
+    local offensiveCooldowns = CreateFrame("Frame", parent:GetName().."OffensiveCooldownParent", parent.widgets.indicatorFrame)
+    parent.indicators.offensiveCooldowns = offensiveCooldowns
+    offensiveCooldowns:Hide()
+
+    offensiveCooldowns._SetSize = offensiveCooldowns.SetSize
+    offensiveCooldowns.SetSize = I.Cooldowns_SetSize
+    offensiveCooldowns.UpdateSize = I.Cooldowns_UpdateSize
+    offensiveCooldowns.SetFont = I.Cooldowns_SetFont
+    offensiveCooldowns.SetOrientation = I.Cooldowns_SetOrientation
+    offensiveCooldowns.ShowDuration = I.Cooldowns_ShowDuration
+    offensiveCooldowns.ShowAnimation = I.Cooldowns_ShowAnimation
+    offensiveCooldowns.SetCooldownStyle = I.Cooldowns_SetCooldownStyle
+    offensiveCooldowns.SetupGlow = I.Glow_SetupForChildren
+    offensiveCooldowns.UpdatePixelPerfect = I.Cooldowns_UpdatePixelPerfect
+
+    for i = 1, 5 do
+        local name = parent:GetName().."OffensiveCooldown"..i
+        local frame = Cell.isMidnight
+            and I.CreateAura_BorderIcon(name, offensiveCooldowns, 1.5)
+            or I.CreateAura_BarIcon(name, offensiveCooldowns)
+        tinsert(offensiveCooldowns, frame)
+    end
+end
+
+-------------------------------------------------
 -- CreateExternalCooldowns
 -------------------------------------------------
 function I.CreateExternalCooldowns(parent)

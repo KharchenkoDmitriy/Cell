@@ -430,6 +430,7 @@ Cell.defaults.layout = {
                 {"Cell ".._G.DEFAULT, 11, "Outline", false, "BOTTOMRIGHT", 2, -1, {1, 1, 1}},
             },
             ["dispellableByMe"] = false,
+            ["nonPlayerAuras"] = false,
             ["orientation"] = "left-to-right",
         }, -- 23
         {

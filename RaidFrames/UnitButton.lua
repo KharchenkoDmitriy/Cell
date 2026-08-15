@@ -397,6 +397,7 @@ local function UpdateIndicatorParentVisibility(b, indicatorName, enabled)
     if not (indicatorName == "debuffs" or
             indicatorName == "privateAuras" or
             indicatorName == "defensiveCooldowns" or
+            indicatorName == "offensiveCooldowns" or
             indicatorName == "externalCooldowns" or
             indicatorName == "allCooldowns" or
             indicatorName == "dispels" or
@@ -501,6 +502,7 @@ local function HandleIndicators(b)
     if b._waitingForIndicatorCreation then
         b._waitingForIndicatorCreation = nil
         I.CreateDefensiveCooldowns(b)
+        I.CreateOffensiveCooldowns(b)
         I.CreateExternalCooldowns(b)
         I.CreateAllCooldowns(b)
         I.CreateDebuffs(b)
@@ -612,7 +614,21 @@ local function HandleIndicators(b)
             indicator:SetIconStyle(t["iconStyle"])
         end
         -- update animation
-        if type(t["showAnimation"]) == "boolean" and indicator.ShowAnimation then
+        if type(t["animationStyle"]) == "string" then
+            local style = t["animationStyle"]
+            if style == "none" then
+                if indicator.ShowAnimation then
+                    indicator:ShowAnimation(false)
+                end
+            else
+                if indicator.SetCooldownStyle then
+                    indicator:SetCooldownStyle(style == "clock" and "CLOCK" or "VERTICAL")
+                end
+                if indicator.ShowAnimation then
+                    indicator:ShowAnimation(true)
+                end
+            end
+        elseif type(t["showAnimation"]) == "boolean" and indicator.ShowAnimation then
             indicator:ShowAnimation(t["showAnimation"])
         end
         -- update duration
@@ -1225,6 +1241,24 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 b.indicators[indicatorName]:SetIconStyle(value)
                 UnitButton_UpdateAuras(b)
             end, true)
+        elseif setting == "animationStyle" then
+            F.IterateAllUnitButtons(function(b)
+                local ind = b.indicators[indicatorName]
+                if not ind then return end
+                if value == "none" then
+                    if ind.ShowAnimation then
+                        ind:ShowAnimation(false)
+                    end
+                else
+                    if ind.SetCooldownStyle then
+                        ind:SetCooldownStyle(value == "clock" and "CLOCK" or "VERTICAL")
+                    end
+                    if ind.ShowAnimation then
+                        ind:ShowAnimation(true)
+                    end
+                end
+                UnitButton_UpdateAuras(b)
+            end, true)
         elseif setting == "checkbutton" then
             if value == "showGroupNumber" then
                 F.IterateAllUnitButtons(function(b)
@@ -1271,6 +1305,14 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     local ind = b.indicators[indicatorName]
                     if ind and ind.ShowAnimation then
                         ind:ShowAnimation(value2)
+                    end
+                    UnitButton_UpdateAuras(b)
+                end, true)
+            elseif value == "showDuration" then
+                F.IterateAllUnitButtons(function(b)
+                    local ind = b.indicators[indicatorName]
+                    if ind and ind.ShowDuration then
+                        ind:ShowDuration(value2)
                     end
                     UnitButton_UpdateAuras(b)
                 end, true)
@@ -1414,7 +1456,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 b.indicators[indicatorName]:Hide()
                 UnitButton_UpdateAuras(b)
             end, true)
-        elseif setting == "dispelBlacklist" or setting == "defensives" or setting == "externals" or setting == "crowdControls" or setting == "bigDebuffs" or setting == "debuffTypeColor" or setting == "castBy" then
+        elseif setting == "dispelBlacklist" or setting == "defensives" or setting == "externals" or setting == "offensives" or setting == "crowdControls" or setting == "bigDebuffs" or setting == "debuffTypeColor" or setting == "castBy" then
             F.IterateAllUnitButtons(function(b)
                 UnitButton_UpdateAuras(b)
             end, true)
@@ -2125,6 +2167,7 @@ local ShouldShowPowerBar
 -------------------------------------------------
 local function ResetBuffVars(self)
     self._buffs.defensiveFound = 0
+    self._buffs.offensiveFound = 0
     self._buffs.externalFound = 0
     self._buffs.allFound = 0
     self._buffs.tankActiveMitigationFound = false
@@ -2144,6 +2187,8 @@ local function RememberSecretHelpfulCast(self, spellId)
             kind = "external"
         elseif I.IsDefensiveCooldown(nil, spellId) then
             kind = "defensive"
+        elseif I.IsOffensiveCooldown and I.IsOffensiveCooldown(nil, spellId) then
+            kind = "offensive"
         end
     end
     if not kind then return end
@@ -2241,6 +2286,12 @@ local function UnitButton_UpdateBuffs(self, isFullUpdate)
     -- update defensiveCooldowns
     if not (skipLegacy and skipLegacy("defensiveCooldowns")) then
         self.indicators.defensiveCooldowns:UpdateSize(self._buffs.defensiveFound)
+    end
+
+    if not (skipLegacy and skipLegacy("offensiveCooldowns")) then
+        if self.indicators.offensiveCooldowns then
+            self.indicators.offensiveCooldowns:UpdateSize(self._buffs.offensiveFound or 0)
+        end
     end
 
     -- update externalCooldowns
@@ -2421,6 +2472,17 @@ local function GetTrackedSpells()
     end
     if Cell.vars.customDefensives then
         for id, _ in pairs(Cell.vars.customDefensives) do
+            if type(id) == "number" then spells[id] = "HELPFUL" end
+        end
+    end
+    -- Offensives
+    if Cell.vars.builtInOffensives then
+        for id, _ in pairs(Cell.vars.builtInOffensives) do
+            if type(id) == "number" then spells[id] = "HELPFUL" end
+        end
+    end
+    if Cell.vars.customOffensives then
+        for id, _ in pairs(Cell.vars.customOffensives) do
             if type(id) == "number" then spells[id] = "HELPFUL" end
         end
     end

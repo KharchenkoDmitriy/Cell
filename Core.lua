@@ -586,6 +586,7 @@ function eventFrame:ADDON_LOADED(arg1)
         -- defensives/externals -------------------------------------------------------------------
         if type(CellDB["defensives"]) ~= "table" then CellDB["defensives"] = {["disabled"]={}, ["custom"]={}} end
         if type(CellDB["externals"]) ~= "table" then CellDB["externals"] = {["disabled"]={}, ["custom"]={}} end
+        if type(CellDB["offensives"]) ~= "table" then CellDB["offensives"] = {["disabled"]={}, ["custom"]={}} end
 
         -- auraBlacklist --------------------------------------------------------------------------
         if type(CellDB["auraBlacklist"]) ~= "table" then CellDB["auraBlacklist"] = {["buffs"]={}, ["debuffs"]={}} end
@@ -990,8 +991,14 @@ function eventFrame:PLAYER_LOGIN()
     Cell.Fire("UpdateCLEU")
     -- update builtIns and customs
     I.UpdateAoEHealings(CellDB["aoeHealings"])
+    if I.ApplyDefaultDisabledCooldowns then
+        I.ApplyDefaultDisabledCooldowns()
+    end
     I.UpdateDefensives(CellDB["defensives"])
     I.UpdateExternals(CellDB["externals"])
+    if I.UpdateOffensives then
+        I.UpdateOffensives(CellDB["offensives"])
+    end
     I.UpdateCrowdControls(CellDB["crowdControls"])
     -- update pixel perfect
     Cell.Fire("UpdatePixelPerfect")

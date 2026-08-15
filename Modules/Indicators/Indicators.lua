@@ -648,6 +648,12 @@ local function InitIndicator(indicatorName)
             indicator[i]._isPreviewPlayerCast = (i == 1)
             SetOnUpdate(indicator[i], nil, icons[i], 0)
         end
+    elseif indicatorName == "offensiveCooldowns" then
+        local icons = {136012, 135726, 132109, 136048, 132333}
+        for i = 1, 5 do
+            indicator[i]._isPreviewPlayerCast = (i == 1)
+            SetOnUpdate(indicator[i], nil, icons[i], 0)
+        end
     elseif indicatorName == "allCooldowns" then
         local icons = {135936, 136120, 135966, 132362, 237542}
         for i = 1, 5 do
@@ -722,6 +728,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             if not previewButton._indicatorsCreated then
                 previewButton._indicatorsCreated = true
                 I.CreateDefensiveCooldowns(previewButton)
+                I.CreateOffensiveCooldowns(previewButton)
                 I.CreateExternalCooldowns(previewButton)
                 I.CreateAllCooldowns(previewButton)
                 I.CreateDebuffs(previewButton)
@@ -862,7 +869,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     indicator:SetTexture(t["texture"])
                 end
                 -- update animation
-                if t["name"] == "Healers" or t["animationStyle"] or t["type"] == "rect" or t["type"] == "block" or t["type"] == "blocks" then
+                if t["name"] == "Healers" or t["animationStyle"] or t["indicatorName"] == "externalCooldowns" or t["indicatorName"] == "defensiveCooldowns" or t["indicatorName"] == "offensiveCooldowns" or t["indicatorName"] == "allCooldowns" or t["type"] == "rect" or t["type"] == "block" or t["type"] == "blocks" then
                     ApplyHealersPreviewAnimationStyle(indicator, ResolveHealersPreviewAnimationStyle(t))
                 elseif type(t["showAnimation"]) == "boolean" and indicator.ShowAnimation then
                     indicator:ShowAnimation(t["showAnimation"])
@@ -1787,12 +1794,17 @@ if Cell.isRetail or Cell.isMists then
         ["shieldBar"] = {"enabled", "checkbutton:onlyShowOvershields", "color-alpha", "height", "shieldBarPosition", "frameLevel"},
         ["aoeHealing"] = {"|cffb7b7b7"..L["Display a gradient texture when the unit receives a heal from your certain healing spells."], "enabled", "builtInAoEHealings", "customAoEHealings", "color", "height"},
         ["externalCooldowns"] = Cell.isMidnight
-            and {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInExternals", midnightDurationVisibility, "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
+            and {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInExternals", "checkbutton:showDuration", "animationStyle", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
             or {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInExternals", "customExternals", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["defensiveCooldowns"] = Cell.isMidnight
-            and {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInDefensives", midnightDurationVisibility, "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
+            and {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInDefensives", "checkbutton:showDuration", "animationStyle", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
             or {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInDefensives", "customDefensives", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["allCooldowns"] = {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["offensiveCooldowns"] = Cell.isMidnight
+            and {"enabled", "builtInOffensives", "checkbutton:showDuration", "animationStyle", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
+            or {"enabled", "builtInOffensives", "customOffensives", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["allCooldowns"] = Cell.isMidnight
+            and {"enabled", "checkbutton:showDuration", "animationStyle", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
+            or {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["tankActiveMitigation"] = {"|cffb7b7b7"..I.GetTankActiveMitigationString(), "enabled", "color-class", "size", "position", "frameLevel"},
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
         ["debuffs"] = Cell.isRetail
@@ -2038,6 +2050,9 @@ local function ShowIndicatorSettings(id)
             if indicatorName == "debuffs" and setting == "nonPlayerAuras" and indicatorTable[setting] == nil then
                 indicatorTable[setting] = false
             end
+            if setting == "showDuration" and type(indicatorTable[setting]) == "number" then
+                indicatorTable[setting] = true
+            end
             w:SetDBValue(setting, indicatorTable[setting], tooltip)
             w:SetFunc(function(value)
                 indicatorTable[setting] = value
@@ -2141,6 +2156,29 @@ local function ShowIndicatorSettings(id)
                 CellDB["externals"]["custom"] = value
                 I.UpdateExternals(CellDB["externals"])
                 Cell.Fire("UpdateIndicators", notifiedLayout, "", "externals")
+            end)
+
+        -- builtInOffensives
+        elseif currentSetting == "builtInOffensives" then
+            if type(CellDB["offensives"]) ~= "table" then
+                CellDB["offensives"] = {["disabled"] = {}, ["custom"] = {}}
+            end
+            w:SetDBValue(I.GetOffensives(), CellDB["offensives"]["disabled"])
+            w:SetFunc(function()
+                I.UpdateOffensives(CellDB["offensives"])
+                Cell.Fire("UpdateIndicators", notifiedLayout, "", "offensives")
+            end)
+
+        -- customOffensives
+        elseif currentSetting == "customOffensives" then
+            if type(CellDB["offensives"]) ~= "table" then
+                CellDB["offensives"] = {["disabled"] = {}, ["custom"] = {}}
+            end
+            w:SetDBValue(_G.CUSTOM, CellDB["offensives"]["custom"], true)
+            w:SetFunc(function(value)
+                CellDB["offensives"]["custom"] = value
+                I.UpdateOffensives(CellDB["offensives"])
+                Cell.Fire("UpdateIndicators", notifiedLayout, "", "offensives")
             end)
 
         -- builtInCrowdControls

@@ -267,6 +267,7 @@ L["Debug Mode"] = "Modalità Debug"
 --[[ L["DECLINED"] = "DECLINED"--]]
 L["Default layout"] = "Layout predefinito"
 L["Defensive Cooldowns"] = "Cooldown Difensivi"
+L["Offensive Cooldowns"] = "Cooldown Offensivi"
 L["Delete"] = "Elimina"
 L["Delete backup"] = "Elimina backup"
 L["Delete debuff?"] = "Elimina debuff?"

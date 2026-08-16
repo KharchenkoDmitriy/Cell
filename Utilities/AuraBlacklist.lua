@@ -19,6 +19,11 @@ local AlternateSpellIDs = {
     [390435] = 57723,
     [428628] = 57723,
     [264689] = 160455,
+    [102352] = 102351,
+    [188550] = 33763,
+    [1245369] = 1244893,
+    [1300009] = 1253593,
+    [406220] = 406139,
     [381732] = 381748,  -- Death Knight
     [381741] = 381748,  -- Demon Hunter
     [381746] = 381748,  -- Druid
@@ -126,8 +131,10 @@ local iconCache = {}
 
 local function GetSpellIcon(spellId)
     if iconCache[spellId] then return iconCache[spellId] end
-    local icon = select(2, F.GetSpellInfo(spellId))
-    if not icon then icon = 134400 end  -- fallback: "?"
+    local ok, icon = pcall(function()
+        return select(2, F.GetSpellInfo(spellId))
+    end)
+    if not ok or not icon then icon = 134400 end
     iconCache[spellId] = icon
     return icon
 end
@@ -143,7 +150,11 @@ local BuffSpellsBySpec = {
         [2] = { SpellEntry(1126, "Mark of the Wild"), },                     -- Feral
         [3] = { SpellEntry(1126, "Mark of the Wild"), },                     -- Guardian
         [4] = {                                                              -- Restoration
+            SpellEntry(391891, "Adaptive Swarm"),
+            SpellEntry(102351, "Cenarion Ward"),
             SpellEntry(155777, "Germination"),
+            SpellEntry(383193, "Grove Tending"),
+            SpellEntry(29166,  "Innervate"),
             SpellEntry(33763,  "Lifebloom"),
             SpellEntry(1126,   "Mark of the Wild"),
             SpellEntry(8936,   "Regrowth"),
@@ -160,6 +171,7 @@ local BuffSpellsBySpec = {
             SpellEntry(21562,  "Power Word: Fortitude"),
             SpellEntry(41635,  "Prayer of Mending"),
             SpellEntry(139,    "Renew"),
+            SpellEntry(453846, "Resonant Energy"),
             SpellEntry(1253593,"Void Shield"),
         },
         [2] = {                                                              -- Holy
@@ -168,6 +180,7 @@ local BuffSpellsBySpec = {
             SpellEntry(21562,  "Power Word: Fortitude"),
             SpellEntry(41635,  "Prayer of Mending"),
             SpellEntry(139,    "Renew"),
+            SpellEntry(453846, "Resonant Energy"),
             SpellEntry(1253593,"Void Shield"),
         },
         [3] = {                                                              -- Shadow
@@ -177,14 +190,20 @@ local BuffSpellsBySpec = {
     },
     PALADIN = {
         [1] = {                                                              -- Holy
+            SpellEntry(148039, "Barrier of Faith"),
             SpellEntry(156910, "Beacon of Faith"),
             SpellEntry(53563,  "Beacon of Light"),
             SpellEntry(1244893,"Beacon of the Savior"),
             SpellEntry(200025, "Beacon of Virtue"),
+            SpellEntry(223306, "Bestow Faith"),
+            SpellEntry(431381, "Dawnlight"),
             SpellEntry(156322, "Eternal Flame"),
+            SpellEntry(287280, "Glimmer of Light"),
             SpellEntry(432502, "Holy Armaments"),
             SpellEntry(433583, "Rite of Adjuration"),
             SpellEntry(433568, "Rite of Sanctification"),
+            SpellEntry(1241717,"Seraphic Barrier"),
+            SpellEntry(200654, "Tyr's Deliverance"),
         },
         [2] = {},                                                             -- Protection
         [3] = {},                                                            -- Retribution
@@ -209,6 +228,7 @@ local BuffSpellsBySpec = {
             SpellEntry(974,    "Earth Shield"),
             SpellEntry(382024, "Earthliving Weapon"),
             SpellEntry(444490, "Hydrobubble"),
+            SpellEntry(375986, "Primordial Wave"),
             SpellEntry(61295,  "Riptide"),
             SpellEntry(457496, "Tidecaller's Guard"),
             SpellEntry(462854, "Skyfury"),
@@ -221,7 +241,12 @@ local BuffSpellsBySpec = {
         [1] = {},                                                             -- Brewmaster
         [2] = {                                                              -- Mistweaver
             SpellEntry(450769, "Aspect of Harmony"),
+            SpellEntry(406139, "Chi Cocoon"),
+            SpellEntry(1292922,"Coalescence"),
+            SpellEntry(325209, "Enveloping Breath"),
             SpellEntry(124682, "Enveloping Mist"),
+            SpellEntry(467281, "Healing Elixir"),
+            SpellEntry(450805, "Purified Spirit"),
             SpellEntry(119611, "Renewing Mist"),
             SpellEntry(115175, "Soothing Mist"),
         },
@@ -243,16 +268,24 @@ local BuffSpellsBySpec = {
             SpellEntry(369459, "Source of Magic"),
         },
         [3] = {                                                              -- Preservation
+            SpellEntry(381748, "Blessing of the Bronze"),
+            SpellEntry(409678, "Chrono Ward"),
             SpellEntry(355941, "Dream Breath"),
             SpellEntry(363502, "Dream Flight"),
+            SpellEntry(378001, "Dream Projection"),
             SpellEntry(364343, "Echo"),
             SpellEntry(376788, "Echo Dream Breath"),
             SpellEntry(367364, "Echo Reversion"),
+            SpellEntry(445740, "Enkindle"),
             SpellEntry(373267, "Lifebind"),
             SpellEntry(366155, "Reversion"),
-            SpellEntry(381748, "Blessing of the Bronze"),
-            SpellEntry(410686, "Symbiotic Bloom"),
+            SpellEntry(409895, "Reverberations"),
             SpellEntry(369459, "Source of Magic"),
+            SpellEntry(406789, "Spatial Paradox"),
+            SpellEntry(410686, "Symbiotic Bloom"),
+            SpellEntry(373862, "Temporal Anomaly"),
+            SpellEntry(1291636,"Temporal Barrier"),
+            SpellEntry(370889, "Twin Guardian"),
         },
     },
     MAGE = {
@@ -328,7 +361,62 @@ function F.GetAuraBlacklistBuffSpells(classToken, specIndex)
 end
 
 function F.GetAuraBlacklistDebuffSpells()
-    return DebuffSpells
+    local list = {}
+    local seen = {}
+    for i = 1, #DebuffSpells do
+        local spell = DebuffSpells[i]
+        tinsert(list, spell)
+        seen[spell.spellId] = true
+    end
+
+    local function addCustomFrom(tbl)
+        if type(tbl) ~= "table" then return end
+        for spellId, entry in pairs(tbl) do
+            if type(spellId) == "number" and spellId > 0 and not seen[spellId] then
+                local listed = entry == true
+                    or (type(entry) == "table" and (entry.combat or entry.ooc))
+                if listed then
+                    local name
+                    local okName, spellName = pcall(F.GetSpellInfo, spellId)
+                    if okName then name = spellName end
+                    tinsert(list, {
+                        spellId = spellId,
+                        display = name or tostring(spellId),
+                        icon = GetSpellIcon(spellId),
+                        custom = true,
+                    })
+                    seen[spellId] = true
+                end
+            end
+        end
+    end
+
+    if CellDB and CellDB["auraBlacklist"] then
+        addCustomFrom(CellDB["auraBlacklist"]["HARMFUL"])
+        addCustomFrom(CellDB["auraBlacklist"]["debuffs"])
+    end
+    return list
+end
+
+function F.TryAddCustomDebuffBlacklist(spellId)
+    spellId = tonumber(spellId)
+    if not spellId or spellId <= 0 then
+        return false, "invalid"
+    end
+    local ok, name = pcall(F.GetSpellInfo, spellId)
+    if not ok or not name then
+        return false, "invalid"
+    end
+    local okEntry, existing = pcall(F.GetAuraBlacklistEntry, spellId, "HARMFUL")
+    local okEntry2, existing2 = pcall(F.GetAuraBlacklistEntry, spellId, "debuffs")
+    if (okEntry and existing) or (okEntry2 and existing2) then
+        return false, "exists", name
+    end
+    local okToggle = pcall(F.ToggleAuraBlacklist, spellId, "HARMFUL", true, true)
+    if not okToggle then
+        return false, "invalid"
+    end
+    return true, "ok", name
 end
 
 F.AuraBlacklistClassOrder = {

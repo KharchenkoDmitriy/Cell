@@ -41,8 +41,6 @@ local function CreateTooltip(name, hasIcon)
         tooltip:SetScript("OnEvent", function(self, event)
             if event ~= "TOOLTIP_DATA_UPDATE" then return end
             if not self:IsShown() then return end
-            -- Midnight raid: tooltip line colors can be secret. RefreshData then
-            -- errors in GameTooltip_AddColoredLine while tainted by Cell.
             if not pcall(self.RefreshData, self) then
                 self:Hide()
             end
@@ -136,6 +134,10 @@ function F.ApplyEngineAuraButtonTooltip(button, noTooltip)
     if noTooltip ~= nil then
         button._cellNoAuraTooltip = noTooltip and true or false
     end
+    local cfg = button._cellAuraTooltipCfg
+    if type(cfg) == "table" then
+        button._cellNoAuraTooltip = cfg.showTooltip ~= true
+    end
     local wantMotion = (not button._cellNoAuraTooltip) and UnitTooltipsEnabled()
     if button.SetMouseMotionEnabled then
         pcall(button.SetMouseMotionEnabled, button, wantMotion)
@@ -145,9 +147,12 @@ function F.ApplyEngineAuraButtonTooltip(button, noTooltip)
     end
 end
 
-function F.SetupEngineAuraButtonMouse(button, noTooltip)
+function F.SetupEngineAuraButtonMouse(button, noTooltip, cfg)
     if not button then return end
     pcall(button.SetMouseClickEnabled, button, false)
+    if cfg ~= nil then
+        button._cellAuraTooltipCfg = type(cfg) == "table" and cfg or nil
+    end
     F.ApplyEngineAuraButtonTooltip(button, noTooltip and true or false)
 end
 

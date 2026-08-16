@@ -62,6 +62,10 @@ local function CreateSetting_Enabled(parent)
         function widget:SetDBValue(checked)
             widget.cb:SetChecked(checked)
         end
+
+        function widget:SetLocked(locked)
+            widget.cb:SetEnabled(not locked)
+        end
     else
         widget = settingWidgets["enabled"]
     end
@@ -4786,7 +4790,7 @@ local function CreateSetting_Auras(parent, index)
 end
 
 -------------------------------------------------
--- CreateSetting_AurasPicker - same as Auras but with spell picker instead of ID entry
+-- CreateSetting_AurasPicker
 -------------------------------------------------
 local function CreateSetting_AurasPicker(parent)
     local widget
@@ -4940,7 +4944,7 @@ local function CreateSetting_AurasPicker(parent)
 
             widget.text:SetText(title)
 
-            local pickerIndex = 3 -- separate cache from auras(1) and auras2(2)
+            local pickerIndex = 3
             if not auraButtons[pickerIndex] then auraButtons[pickerIndex] = {} end
 
             CreateAuraButtons(widget.frame, auraButtons[pickerIndex], t, noUpDownButtons, isZeroValid, hasColorPicker, function(n, diff)
@@ -4948,7 +4952,7 @@ local function CreateSetting_AurasPicker(parent)
                 widget.frame:SetHeight(height)
                 widget:SetHeight(height + P.Scale(22) + P.Scale(7))
                 if diff then parent:SetHeight(parent:GetHeight() + P.Scale(diff)) end
-            end, true) -- usePicker = true
+            end, true)
 
             local height = (#t + 1) * P.Scale(20) - #t * P.Scale(1)
             widget.frame:SetHeight(height)
@@ -6249,7 +6253,6 @@ local function CreateSetting_PrivateAuraOptions(parent)
         widget.line:SetHeight(1)
         widget.line:SetColorTexture(1, 1, 1, 0.2)
 
-        -- Separate block for private dispel overlay settings (own framed panel + margins)
         widget.dispelBlock = Cell.CreateFrame("CellIndicatorSettings_PrivateAuraDispelBlock", widget, 230, 285)
         widget.dispelBlock:SetPoint("TOPLEFT", widget.line, "BOTTOMLEFT", 0, -14)
         widget.dispelBlock:Show()
@@ -7261,7 +7264,6 @@ end
 
 -------------------------------------------------
 -- Spell Picker dialog for custom indicators
--- Spell data sourced from AuraBlacklist.lua (via F.GetAuraBlacklistBuffSpells / DebuffSpells)
 -------------------------------------------------
 local SpellPickerFrame
 local function RefreshSpellPicker()
@@ -7272,11 +7274,10 @@ local function RefreshSpellPicker()
     local s = state.specIndex
     if c == "AUTO" then
         local _, t = UnitClass("player"); c = t
-        s = GetSpecialization()  -- auto-detect spec so we only see relevant spells
+        s = GetSpecialization()
     end
     local spells = F.GetAuraBlacklistBuffSpells(c, s) or {}
 
-    -- Clear old rows
     for _, r in ipairs(SpellPickerFrame.rows or {}) do r:Hide(); r:ClearAllPoints() end
     SpellPickerFrame.rows = {}
 
@@ -7284,7 +7285,8 @@ local function RefreshSpellPicker()
     local ar, ag, ab = Cell.GetAccentColorRGB()
     for _, s in ipairs(spells) do
         local name = strlower(s.display)
-        if search == "" or name:find(search, 1, true) then
+        local idStr = tostring(s.spellId)
+        if search == "" or name:find(search, 1, true) or idStr:find(search, 1, true) then
             idx = idx + 1
             local row = CreateFrame("Button", nil, SpellPickerFrame.content, "BackdropTemplate")
             row:SetHeight(20); row:SetPoint("TOPLEFT", 4, -((idx-1)*21))
@@ -7293,17 +7295,14 @@ local function RefreshSpellPicker()
             row:SetBackdropColor(0.15, 0.15, 0.15, 0.95)
             row.spellId = s.spellId
 
-            -- Icon
             local ic = row:CreateTexture(nil, "ARTWORK")
             ic:SetSize(16, 16); ic:SetPoint("LEFT", 4, 0)
             ic:SetTexture(s.icon or 134400); ic:SetTexCoord(0.08,0.92,0.08,0.92)
 
-            -- Name
             local txt = row:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
             txt:SetPoint("LEFT", ic, "RIGHT", 6, 0); txt:SetPoint("RIGHT", -4, 0)
             txt:SetJustifyH("LEFT"); txt:SetText(s.display); txt:SetTextColor(1,1,1)
 
-            -- Accent bar if selected
             local abar = row:CreateTexture(nil, "ARTWORK")
             abar:SetSize(3, 16); abar:SetPoint("LEFT", 0, 0)
             abar:SetColorTexture(ar,ag,ab,1)
@@ -7341,7 +7340,6 @@ local function RefreshSpellPicker()
 
     local totalH = #SpellPickerFrame.rows * 21 + 4
 
-    -- Empty state message
     if not SpellPickerFrame.emptyLabel then
         SpellPickerFrame.emptyLabel = SpellPickerFrame.content:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
         SpellPickerFrame.emptyLabel:SetPoint("TOPLEFT", 8, -20)
@@ -7360,7 +7358,7 @@ local function RefreshSpellPicker()
             end
         SpellPickerFrame.emptyLabel:SetText(noSpellsMsg)
         SpellPickerFrame.emptyLabel:Show()
-        totalH = 40  -- just enough for the message
+        totalH = 40
     else
         SpellPickerFrame.emptyLabel:Hide()
     end
@@ -7368,8 +7366,22 @@ local function RefreshSpellPicker()
     SpellPickerFrame.content:SetHeight(math.max(totalH, 100))
 end
 
+local function ConfirmPickerSpellId(spellId)
+    spellId = tonumber(spellId)
+    if not spellId or spellId <= 0 then
+        F.Print(L["Invalid spell id."])
+        return
+    end
+    if SpellPickerFrame and SpellPickerFrame.onConfirm then
+        SpellPickerFrame.onConfirm(spellId)
+    end
+    if SpellPickerFrame then
+        SpellPickerFrame:Hide()
+    end
+end
+
 local function CreateSpellPicker()
-    if SpellPickerFrame and SpellPickerFrame.searchBox and SpellPickerFrame.classBtn then return end
+    if SpellPickerFrame and SpellPickerFrame.searchBox and SpellPickerFrame.classBtn and SpellPickerFrame.idBox then return end
     SpellPickerFrame = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     SpellPickerFrame:SetSize(260, 360)
     Cell.StylizeFrame(SpellPickerFrame, {0.08,0.08,0.08,1}, {0.25,0.25,0.25,1})
@@ -7379,16 +7391,13 @@ local function CreateSpellPicker()
     SpellPickerFrame:SetToplevel(true)
     SpellPickerFrame.state = { class = "AUTO", specIndex = nil }
 
-    -- Title
     local title = SpellPickerFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
     title:SetPoint("TOPLEFT", 8, -6); title:SetText(L["Select Spell"]); title:SetTextColor(1,1,1)
 
-    -- Close button
     local closeBtn = Cell.CreateButton(SpellPickerFrame, "×", "red", {18,18}, false, false, "CELL_FONT_SPECIAL", "CELL_FONT_SPECIAL")
     closeBtn:SetPoint("TOPRIGHT", -4, -4)
     closeBtn:SetScript("OnClick", function() SpellPickerFrame:Hide() end)
 
-    -- Tabs: Buffs only (debuffs can't be used in custom indicators per Blizzard restrictions)
     local tabH = 22
     local b1 = CreateFrame("Button", nil, SpellPickerFrame, "BackdropTemplate")
     b1:SetSize(70, tabH); b1:SetPoint("TOPLEFT", 6, -26)
@@ -7400,11 +7409,7 @@ local function CreateSpellPicker()
     b1:SetScript("OnEnter", function() b1:SetBackdropColor(0.30,0.30,0.30,0.95) end)
     b1:SetScript("OnLeave", function() b1:SetBackdropColor(0.20,0.20,0.20,0.95) end)
 
-    -- Class/spec selector dropdown (custom, not Cell.CreateDropdown)
-    -- Builds a spec-aware popup: Healers show Holy/Disc/Resto etc, non-healers show class only
     do
-        -- Auto-build spec labels from AuraBlacklist data + spec names
-        -- Only includes specs that have at least one spell entry.
         local function BuildSpecLabels()
             local labels = {}
             for classToken, names in pairs(F.AuraBlacklistSpecNames or {}) do
@@ -7419,14 +7424,12 @@ local function CreateSpellPicker()
             return labels
         end
 
-        -- Build flat dropdown items: { label, value, isAuto }
         local function BuildItems()
             local specLabels = BuildSpecLabels()
             local items = {}
             local c = SpellPickerFrame.state.class
             local specIdx = SpellPickerFrame.state.specIndex
 
-            -- Auto item with current spec info
             local autoLabel = "|cffbababaAuto|r"
             local _, classToken = UnitClass("player")
             if classToken and specLabels[classToken] then
@@ -7438,10 +7441,8 @@ local function CreateSpellPicker()
             end
             tinsert(items, { label = autoLabel, value = "AUTO", specIdx = nil })
 
-            -- Separator (as disabled item)
             tinsert(items, { label = "---", value = nil, isSep = true })
 
-            -- Per-class entries with spec sub-items
             local classOrder = F.AuraBlacklistClassOrder or F.AuraBlacklistClassNames and {"PRIEST","DRUID","PALADIN","SHAMAN","MONK","EVOKER","MAGE","WARRIOR","ROGUE","HUNTER"} or {}
             for _, ct in ipairs(classOrder) do
                 local r, g, b = F.GetClassColor(ct)
@@ -7449,7 +7450,6 @@ local function CreateSpellPicker()
                 local localized = F.GetLocalizedClassName(ct) or ct
                 local specs = specLabels[ct] or {}
                 if next(specs) then
-                    -- Has specs — add one entry per spec
                     for si, sn in pairs(specs) do
                         tinsert(items, {
                             label = ("|cff%s%s (%s)|r"):format(colorStr, localized, sn),
@@ -7459,7 +7459,6 @@ local function CreateSpellPicker()
                         })
                     end
                 else
-                    -- No specs — add class-level entry
                     tinsert(items, {
                         label = ("|cff%s%s|r"):format(colorStr, localized),
                         value = ct,
@@ -7470,7 +7469,6 @@ local function CreateSpellPicker()
             return items
         end
 
-        -- Main trigger button
         local btn = CreateFrame("Button", nil, SpellPickerFrame, "BackdropTemplate")
         btn:SetPoint("TOPLEFT", b1, "TOPRIGHT", 10, 2)
         btn:SetPoint("TOPRIGHT", -8, 2)
@@ -7486,7 +7484,6 @@ local function CreateSpellPicker()
         btn:SetScript("OnLeave", function() btn:SetBackdropColor(0.115,0.115,0.115,0.95) end)
         SpellPickerFrame.classBtn = btn
 
-        -- Dropdown popup (child of picker so inherits DIALOG strata)
         local ddFrame = CreateFrame("Frame", nil, SpellPickerFrame, "BackdropTemplate")
         ddFrame:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -2)
         ddFrame:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -2)
@@ -7498,7 +7495,6 @@ local function CreateSpellPicker()
         local ddButtons = {}
 
         local function RefreshDropdown()
-            -- Kill old buttons
             for _, b in ipairs(ddButtons) do b:Hide(); b:ClearAllPoints() end
             wipe(ddButtons)
             local items = BuildItems()
@@ -7506,7 +7502,6 @@ local function CreateSpellPicker()
             local yOff = 0
             for _, item in ipairs(items) do
                 if item.isSep then
-                    -- Separator line
                     local line = ddFrame:CreateTexture(nil, "ARTWORK")
                     line:SetHeight(1); line:SetPoint("LEFT", 4, yOff); line:SetPoint("RIGHT", -4, yOff)
                     line:SetColorTexture(0.25,0.25,0.25,1)
@@ -7545,16 +7540,17 @@ local function CreateSpellPicker()
             ddFrame:Show()
         end)
 
-        -- Hide dropdown when clicking outside picker
         SpellPickerFrame:SetScript("OnHide", function()
             ddFrame:Hide()
             if CellSpellTooltip then CellSpellTooltip:Hide() end
             SpellPickerFrame.searchBox:SetText("")
+            if SpellPickerFrame.idBox then
+                SpellPickerFrame.idBox:SetText("")
+            end
             SpellPickerFrame.selectedId = nil
         end)
     end
 
-    -- Search box
     do
         local sb = Cell.CreateEditBox(SpellPickerFrame, 20, 20, false, false, true)
         sb:SetPoint("TOPLEFT", b1, "BOTTOMLEFT", 0, -4)
@@ -7569,17 +7565,46 @@ local function CreateSpellPicker()
         sb:HookScript("OnEditFocusLost", function() if sb:GetText() == "" then tip:Show() end end)
     end
 
-    -- Scrollable spell list (container frame for Cell scroll system)
     do
         local container = CreateFrame("Frame", nil, SpellPickerFrame)
         container:SetPoint("TOPLEFT", 4, -58)
-        container:SetPoint("BOTTOMRIGHT", -4, -32)
+        container:SetPoint("BOTTOMRIGHT", -4, 58)
         Cell.CreateScrollFrame(container)
         SpellPickerFrame.scrollFrame = container.scrollFrame
         SpellPickerFrame.content = container.scrollFrame.content
     end
 
-    -- Buttons
+    do
+        local idBox = Cell.CreateEditBox(SpellPickerFrame, 20, 20, false, false, true)
+        idBox:SetPoint("BOTTOMLEFT", 8, 32)
+        idBox:SetPoint("BOTTOMRIGHT", -72, 32)
+        idBox:SetHeight(20)
+        idBox:SetAutoFocus(false)
+        SpellPickerFrame.idBox = idBox
+        local tip = idBox:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        tip:SetPoint("LEFT", 4, 0)
+        tip:SetText(L["Input spell id"])
+        tip:SetTextColor(0.4, 0.4, 0.4)
+        SpellPickerFrame.idBoxTip = tip
+        idBox:HookScript("OnEditFocusGained", function() tip:Hide() end)
+        idBox:HookScript("OnEditFocusLost", function()
+            if idBox:GetText() == "" then tip:Show() end
+        end)
+        idBox:HookScript("OnTextChanged", function()
+            tip:SetShown(idBox:GetText() == "" and not idBox:HasFocus())
+        end)
+        idBox:SetScript("OnEnterPressed", function()
+            ConfirmPickerSpellId(idBox:GetText())
+        end)
+
+        local addBtn = Cell.CreateButton(SpellPickerFrame, L["Add"], "accent", {60, 22})
+        addBtn:SetPoint("BOTTOMRIGHT", -8, 30)
+        addBtn:SetScript("OnClick", function()
+            ConfirmPickerSpellId(idBox:GetText())
+        end)
+        SpellPickerFrame.idAddBtn = addBtn
+    end
+
     local cancelBtn = Cell.CreateButton(SpellPickerFrame, L["Cancel"], "red-hover", {60, 22})
     cancelBtn:SetPoint("BOTTOMRIGHT", -50, 6)
     cancelBtn:SetScript("OnClick", function() SpellPickerFrame:Hide() end)
@@ -7587,10 +7612,13 @@ local function CreateSpellPicker()
     local okBtn = Cell.CreateButton(SpellPickerFrame, L["Confirm"], "green", {60, 22})
     okBtn:SetPoint("RIGHT", cancelBtn, "LEFT", -4, 0)
     okBtn:SetScript("OnClick", function()
-        if SpellPickerFrame.selectedId and SpellPickerFrame.onConfirm then
-            SpellPickerFrame.onConfirm(SpellPickerFrame.selectedId)
+        local typed = SpellPickerFrame.idBox and tonumber(SpellPickerFrame.idBox:GetText())
+        local id = SpellPickerFrame.selectedId or typed
+        if id then
+            ConfirmPickerSpellId(id)
+        else
+            SpellPickerFrame:Hide()
         end
-        SpellPickerFrame:Hide()
     end)
 end
 
@@ -7602,16 +7630,21 @@ function Cell.ShowSpellPicker(parent, currentSpellId, onConfirm)
     SpellPickerFrame.onConfirm = onConfirm
     SpellPickerFrame:ClearAllPoints()
     SpellPickerFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", -10, 5)
-    SpellPickerFrame:SetSize(280, 380)
+    SpellPickerFrame:SetSize(280, 410)
     SpellPickerFrame:SetFrameStrata("DIALOG")
     SpellPickerFrame:SetFrameLevel(600)
     SpellPickerFrame:SetToplevel(true)
+    if SpellPickerFrame.idBox then
+        local idText = currentSpellId and tostring(currentSpellId) or ""
+        SpellPickerFrame.idBox:SetText(idText)
+        if SpellPickerFrame.idBoxTip then
+            SpellPickerFrame.idBoxTip:SetShown(idText == "")
+        end
+    end
     if CellSpellTooltip then CellSpellTooltip:Hide() end
     RefreshSpellPicker()
     SpellPickerFrame:Show()
 
-    -- Auto-close the picker when the parent settings panel is hidden
-    -- (e.g. when closing the Cell options panel entirely).
     if parent and not parent._spellPickerHooked then
         parent._spellPickerHooked = true
         parent:HookScript("OnHide", function()
@@ -7624,7 +7657,6 @@ end
 
 -----------------------------------------
 -- CreateSetting_AuraBlacklist
--- Blacklist: filter tabs, class dropdown, spell rows
 -----------------------------------------
 local function CreateSetting_AuraBlacklist(parent)
     local widget
@@ -7636,7 +7668,6 @@ local function CreateSetting_AuraBlacklist(parent)
         widget = Cell.CreateFrame("CellIndicatorSettings_AuraBlacklist", parent, 240, 155)
         settingWidgets["auraBlacklist"] = widget
 
-        -- Persistent state
         local state = { filter = "buffs", class = "AUTO", spec = nil }
         local ar, ag, ab = Cell.GetAccentColorRGB()
 
@@ -7648,21 +7679,21 @@ local function CreateSetting_AuraBlacklist(parent)
             local s = state.spec
             if c == "AUTO" then
                 local _, t = UnitClass("player"); c = t
-                s = nil  -- auto-detect class, show all specs
+                s = nil
             end
             return F.GetAuraBlacklistBuffSpells(c, s) or {}
         end
 
-        -- ── Layout constants ──
-        local DD_Y = -5          -- class dropdown
-        local SPEC_Y = -28       -- spec dropdown (hidden when class = AUTO)
-        local FILTER_Y = -50     -- buffs/debuffs toggle
-        local HEADER_Y = -78     -- column headers
-        local FIRST_ROW_Y = -98  -- first spell row
+        local DD_Y = -5
+        local SPEC_Y = -28
+        local FILTER_Y = -50
+        local HEADER_Y = -78
+        local FIRST_ROW_Y = -98
         local ROW_H = 20
         local ROW_GAP = 6
 
         local spellRows = {}
+        local Refresh
 
         local function MakeRow(spell, idx)
             local sid = spell.spellId
@@ -7678,18 +7709,15 @@ local function CreateSetting_AuraBlacklist(parent)
             row:SetBackdrop({ bgFile = Cell.vars.whiteTexture })
             row:SetBackdropColor(bl and 0.25 or 0.15, bl and 0.25 or 0.15, bl and 0.25 or 0.15, 0.95)
 
-            -- Accent bar
             local abar = row:CreateTexture(nil, "ARTWORK")
             abar:SetSize(3, ROW_H-4); abar:SetPoint("LEFT", 2, 0)
             abar:SetColorTexture(ar,ag,ab,1); abar:SetShown(bl)
 
-            -- Icon
             local icon = row:CreateTexture(nil, "ARTWORK")
             icon:SetSize(16, 16); icon:SetPoint("LEFT", 8, 0)
             icon:SetTexture(spell.icon or 134400); icon:SetTexCoord(0.08,0.92,0.08,0.92)
             if not bl then icon:SetAlpha(0.5) end
 
-            -- Name (wider area; -140 leaves room for Combat/OOC checkboxes)
             local txt = row:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
             txt:SetPoint("LEFT", icon, "RIGHT", 6, 0); txt:SetPoint("RIGHT", -140, 0)
             txt:SetJustifyH("LEFT"); txt:SetText(spell.display)
@@ -7703,7 +7731,6 @@ local function CreateSetting_AuraBlacklist(parent)
                 txt:SetTextColor(1, 1, 1)
             end
 
-            -- Combat checkbox
             do
                 local skip = true
                 local cb = Cell.CreateCheckButton(row, "", function(checked)
@@ -7722,7 +7749,6 @@ local function CreateSetting_AuraBlacklist(parent)
                 skip = false
             end
 
-            -- OOC checkbox
             do
                 local skip = true
                 local cb = Cell.CreateCheckButton(row, "", function(checked)
@@ -7741,7 +7767,6 @@ local function CreateSetting_AuraBlacklist(parent)
                 skip = false
             end
 
-            -- Click row toggles both
             row:SetScript("OnClick", function()
                 local e = F.GetAuraBlacklistEntry(sid, f)
                 if e then F.RemoveAuraBlacklist(sid, f)
@@ -7750,11 +7775,25 @@ local function CreateSetting_AuraBlacklist(parent)
                 Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, "", "bigDebuffs")
             end)
 
+            if spell.custom then
+                local del = Cell.CreateButton(row, "×", "red-hover", {16, 16}, false, false, "CELL_FONT_SPECIAL", "CELL_FONT_SPECIAL")
+                del:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+                del:SetScript("OnClick", function(self, button)
+                    pcall(F.RemoveAuraBlacklist, sid, "HARMFUL")
+                    pcall(F.RemoveAuraBlacklist, sid, "debuffs")
+                    pcall(Cell.Fire, "UpdateIndicators", Cell.vars.currentLayout, "", "bigDebuffs")
+                    pcall(Refresh)
+                end)
+            end
+
             row:SetScript("OnEnter", function(self)
                 row:SetBackdropColor(bl and 0.30 or 0.20, bl and 0.30 or 0.20, bl and 0.30 or 0.20, 0.95)
                 if CellSpellTooltip then
-                    CellSpellTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    CellSpellTooltip:SetSpellByID(sid); CellSpellTooltip:Show()
+                    pcall(function()
+                        CellSpellTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        CellSpellTooltip:SetSpellByID(sid)
+                        CellSpellTooltip:Show()
+                    end)
                 end
             end)
             row:SetScript("OnLeave", function() Upd(); if CellSpellTooltip then CellSpellTooltip:Hide() end end)
@@ -7762,19 +7801,29 @@ local function CreateSetting_AuraBlacklist(parent)
             return row
         end
 
-        local function Refresh()
+        Refresh = function()
             for _, r in ipairs(spellRows) do r:Hide(); r:ClearAllPoints() end
             wipe(spellRows)
             local spells = Spells()
             for i, s in ipairs(spells) do tinsert(spellRows, MakeRow(s, i)) end
             local n = #spells
             local rowsH = n > 0 and (n * ROW_H + (n-1) * ROW_GAP) or 0
-            local hContent = -FIRST_ROW_Y + rowsH + 36
+            local extra = (state.filter == "debuffs") and 50 or 0
+            local hContent = -FIRST_ROW_Y + rowsH + 36 + extra
             widget:SetHeight(math.max(155, hContent))
+            if widget.idBox then
+                widget.idBox:SetShown(state.filter == "debuffs")
+                widget.idAddBtn:SetShown(state.filter == "debuffs")
+                if widget.idBoxTip then
+                    widget.idBoxTip:SetShown(state.filter == "debuffs" and widget.idBox:GetText() == "")
+                end
+                if state.filter ~= "debuffs" and widget.invalidLabel then
+                    widget.invalidLabel:Hide()
+                end
+            end
             Cell.UpdateIndicatorSettingsHeight()
         end
 
-        -- ── Class dropdown ──
         do
             local dd = Cell.CreateDropdown(widget, 224)
             dd:SetPoint("TOPLEFT", 8, DD_Y)
@@ -7796,7 +7845,6 @@ local function CreateSetting_AuraBlacklist(parent)
                     onClick = function()
                         state.class = c; state.spec = nil
                         if widget.specDD then
-                            -- Rebuild spec items for this class
                             local sNames = F.AuraBlacklistSpecNames[c] or {}
                             local sItems = {
                                 { text = L["All specs"],
@@ -7804,7 +7852,7 @@ local function CreateSetting_AuraBlacklist(parent)
                                   onClick = function() state.spec = nil; Refresh() end },
                             }
                             for si, sName in ipairs(sNames) do
-                                local specIdx = si  -- Lua 5.1: fresh local per iteration for the closure
+                                local specIdx = si
                                 tinsert(sItems, {
                                     text = "  " .. sName,
                                     value = specIdx,
@@ -7824,7 +7872,6 @@ local function CreateSetting_AuraBlacklist(parent)
             widget.classDD = dd
         end
 
-        -- ── Spec dropdown ──
         do
             local specDD = Cell.CreateDropdown(widget, 224)
             specDD:SetPoint("TOPLEFT", 8, SPEC_Y)
@@ -7832,7 +7879,6 @@ local function CreateSetting_AuraBlacklist(parent)
             widget.specDD = specDD
         end
 
-        -- ── Filter buttons ──
         local bw, bh = 80, 22
         local b1 = CreateFrame("Button", nil, widget, "BackdropTemplate")
         b1:SetSize(bw, bh); b1:SetPoint("TOPLEFT", 5, FILTER_Y)
@@ -7882,7 +7928,6 @@ local function CreateSetting_AuraBlacklist(parent)
         b2:SetScript("OnEnter", function() b2:SetBackdropColor(0.30,0.30,0.30,0.95) end)
         b2:SetScript("OnLeave", UpdTabs)
 
-        -- ── Column headers ──
         local hdr = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
         hdr:SetPoint("TOPLEFT", 8, HEADER_Y); hdr:SetText("Spell"); hdr:SetTextColor(0.6,0.6,0.6)
         local chCombat = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
@@ -7890,13 +7935,77 @@ local function CreateSetting_AuraBlacklist(parent)
         local chOOC = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
         chOOC:SetPoint("TOPLEFT", 206, HEADER_Y); chOOC:SetText("OOC"); chOOC:SetTextColor(0.6,0.6,0.6)
 
-        -- ── Footer ──
         local footer = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
         footer:SetPoint("BOTTOMLEFT", 8, 4)
         footer:SetPoint("BOTTOMRIGHT", -8, 4)
         footer:SetText("Click a spell to toggle. Combat = hidden in combat, OOC = hidden out of combat.")
         footer:SetTextColor(0.45,0.45,0.45)
         footer:SetJustifyH("LEFT")
+        footer:SetJustifyV("BOTTOM")
+        footer:SetWordWrap(true)
+        footer:SetSpacing(1)
+
+        do
+            local idBox = Cell.CreateEditBox(widget, 20, 20, false, false, true)
+            idBox:SetPoint("BOTTOMLEFT", 8, 42)
+            idBox:SetPoint("BOTTOMRIGHT", -72, 42)
+            idBox:SetHeight(20)
+            idBox:SetAutoFocus(false)
+            widget.idBox = idBox
+
+            local tip = idBox:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+            tip:SetPoint("LEFT", 4, 0)
+            tip:SetText(L["Input spell id"])
+            tip:SetTextColor(0.4, 0.4, 0.4)
+            widget.idBoxTip = tip
+            idBox:HookScript("OnEditFocusGained", function() tip:Hide() end)
+            idBox:HookScript("OnEditFocusLost", function()
+                if idBox:GetText() == "" then tip:Show() end
+            end)
+            idBox:HookScript("OnTextChanged", function()
+                tip:SetShown(idBox:GetText() == "" and not idBox:HasFocus())
+                if widget.invalidLabel then widget.invalidLabel:Hide() end
+            end)
+
+            local invalidLabel = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+            invalidLabel:SetPoint("RIGHT", idBox, "RIGHT", -6, 0)
+            invalidLabel:SetText(L["Invalid"])
+            invalidLabel:SetTextColor(1, 0.27, 0.27)
+            invalidLabel:Hide()
+            widget.invalidLabel = invalidLabel
+
+            local function AddCustomDebuff()
+                local okCall, ok, reason = pcall(F.TryAddCustomDebuffBlacklist, idBox:GetText())
+                if not okCall then
+                    invalidLabel:Show()
+                    F.Print(L["This debuff is invalid and cannot be added to the blacklist."])
+                    return
+                end
+                if ok then
+                    invalidLabel:Hide()
+                    idBox:SetText("")
+                    tip:Show()
+                    pcall(Refresh)
+                    pcall(Cell.Fire, "UpdateIndicators", Cell.vars.currentLayout, "", "bigDebuffs")
+                    return
+                end
+                if reason == "exists" then
+                    invalidLabel:Hide()
+                    idBox:SetText("")
+                    tip:Show()
+                    pcall(Refresh)
+                    return
+                end
+                invalidLabel:Show()
+                F.Print(L["This debuff is invalid and cannot be added to the blacklist."])
+            end
+            idBox:SetScript("OnEnterPressed", AddCustomDebuff)
+
+            local addBtn = Cell.CreateButton(widget, L["Add"], "accent", {60, 20})
+            addBtn:SetPoint("BOTTOMRIGHT", -8, 42)
+            addBtn:SetScript("OnClick", AddCustomDebuff)
+            widget.idAddBtn = addBtn
+        end
 
         function widget:SetFunc(func) end
         function widget:SetDBValue() Refresh() end

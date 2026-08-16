@@ -6,7 +6,7 @@ local F = Cell.funcs
 local I = Cell.iFuncs
 
 local GROUP_KEY = "healers"
-local INIT_VERSION = 24
+local INIT_VERSION = 25
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -66,6 +66,16 @@ local function BuildSpellMap(auras)
         local n = tonumber(v)
         if not (n and n > 0) then n = tonumber(k) end
         if n and n > 0 then map[n] = true end
+    end
+    local alts = Cell.AuraBlacklist and Cell.AuraBlacklist.AlternateSpellIDs
+    if type(alts) == "table" then
+        for altId, primaryId in pairs(alts) do
+            if map[primaryId] then
+                map[altId] = true
+            elseif map[altId] then
+                map[primaryId] = true
+            end
+        end
     end
     return map
 end
@@ -237,7 +247,7 @@ local function InitAuraButton(button)
     local cfg = cachedConfig
     local size = (cfg and cfg.size and cfg.size[1]) or 13
     pcall(button.SetSize, button, size, size)
-    F.SetupEngineAuraButtonMouse(button)
+    F.SetupEngineAuraButtonMouse(button, not (cfg and cfg.showTooltip), cfg)
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints(button)
@@ -621,6 +631,7 @@ if SUPPORTED then
             or setting == "castBy" or setting == "enabled" or setting == "frameLevel"
             or setting == "showAnimation" or setting == "animationStyle"
             or setting == "showDuration" or setting == "showStack"
+            or setting == "showTooltip"
             or setting == "checkbutton" or setting == "font" then
             C_Timer.After(0, I.RefreshAllHealersAuraDisplays)
         end

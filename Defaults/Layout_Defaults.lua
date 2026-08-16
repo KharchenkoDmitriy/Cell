@@ -338,7 +338,7 @@ Cell.defaults.layout = {
             ["name"] = "AoE Healing",
             ["indicatorName"] = "aoeHealing",
             ["type"] = "built-in",
-            ["enabled"] = true,
+            ["enabled"] = false,
             ["height"] = 10,
             ["color"] = {1, 1, 0},
         }, -- 17
@@ -422,7 +422,7 @@ Cell.defaults.layout = {
             ["name"] = "Tank Active Mitigation",
             ["indicatorName"] = "tankActiveMitigation",
             ["type"] = "built-in",
-            ["enabled"] = true,
+            ["enabled"] = false,
             ["position"] = {"TOPLEFT", "button", "TOPLEFT", 10, 0},
             ["frameLevel"] = 5,
             ["size"] = {20, 6},

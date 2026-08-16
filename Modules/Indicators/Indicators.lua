@@ -1792,7 +1792,9 @@ if Cell.isRetail or Cell.isMists then
         ["aggroBorder"] = {"enabled", "thickness", "frameLevel"},
         ["aggroBar"] = {"enabled", "size", "position", "frameLevel"},
         ["shieldBar"] = {"enabled", "checkbutton:onlyShowOvershields", "color-alpha", "height", "shieldBarPosition", "frameLevel"},
-        ["aoeHealing"] = {"|cffb7b7b7"..L["Display a gradient texture when the unit receives a heal from your certain healing spells."], "enabled", "builtInAoEHealings", "customAoEHealings", "color", "height"},
+        ["aoeHealing"] = Cell.isMidnight
+            and {"warning:"..(L["aoeHealingDisabledApiWarning"] or ""), "|cffb7b7b7"..L["Display a gradient texture when the unit receives a heal from your certain healing spells."], "enabled", "builtInAoEHealings", "customAoEHealings", "color", "height"}
+            or {"|cffb7b7b7"..L["Display a gradient texture when the unit receives a heal from your certain healing spells."], "enabled", "builtInAoEHealings", "customAoEHealings", "color", "height"},
         ["externalCooldowns"] = Cell.isMidnight
             and {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInExternals", "checkbutton:showDuration", "animationStyle", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
             or {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInExternals", "customExternals", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
@@ -1805,7 +1807,9 @@ if Cell.isRetail or Cell.isMists then
         ["allCooldowns"] = Cell.isMidnight
             and {"enabled", "checkbutton:showDuration", "animationStyle", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
             or {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["tankActiveMitigation"] = {"|cffb7b7b7"..I.GetTankActiveMitigationString(), "enabled", "color-class", "size", "position", "frameLevel"},
+        ["tankActiveMitigation"] = Cell.isMidnight
+            and {"warning:"..(L["tankActiveMitigationDisabledApiWarning"] or ""), "|cffb7b7b7"..I.GetTankActiveMitigationString(), "enabled", "color-class", "size", "position", "frameLevel"}
+            or {"|cffb7b7b7"..I.GetTankActiveMitigationString(), "enabled", "color-class", "size", "position", "frameLevel"},
         ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
         ["debuffs"] = Cell.isRetail
             and {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "size-square", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
@@ -1907,7 +1911,6 @@ local function ShowIndicatorSettings(id)
     settingsFrame.scrollFrame:ResetScroll()
     settingsFrame.scrollFrame:ResetHeight()
 
-    -- ── Aura Blacklist special rendering ──
     if Cell.isRetail and id == "__auraBlacklist" then
         local widgets = Cell.CreateIndicatorSettings(settingsFrame.scrollFrame.content, {"builtInAuraBlacklist"})
         for _, w in pairs(widgets) do
@@ -2034,8 +2037,18 @@ local function ShowIndicatorSettings(id)
 
         -- enabled
         elseif currentSetting == "enabled" then
+            local locked = Cell.isMidnight and (indicatorName == "aoeHealing" or indicatorName == "tankActiveMitigation")
+            if locked and indicatorTable[currentSetting] then
+                indicatorTable[currentSetting] = false
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, currentSetting, false)
+                UpdateIndicatorButtonVisual(id)
+            end
             w:SetDBValue(indicatorTable[currentSetting])
+            if w.SetLocked then
+                w:SetLocked(locked)
+            end
             w:SetFunc(function(value)
+                if locked then return end
                 indicatorTable[currentSetting] = value
                 Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, currentSetting, value)
                 UpdateIndicatorButtonVisual(id)

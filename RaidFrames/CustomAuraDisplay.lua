@@ -5,7 +5,7 @@ local F = Cell.funcs
 ---@type CellIndicatorFuncs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 19
+local INIT_VERSION = 20
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -124,6 +124,16 @@ local function BuildSpellMap(auras)
     for k, v in pairs(auras) do
         local n = AuraEntrySpellId(k, v)
         if n then map[n] = true end
+    end
+    local alts = Cell.AuraBlacklist and Cell.AuraBlacklist.AlternateSpellIDs
+    if type(alts) == "table" then
+        for altId, primaryId in pairs(alts) do
+            if map[primaryId] then
+                map[altId] = true
+            elseif map[altId] then
+                map[primaryId] = true
+            end
+        end
     end
     return map
 end
@@ -648,7 +658,7 @@ local function MakeInitTextButton(cfg)
     return function(button)
         local size = (type(cfg.font) == "table" and cfg.font[2]) or 12
         pcall(button.SetSize, button, size, size)
-        F.SetupEngineAuraButtonMouse(button)
+        F.SetupEngineAuraButtonMouse(button, cfg.showTooltip ~= true, cfg)
         AttachHiddenIcon(button)
 
         local text = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
@@ -679,7 +689,7 @@ local function MakeInitRectButton(cfg)
         local sizeW = (cfg.size and cfg.size[1]) or 11
         local sizeH = (cfg.size and cfg.size[2]) or 4
         pcall(button.SetSize, button, sizeW, sizeH)
-        F.SetupEngineAuraButtonMouse(button)
+        F.SetupEngineAuraButtonMouse(button, cfg.showTooltip ~= true, cfg)
         AttachHiddenIcon(button)
 
         local r, g, b, a = GetCfgColor(cfg, { 0, 1, 0, 1 })
@@ -710,7 +720,7 @@ local function MakeInitBarButton(cfg)
         local sizeW = (cfg.size and cfg.size[1]) or 18
         local sizeH = (cfg.size and cfg.size[2]) or 4
         pcall(button.SetSize, button, sizeW, sizeH)
-        F.SetupEngineAuraButtonMouse(button)
+        F.SetupEngineAuraButtonMouse(button, cfg.showTooltip ~= true, cfg)
         local icon = AttachHiddenIcon(button)
 
         local bgr, bgg, bgb, bga = 0.07, 0.07, 0.07, 0.9
@@ -746,7 +756,7 @@ local function MakeInitBlockButton(cfg)
         local sizeW = (cfg.size and cfg.size[1]) or 10
         local sizeH = (cfg.size and cfg.size[2]) or 10
         pcall(button.SetSize, button, sizeW, sizeH)
-        F.SetupEngineAuraButtonMouse(button)
+        F.SetupEngineAuraButtonMouse(button, cfg.showTooltip ~= true, cfg)
         local icon = AttachHiddenIcon(button)
 
         local texMap, firstColor = BuildTextureColorMap(cfg.auras)
@@ -790,7 +800,7 @@ local function MakeInitTextureButton(cfg, unitButton)
         local sizeW = (cfg.size and cfg.size[1]) or 16
         local sizeH = (cfg.size and cfg.size[2]) or 16
         pcall(button.SetSize, button, sizeW, sizeH)
-        F.SetupEngineAuraButtonMouse(button)
+        F.SetupEngineAuraButtonMouse(button, cfg.showTooltip ~= true, cfg)
         AttachHiddenIcon(button)
 
         local tex = button:CreateTexture(nil, "ARTWORK")
@@ -855,7 +865,7 @@ local function MakeInitAuraButton(cfg)
         local sizeW = (cfg.size and cfg.size[1]) or 13
         local sizeH = (cfg.size and cfg.size[2]) or sizeW
         pcall(button.SetSize, button, sizeW, sizeH)
-        F.SetupEngineAuraButtonMouse(button)
+        F.SetupEngineAuraButtonMouse(button, cfg.showTooltip ~= true, cfg)
 
         local icon = button:CreateTexture(nil, "ARTWORK")
         icon:SetAllPoints(button)
@@ -1311,7 +1321,7 @@ if SUPPORTED then
             or setting == "num" or setting == "numPerLine" or setting == "orientation"
             or setting == "spacing" or setting == "castBy" or setting == "enabled"
             or setting == "frameLevel" or setting == "showAnimation" or setting == "animationStyle"
-            or setting == "showDuration" or setting == "showStack"
+            or setting == "showDuration" or setting == "showStack" or setting == "showTooltip"
             or setting == "checkbutton" or setting == "font"
             or setting == "type" or setting == "auraType"
             or setting == "colors" or setting == "anchor" or setting == "thickness"

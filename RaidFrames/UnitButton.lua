@@ -1332,8 +1332,14 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end, true)
             elseif value == "showTooltip" then
                 F.IterateAllUnitButtons(function(b)
-                    b.indicators[indicatorName]:ShowTooltip(value2)
+                    local ind = b.indicators[indicatorName]
+                    if ind and ind.ShowTooltip then
+                        ind:ShowTooltip(value2)
+                    end
                 end, true)
+                if F.RefreshEngineAuraButtonTooltips then
+                    F.RefreshEngineAuraButtonTooltips()
+                end
             elseif value == "enableBlacklistShortcut" then
                 F.IterateAllUnitButtons(function(b)
                     b.indicators[indicatorName]:EnableBlacklistShortcut(value2)
@@ -2305,7 +2311,7 @@ local function UnitButton_UpdateBuffs(self, isFullUpdate)
     end
 
     -- hide tankActiveMitigation
-    if not self._buffs.tankActiveMitigationFound then
+    if Cell.isMidnight or not self._buffs.tankActiveMitigationFound then
         self.indicators.tankActiveMitigation:Hide()
     end
 
@@ -3550,14 +3556,20 @@ UnitButton_UpdateShieldAbsorbs = function(self, skipStateUpdates)
         -- Update shield indicator (user-configurable indicator on top of health bar)
         if enabledIndicators["shieldBar"] then
             local indBar = self.indicators.shieldBar
+            indBar:Show()
+            indBar:SetAbsorbs(absorbs, healthMax)
             if indicatorBooleans["shieldBar"] then
-                -- onlyShowOvershields: can't compute overshield from secrets, hide indicator
-                -- TODO: Use a Curve to detect overshield (absorbs + health > maxHealth)
-                indBar:Hide()
-            else
-                -- SetAbsorbs anchors to health bar and uses StatusBar fill for proportioning
-                indBar:Show()
-                indBar:SetAbsorbs(absorbs, healthMax)
+                -- onlyShowOvershields: GetDamageAbsorbs isClamped is true when absorbs
+                -- exceed max health. SetAlphaFromBoolean accepts that secret bool.
+                if isClamped ~= nil and indBar.SetAlphaFromBoolean then
+                    indBar:SetAlphaFromBoolean(isClamped, 1, 0)
+                elseif F.IsValueNonSecret(isClamped) and isClamped then
+                    indBar:SetAlpha(1)
+                else
+                    indBar:SetAlpha(0)
+                end
+            elseif indBar.SetAlpha then
+                indBar:SetAlpha(1)
             end
         else
             self.indicators.shieldBar:Hide()
@@ -3819,7 +3831,9 @@ local function UnitButton_UpdateThreat(self)
     if not unit or not UnitExists(unit) then return end
 
     local status = UnitThreatSituation(unit)
-    if status and status >= 1 then
+    -- 12.1: UnitThreatSituation is SecretWhenUnitThreatStateRestricted. Ally
+    -- frames are usually readable; if the status is secret we cannot compare it.
+    if F.IsValueNonSecret(status) and status and status >= 1 then
         if enabledIndicators["aggroBlink"] then
             self.indicators.aggroBlink:ShowAggro(GetThreatStatusColor(status))
         end
@@ -3842,8 +3856,9 @@ local function UnitButton_UpdateThreatBar(self)
     if not unit or not UnitExists(unit) then return end
 
     -- isTanking, status, scaledPercentage, rawPercentage, threatValue = UnitDetailedThreatSituation(unit, mobUnit)
+    -- 12.1: percentages are SecretWhenUnitThreatValuesRestricted (often vs bosses).
     local _, status, scaledPercentage, rawPercentage = UnitDetailedThreatSituation(unit, "target")
-    if status then
+    if F.IsValueNonSecret(status) and status then
         self.indicators.aggroBar:Show()
         self.indicators.aggroBar:SetSmoothedValue(scaledPercentage)
         self.indicators.aggroBar:SetStatusBarColor(GetThreatStatusColor(status))
@@ -3858,7 +3873,9 @@ local function UnitButton_UpdateCombatIcon(self)
     local unit = self.states.displayedUnit
     if not unit then return end
 
-    if not (indicatorBooleans["combatIcon"] and InCombatLockdown()) and UnitAffectingCombat(unit) then
+    -- UnitAffectingCombat has no SecretWhen* flag in 12.1, including other units.
+    -- IsKnownTrue still skips a secret boolean instead of erroring.
+    if not (indicatorBooleans["combatIcon"] and InCombatLockdown()) and F.IsKnownTrue(UnitAffectingCombat(unit)) then
         self.indicators.combatIcon:Show()
     else
         self.indicators.combatIcon:Hide()
@@ -4678,6 +4695,9 @@ local function UnitButton_OnEvent(self, event, unit, arg, arg2, ...)
 
         elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_REGEN_DISABLED" then
             UnitButton_UpdateLeader(self, event)
+            if event == "PLAYER_REGEN_DISABLED" then
+                UnitButton_UpdateAuras(self)
+            end
             if event == "PLAYER_REGEN_ENABLED" then
                 -- 12.0+: secret values may linger briefly after combat ends.
                 -- Immediate refresh + delayed retry to catch stale secrets.

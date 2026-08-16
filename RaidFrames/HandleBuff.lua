@@ -186,7 +186,7 @@ local function HandleBuff(self, auraInfo)
             frame.auraInstanceID = auraInstanceID
         end
 
-        if hb.enabledIndicators["tankActiveMitigation"] and I.IsTankActiveMitigation(spellId) then
+        if not Cell.isMidnight and hb.enabledIndicators["tankActiveMitigation"] and I.IsTankActiveMitigation(spellId) then
             self.indicators.tankActiveMitigation:SetCooldown(start, duration)
             self._buffs.tankActiveMitigationFound = true
         end

@@ -5,7 +5,7 @@ local F = Cell.funcs
 ---@type CellIndicatorFuncs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 28
+local INIT_VERSION = 30
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -94,6 +94,21 @@ local TRACKED = {
     "allCooldowns",
     "raidDebuffs",
 }
+
+local COOLDOWN_AURAS = {
+    defensiveCooldowns = true,
+    offensiveCooldowns = true,
+    externalCooldowns = true,
+    allCooldowns = true,
+}
+
+local function UseEngineCooldownAuras()
+    return UnitAffectingCombat("player")
+end
+
+local function IsCooldownAuraIndicator(indicatorName)
+    return COOLDOWN_AURAS[indicatorName]
+end
 
 local function RefreshCachedLayouts()
     if not cachedLayouts then
@@ -452,7 +467,7 @@ local function MakeInitDispelAuraButton(cfg, token, unitButton)
         else
             pcall(button.SetSize, button, 0.001, 0.001)
         end
-        F.SetupEngineAuraButtonMouse(button, not showIcons)
+        F.SetupEngineAuraButtonMouse(button, true)
 
         if health then
             local overlay = button:CreateTexture(nil, "ARTWORK", nil, 3)
@@ -510,7 +525,7 @@ local function MakeInitAuraButton(cfg)
     return function(button)
         local sizeW, sizeH = ResolveSize(cfg)
         pcall(button.SetSize, button, sizeW, sizeH)
-        F.SetupEngineAuraButtonMouse(button)
+        F.SetupEngineAuraButtonMouse(button, cfg.showTooltip ~= true, cfg)
 
         local icon = button:CreateTexture(nil, "ARTWORK")
         icon:SetAllPoints(button)
@@ -813,7 +828,7 @@ local function DriveContainer(unitButton, indicatorName, cfg, enable)
         HideLegacy(unitButton, indicatorName)
     else
         StopContainer(st)
-        HideLegacy(unitButton, indicatorName)
+        ShowLegacy(unitButton, indicatorName)
     end
 end
 
@@ -882,6 +897,9 @@ local EnqueueBuild
 
 local function NeedsContainerBuild(unitButton, name, cfg)
     if not cfg then return false end
+    if IsCooldownAuraIndicator(name) and not UseEngineCooldownAuras() then
+        return false
+    end
     local map = stateByButton[unitButton]
     local st = map and map[name]
     if st and st.container then return false end
@@ -955,7 +973,13 @@ local function SyncButton(unitButton, allowCreate)
         local cfg = cachedLayouts and cachedLayouts[name]
         if cfg then
             seen[name] = true
-            if EnsureIndicatorContainer(unitButton, name, cfg, false) then
+            if IsCooldownAuraIndicator(name) and not UseEngineCooldownAuras() then
+                if EnsureIndicatorContainer(unitButton, name, cfg, false) then
+                    DriveContainer(unitButton, name, cfg, false)
+                else
+                    ShowLegacy(unitButton, name)
+                end
+            elseif EnsureIndicatorContainer(unitButton, name, cfg, false) then
                 DriveContainer(unitButton, name, cfg, true)
             elseif NeedsContainerBuild(unitButton, name, cfg) then
                 needsBuild = true
@@ -985,6 +1009,9 @@ end
 
 function I.ShouldSkipLegacyCombatAura(indicatorName)
     if not ProbeSupported() or not indicatorName then
+        return false
+    end
+    if IsCooldownAuraIndicator(indicatorName) and not UseEngineCooldownAuras() then
         return false
     end
     local tracked = false

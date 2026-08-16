@@ -45,23 +45,6 @@ local function IsCompactLayoutFrame(frame)
         or name:find("^CompactRaid", 1, true) ~= nil
 end
 
-local function InstallArenaVisibilityNoops()
-    local function apply(target)
-        if not target then return end
-        if target.UpdateVisibility then
-            target.UpdateVisibility = Noop
-        end
-        if target.UpdatePaddingAndLayout then
-            target.UpdatePaddingAndLayout = Noop
-        end
-        if target.Layout then
-            target.Layout = Noop
-        end
-    end
-    apply(_G.CompactArenaFrameMixin)
-    apply(_G.CompactArenaFrame)
-end
-
 local function SoftVisualHide(frame)
     if not frame then return end
     if InCombatLockdown() then return end
@@ -71,7 +54,9 @@ local function SoftVisualHide(frame)
             return
         end
         frame:SetAlpha(0)
-        frame:SetScale(0.001)
+        if frame ~= _G.PartyFrame then
+            frame:SetScale(0.001)
+        end
     end)
 end
 
@@ -85,6 +70,10 @@ end
 
 local function KeepHidden(frame, shouldHideFn)
     if not frame or showHooks[frame] then return end
+    -- Compact layout frames share CompactRaidFrameManager_UpdateContainerVisibility
+    -- with CompactArenaFrame. A Show hook here taints that path and blocks
+    -- CompactArenaFrameMember:SetSize / HideBase in combat.
+    if IsCompactLayoutFrame(frame) then return end
     showHooks[frame] = shouldHideFn or function() return true end
     hooksecurefunc(frame, "Show", function(self)
         local check = showHooks[self]
@@ -227,7 +216,9 @@ local function suppressEditModeOverlay(frame)
         if InCombatLockdown() then return end
         if not IsCompactLayoutFrame(frame) then
             frame:SetAlpha(0)
-            frame:SetScale(0.001)
+            if frame ~= _G.PartyFrame then
+                frame:SetScale(0.001)
+            end
         else
             frame:Hide()
         end
@@ -299,7 +290,6 @@ end
 
 local function InstallRaidMemberHooks()
     if raidMemberHooksInstalled or not hooksecurefunc then return end
-    if not _G.CompactUnitFrame_RegisterEvents then return end
     raidMemberHooksInstalled = true
 
     local function reassert()
@@ -317,57 +307,22 @@ local function InstallRaidMemberHooks()
     if _G.CompactRaidGroup_GenerateForGroup then
         hooksecurefunc("CompactRaidGroup_GenerateForGroup", reassert)
     end
-    if _G.CompactUnitFrame_SetUpFrame then
-        hooksecurefunc("CompactUnitFrame_SetUpFrame", function(frame)
-            if ShouldHideBlizzardRaid() and IsCompactRaidMemberFrame(frame) then
-                NeutralizeCompactRaidMember(frame)
-            end
-        end)
-    end
-    hooksecurefunc("CompactUnitFrame_RegisterEvents", function(frame)
-        if ShouldHideBlizzardRaid() and IsCompactRaidMemberFrame(frame) then
-            NeutralizeCompactRaidMember(frame)
-        end
-    end)
-    if _G.CompactUnitFrame_CheckNeedsUpdate then
-        hooksecurefunc("CompactUnitFrame_CheckNeedsUpdate", function(frame)
-            if ShouldHideBlizzardRaid() and IsCompactRaidMemberFrame(frame) then
-                if frame.SetScript then
-                    frame:SetScript("OnUpdate", nil)
-                end
-                if frame.onUpdateFrame and frame.onUpdateFrame.SetScript then
-                    frame.onUpdateFrame:SetScript("OnUpdate", nil)
-                end
-            end
-        end)
-    end
-    if _G.CompactUnitFrame_SetUpdateAllOnUpdate then
-        hooksecurefunc("CompactUnitFrame_SetUpdateAllOnUpdate", function(frame)
-            if ShouldHideBlizzardRaid() and IsCompactRaidMemberFrame(frame) then
-                if frame.onUpdateFrame and frame.onUpdateFrame.SetScript then
-                    frame.onUpdateFrame:SetScript("OnUpdate", nil)
-                end
-            end
-        end)
-    end
 end
 
 local function InstallPartyUpdateNoops()
     if not ShouldHideBlizzardParty() then return end
 
-    if _G.PartyFrameMixin then
-        _G.PartyFrameMixin.OnShow = Noop
-        _G.PartyFrameMixin.InitializePartyMemberFrames = Noop
-        _G.PartyFrameMixin.UpdatePartyFrames = Noop
-        _G.PartyFrameMixin.UpdateMemberFrames = Noop
-        _G.PartyFrameMixin.ShouldShow = function() return false end
-    end
+    -- Instance only. Do not replace PartyFrameMixin / CompactPartyFrameMixin /
+    -- PartyMemberFrameMixin; Scenarios and Delves reuse those mixins.
     if _G.PartyFrame then
         _G.PartyFrame.OnShow = Noop
         _G.PartyFrame.InitializePartyMemberFrames = Noop
         _G.PartyFrame.UpdatePartyFrames = Noop
         _G.PartyFrame.UpdateMemberFrames = Noop
         _G.PartyFrame.ShouldShow = function() return false end
+        if _G.PartyFrame.UpdateVisibility then
+            _G.PartyFrame.UpdateVisibility = Noop
+        end
         if _G.PartyFrame.SetScript then
             _G.PartyFrame:SetScript("OnShow", Swallow)
             _G.PartyFrame:SetScript("OnEvent", Swallow)
@@ -375,32 +330,11 @@ local function InstallPartyUpdateNoops()
         pcall(function() _G.PartyFrame:UnregisterAllEvents() end)
     end
 
-    if _G.CompactPartyFrameMixin then
-        if _G.CompactPartyFrameMixin.RefreshMembers then
-            _G.CompactPartyFrameMixin.RefreshMembers = Noop
-        end
-        if _G.CompactPartyFrameMixin.OnEvent then
-            _G.CompactPartyFrameMixin.OnEvent = Noop
-        end
-        if _G.CompactPartyFrameMixin.UpdateVisibility then
-            _G.CompactPartyFrameMixin.UpdateVisibility = Noop
-        end
-        if _G.CompactPartyFrameMixin.UpdatePaddingAndLayout then
-            _G.CompactPartyFrameMixin.UpdatePaddingAndLayout = Noop
-        end
-        if _G.CompactPartyFrameMixin.Layout then
-            _G.CompactPartyFrameMixin.Layout = Noop
-        end
-        if ShouldHideBlizzardRaid() and _G.CompactPartyFrameMixin.ApplyFunctionToAllFrames then
-            _G.CompactPartyFrameMixin.ApplyFunctionToAllFrames = Noop
-        end
-    end
     if _G.CompactPartyFrame then
         _G.CompactPartyFrame.RefreshMembers = Noop
         if _G.CompactPartyFrame.OnEvent then
             _G.CompactPartyFrame.OnEvent = Noop
         end
-        _G.CompactPartyFrame.UpdateVisibility = Noop
         if _G.CompactPartyFrame.UpdatePaddingAndLayout then
             _G.CompactPartyFrame.UpdatePaddingAndLayout = Noop
         end
@@ -415,24 +349,7 @@ local function InstallPartyUpdateNoops()
         end
         pcall(function()
             _G.CompactPartyFrame:UnregisterAllEvents()
-            if _G.CompactPartyFrame.SetScript then
-                _G.CompactPartyFrame:SetScript("OnEvent", Swallow)
-            end
         end)
-    end
-
-    InstallArenaVisibilityNoops()
-
-    if _G.PartyMemberFrameMixin then
-        for i = 1, #MEMBER_NOOP_METHODS do
-            local name = MEMBER_NOOP_METHODS[i]
-            if _G.PartyMemberFrameMixin[name] then
-                _G.PartyMemberFrameMixin[name] = Noop
-            end
-        end
-        if _G.PartyMemberFrameMixin.OnEvent then
-            _G.PartyMemberFrameMixin.OnEvent = Noop
-        end
     end
 end
 
@@ -538,9 +455,6 @@ local function SuppressBlizzRaid()
         if container.ApplyToFrames then
             container.ApplyToFrames = Noop
         end
-        if _G.CompactRaidFrameContainerMixin and _G.CompactRaidFrameContainerMixin.ApplyToFrames then
-            _G.CompactRaidFrameContainerMixin.ApplyToFrames = Noop
-        end
         if container.TryUpdate then
             container.TryUpdate = Noop
         end
@@ -630,9 +544,6 @@ local function TryEarlyPartyNoops()
         InstallRaidMemberHooks()
         if _G.CompactRaidFrameContainer and _G.CompactRaidFrameContainer.ApplyToFrames then
             _G.CompactRaidFrameContainer.ApplyToFrames = Noop
-        end
-        if _G.CompactRaidFrameContainerMixin and _G.CompactRaidFrameContainerMixin.ApplyToFrames then
-            _G.CompactRaidFrameContainerMixin.ApplyToFrames = Noop
         end
         NeutralizeAllBlizzardRaidMembers()
     end

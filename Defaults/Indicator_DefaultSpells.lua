@@ -1102,6 +1102,8 @@ local spells =  {
     406789, -- 空间悖论 - Spatial Paradox
     445740, -- 纵焰 - Enkindle
     409895, -- 精神之花 - Spiritbloom (Reverberations, Chronowarden Hero Talent)
+    409678, -- Chrono Ward
+    1291636, -- Temporal Barrier
     410263, -- 炼狱祝福 - Inferno's Blessing
     410686, -- 共生绽放 - Symbiotic Bloom
     413984, -- 流沙 - Shifting Sands
@@ -1116,6 +1118,7 @@ local spells =  {
     450805, -- 净化之魂 - Purified Spirit
     467281, -- 金创药 - Healing Elixir
     115175, -- 抚慰之雾 - Soothing Mist
+    1292922, -- Coalescence
 
     -- paladin
     53563, -- 圣光道标 - Beacon of Light
@@ -1148,6 +1151,7 @@ local spells =  {
     -- 443526, -- 慰藉预兆 - Premonition of Solace (removed in 12.0)
     1253593, -- 虚空之盾 - Void Shield
     1300009, -- 虚空之盾（展开幻象） - Void Shield (Unfolding Vision)
+    453846, -- Resonant Energy
 
     -- shaman
     974, -- 大地之盾 - Earth Shield

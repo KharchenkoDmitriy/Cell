@@ -3870,6 +3870,20 @@ function F.Revise()
         end
     end
 
+    -- Midnight: AoE Healing (no combat log) and Tank Active Mitigation (secret
+    -- spell IDs) cannot work. Force them off for existing layouts.
+    if Cell.isMidnight then
+        for _, layout in pairs(CellDB["layouts"]) do
+            if type(layout["indicators"]) == "table" then
+                for _, i in pairs(layout["indicators"]) do
+                    if i["indicatorName"] == "aoeHealing" or i["indicatorName"] == "tankActiveMitigation" then
+                        i["enabled"] = false
+                    end
+                end
+            end
+        end
+    end
+
     CellDB["revise"] = Cell.version
     if CellCharacterDB then
         CellCharacterDB["revise"] = Cell.version

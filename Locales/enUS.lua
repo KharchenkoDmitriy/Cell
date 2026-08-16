@@ -41,6 +41,8 @@ select(2, ...).L = setmetatable({
     ["sec"] = "sec",
     ["glowDisabledApiWarning"] = "Unfortunately Glow cannot be implemented right now due to API changes. I have disabled this indicator for now, until a solution is found.",
     ["crowdControlsApiWarning"] = "Cell can no longer use a custom CC list. Blizzard decides which debuffs are crowd control, and this indicator shows those automatically.",
+    ["aoeHealingDisabledApiWarning"] = "AoE Healing is disabled on Midnight. It required the combat log, which addons can no longer read.",
+    ["tankActiveMitigationDisabledApiWarning"] = "Tank Active Mitigation is disabled on Midnight. The spell IDs and durations are hidden in combat, so the bar cannot update reliably.",
     ["Healers indicator is up to date."] = "Healers indicator is up to date.",
     ["Healers indicator already exists. Add new spells?"] = "Healers indicator already exists. Add |cFFFFB5C5%d|r new spell(s)?",
     ["Create Healers indicator"] = "Create Healers indicator",
@@ -111,6 +113,21 @@ select(2, ...).L = setmetatable({
     ["BACKUP_TIPS2"] = "Note for Classic players: Backups do not include Click-Castings and Layout Auto Switch of other characters",
     ["CHANGELOGS"] = [[
 
+
+        <h1>r277.9.7 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* External/Defensive Cooldowns no longer show random open-world buffs.</p>
+        <p>* Scenario and Delve objectives update again while Cell is enabled.</p>
+        <p>* Fixed a protected function taint on Blizzard arena frames (CompactArenaFrameMember:SetSize).</p>
+        <p>* Shield Bar: "only overshields" checkbox works again.</p>
+        <p>* AoE Healing and Tank Active Mitigation are disabled on Midnight because the combat log is gone and tank mitigation auras are secret in combat.</p>
+        <p>* Aggro (border / blink / bar) works again. Border and Blink show the unit's threat status; the Bar shows threat vs your current target (may hide vs bosses when those values are secret).</p>
+        <p>* Combat Icon works again on other units.</p>
+        <p>* Debuffs / Raid Debuffs "Show aura tooltip" now only applies to those icons. Other aura icons no longer show tooltips just because General tooltips are enabled.</p>
+        <p>* Custom indicators: you can enter a spell ID in the spell picker, not only pick from the list.</p>
+        <p>* Spell picker: added missing healer HoTs (including Evoker Enkindle and Reverberations).</p>
+        <p>* Aura Blacklist (Debuffs): you can add custom spell IDs. Unknown IDs are rejected.</p>
+        <br/>
 
         <h1>r277.9.6 - NeRgY</h1>
         <h2>Retail</h2>

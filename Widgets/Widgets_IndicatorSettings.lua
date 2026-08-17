@@ -7775,17 +7775,6 @@ local function CreateSetting_AuraBlacklist(parent)
                 Cell.Fire("UpdateIndicators", Cell.vars.currentLayout, "", "bigDebuffs")
             end)
 
-            if spell.custom then
-                local del = Cell.CreateButton(row, "×", "red-hover", {16, 16}, false, false, "CELL_FONT_SPECIAL", "CELL_FONT_SPECIAL")
-                del:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-                del:SetScript("OnClick", function(self, button)
-                    pcall(F.RemoveAuraBlacklist, sid, "HARMFUL")
-                    pcall(F.RemoveAuraBlacklist, sid, "debuffs")
-                    pcall(Cell.Fire, "UpdateIndicators", Cell.vars.currentLayout, "", "bigDebuffs")
-                    pcall(Refresh)
-                end)
-            end
-
             row:SetScript("OnEnter", function(self)
                 row:SetBackdropColor(bl and 0.30 or 0.20, bl and 0.30 or 0.20, bl and 0.30 or 0.20, 0.95)
                 if CellSpellTooltip then
@@ -7808,19 +7797,8 @@ local function CreateSetting_AuraBlacklist(parent)
             for i, s in ipairs(spells) do tinsert(spellRows, MakeRow(s, i)) end
             local n = #spells
             local rowsH = n > 0 and (n * ROW_H + (n-1) * ROW_GAP) or 0
-            local extra = (state.filter == "debuffs") and 50 or 0
-            local hContent = -FIRST_ROW_Y + rowsH + 36 + extra
+            local hContent = -FIRST_ROW_Y + rowsH + 36
             widget:SetHeight(math.max(155, hContent))
-            if widget.idBox then
-                widget.idBox:SetShown(state.filter == "debuffs")
-                widget.idAddBtn:SetShown(state.filter == "debuffs")
-                if widget.idBoxTip then
-                    widget.idBoxTip:SetShown(state.filter == "debuffs" and widget.idBox:GetText() == "")
-                end
-                if state.filter ~= "debuffs" and widget.invalidLabel then
-                    widget.invalidLabel:Hide()
-                end
-            end
             Cell.UpdateIndicatorSettingsHeight()
         end
 
@@ -7944,68 +7922,6 @@ local function CreateSetting_AuraBlacklist(parent)
         footer:SetJustifyV("BOTTOM")
         footer:SetWordWrap(true)
         footer:SetSpacing(1)
-
-        do
-            local idBox = Cell.CreateEditBox(widget, 20, 20, false, false, true)
-            idBox:SetPoint("BOTTOMLEFT", 8, 42)
-            idBox:SetPoint("BOTTOMRIGHT", -72, 42)
-            idBox:SetHeight(20)
-            idBox:SetAutoFocus(false)
-            widget.idBox = idBox
-
-            local tip = idBox:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
-            tip:SetPoint("LEFT", 4, 0)
-            tip:SetText(L["Input spell id"])
-            tip:SetTextColor(0.4, 0.4, 0.4)
-            widget.idBoxTip = tip
-            idBox:HookScript("OnEditFocusGained", function() tip:Hide() end)
-            idBox:HookScript("OnEditFocusLost", function()
-                if idBox:GetText() == "" then tip:Show() end
-            end)
-            idBox:HookScript("OnTextChanged", function()
-                tip:SetShown(idBox:GetText() == "" and not idBox:HasFocus())
-                if widget.invalidLabel then widget.invalidLabel:Hide() end
-            end)
-
-            local invalidLabel = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
-            invalidLabel:SetPoint("RIGHT", idBox, "RIGHT", -6, 0)
-            invalidLabel:SetText(L["Invalid"])
-            invalidLabel:SetTextColor(1, 0.27, 0.27)
-            invalidLabel:Hide()
-            widget.invalidLabel = invalidLabel
-
-            local function AddCustomDebuff()
-                local okCall, ok, reason = pcall(F.TryAddCustomDebuffBlacklist, idBox:GetText())
-                if not okCall then
-                    invalidLabel:Show()
-                    F.Print(L["This debuff is invalid and cannot be added to the blacklist."])
-                    return
-                end
-                if ok then
-                    invalidLabel:Hide()
-                    idBox:SetText("")
-                    tip:Show()
-                    pcall(Refresh)
-                    pcall(Cell.Fire, "UpdateIndicators", Cell.vars.currentLayout, "", "bigDebuffs")
-                    return
-                end
-                if reason == "exists" then
-                    invalidLabel:Hide()
-                    idBox:SetText("")
-                    tip:Show()
-                    pcall(Refresh)
-                    return
-                end
-                invalidLabel:Show()
-                F.Print(L["This debuff is invalid and cannot be added to the blacklist."])
-            end
-            idBox:SetScript("OnEnterPressed", AddCustomDebuff)
-
-            local addBtn = Cell.CreateButton(widget, L["Add"], "accent", {60, 20})
-            addBtn:SetPoint("BOTTOMRIGHT", -8, 42)
-            addBtn:SetScript("OnClick", AddCustomDebuff)
-            widget.idAddBtn = addBtn
-        end
 
         function widget:SetFunc(func) end
         function widget:SetDBValue() Refresh() end

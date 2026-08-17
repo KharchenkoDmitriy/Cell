@@ -2,8 +2,8 @@ local _, Cell = ...
 local L = Cell.L
 local F = Cell.funcs
 
-local LBW = LibStub:GetLibrary("LibBadWords")
-local Comm = LibStub:GetLibrary("AceComm-3.0")
+local LBW = LibStub and LibStub:GetLibrary("LibBadWords", true)
+local Comm = LibStub and LibStub:GetLibrary("AceComm-3.0", true)
 
 -----------------------------------------
 -- shared
@@ -226,6 +226,7 @@ end
 Cell.RegisterCallback("UpdateNicknames", "UpdateNicknames", UpdateNicknames)
 
 -- check nickname received
+if Comm then
 Comm:RegisterComm("CELL_CNIC", function(prefix, message, channel, sender)
     -- others send chk before you, no need to send chk again
     if nic_check then nic_check:Cancel() end
@@ -255,7 +256,7 @@ Comm:RegisterComm("CELL_NIC", function(prefix, message, channel, sender)
             sender = sender .. "-" .. GetNormalizedRealmName()
         end
 
-        if message == "CELL_NONE" or Cell.vars.nicknameBlacklist[sender] or LBW.ContainsBadWords(message) then
+        if message == "CELL_NONE" or Cell.vars.nicknameBlacklist[sender] or (LBW and LBW.ContainsBadWords(message)) then
             Cell.vars.nicknames[sender] = nil
         else
             Cell.vars.nicknames[sender] = message
@@ -263,6 +264,7 @@ Comm:RegisterComm("CELL_NIC", function(prefix, message, channel, sender)
         UpdateName(sender)
     end
 end)
+end
 
 -----------------------------------------
 -- NickTag

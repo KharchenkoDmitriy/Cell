@@ -114,6 +114,13 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.7.1 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Opening Edit Mode no longer taints the Cooldown Viewer when auras update.</p>
+        <p>* Fixed missing indicators / white frames on a clean install (libraries failed to load on Midnight 12.1).</p>
+        <p>* Aura Blacklist custom spell ID filter reverted; it does not work with the current Blizzard API.</p>
+        <br/>
+
         <h1>r277.9.7 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* External/Defensive Cooldowns no longer show random open-world buffs.</p>
@@ -126,7 +133,6 @@ select(2, ...).L = setmetatable({
         <p>* Debuffs / Raid Debuffs "Show aura tooltip" now only applies to those icons. Other aura icons no longer show tooltips just because General tooltips are enabled.</p>
         <p>* Custom indicators: you can enter a spell ID in the spell picker, not only pick from the list.</p>
         <p>* Spell picker: added missing healer HoTs (including Evoker Enkindle and Reverberations).</p>
-        <p>* Aura Blacklist (Debuffs): you can add custom spell IDs. Unknown IDs are rejected.</p>
         <br/>
 
         <h1>r277.9.6 - NeRgY</h1>

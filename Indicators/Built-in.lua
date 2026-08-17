@@ -9,8 +9,8 @@ local A = Cell.animations
 ---@type PixelPerfectFuncs
 local P = Cell.pixelPerfectFuncs
 
-local LCG = LibStub("LibCustomGlow-1.0")
-local LibTranslit = LibStub("LibTranslit-1.0")
+local LCG = LibStub and LibStub("LibCustomGlow-1.0", true)
+local LibTranslit = LibStub and LibStub("LibTranslit-1.0", true)
 local AbbreviateNumbers = AbbreviateNumbers
 local UnitHealthPercent = UnitHealthPercent
 local CurveConstants = CurveConstants
@@ -1007,18 +1007,19 @@ function I.IsDebuffUseElapsedTime(spellName, spellId)
 end
 
 local function RaidDebuffs_ShowGlow(self, glowType, glowOptions, noHiding)
+    if not LCG then return end
     LCG.ButtonGlow_Stop(self.parent)
     LCG.PixelGlow_Stop(self.parent)
     LCG.AutoCastGlow_Stop(self.parent)
     LCG.ProcGlow_Stop(self.parent)
 end
 
-local hiders = {
+local hiders = LCG and {
     ["Normal"] = LCG.ButtonGlow_Stop,
     ["Pixel"] = LCG.PixelGlow_Stop,
     ["Shine"] = LCG.AutoCastGlow_Stop,
     ["Proc"] = LCG.ProcGlow_Stop,
-}
+} or {}
 
 local function RaidDebuffs_HideGlow(self, glowType)
     local stop = type(glowType) == "string" and hiders[glowType]
@@ -1674,7 +1675,11 @@ function I.CreateNameText(parent)
                 name = Cell.NickTag:GetNickname(parent.states.name, nil, true)
             end
             if F.IsValueNonSecret(parent.states.name) and F.IsValueNonSecret(parent.states.fullName) then
-                name = name or F.GetNickname(parent.states.name, parent.states.fullName)
+                if F.GetNickname then
+                    name = name or F.GetNickname(parent.states.name, parent.states.fullName)
+                else
+                    name = name or parent.states.name
+                end
             else
                 name = parent.states.name
             end
@@ -1682,7 +1687,7 @@ function I.CreateNameText(parent)
             name = parent.states.name
         end
 
-        if Cell.loaded and CellDB["general"]["translit"] and F.IsValueNonSecret(name) then
+        if Cell.loaded and CellDB["general"]["translit"] and F.IsValueNonSecret(name) and LibTranslit then
             name = LibTranslit:Transliterate(name)
         end
 
@@ -3251,7 +3256,7 @@ function I.CreateMissingBuffs(parent)
         local frame = I.CreateAura_BarIcon(name, missingBuffs)
         tinsert(missingBuffs, frame)
         frame:HookScript("OnSizeChanged", function()
-            LCG.ButtonGlow_Start(frame)
+            if LCG then LCG.ButtonGlow_Start(frame) end
         end)
     end
 end
@@ -3291,7 +3296,7 @@ local function ShowMissingBuff(b, index, icon)
 
     local f = b.indicators.missingBuffs[index]
     f:SetCooldown(0, 0, nil, icon, 0)
-    LCG.ButtonGlow_Start(f)
+    if LCG then LCG.ButtonGlow_Start(f) end
 end
 
 function I.ShowMissingBuff(unit, icon)

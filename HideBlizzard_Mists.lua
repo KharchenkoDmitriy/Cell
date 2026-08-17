@@ -1,16 +1,10 @@
 local _, Cell = ...
 local F = Cell.funcs
 
--- MoP Classic (5.5.x) Hide Blizzard.
--- Keep separate from HideBlizzard_Classic.lua (Vanilla/TBC/Wrath/Cata) and retail
--- HideBlizzard.lua (Midnight). Do NOT HookScript("OnShow") on Compact* frames —
--- that taints secure updates (ADDON_ACTION_BLOCKED on CompactPartyFrameMemberN:SetSize).
-
 local hiddenParent = CreateFrame("Frame", nil, _G.UIParent)
 hiddenParent:SetAllPoints()
 hiddenParent:Hide()
 
---- Post-hook Show (not HookScript) so secure OnShow stays clean; we only re-hide OOC.
 local function SoftKeepHidden(frame)
     if not frame or frame.__cellSoftKeepHidden then return end
     frame.__cellSoftKeepHidden = true
@@ -84,7 +78,6 @@ function F.HideBlizzardParty()
     else
         for i = 1, 4 do
             HideFrame(_G["PartyMemberFrame" .. i])
-            -- CompactPartyMemberFrame* intentionally not SoftKeepHidden (secure SetSize taint)
             local compactMember = _G["CompactPartyMemberFrame" .. i]
             if compactMember then
                 compactMember:UnregisterAllEvents()
@@ -132,7 +125,6 @@ function F.HideBlizzardRaidManager()
     end
 end
 
--- Classic/MoP often re-shows Blizzard frames after roster churn — reinforce OOC only.
 local reinforce = CreateFrame("Frame")
 reinforce:RegisterEvent("PLAYER_ENTERING_WORLD")
 reinforce:RegisterEvent("GROUP_ROSTER_UPDATE")

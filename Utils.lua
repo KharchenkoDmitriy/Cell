@@ -22,7 +22,7 @@ Cell.isCata = WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC
 Cell.isMists = WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC
 Cell.isTWW = LE_EXPANSION_LEVEL_CURRENT == LE_EXPANSION_WAR_WITHIN
 
-local CELL_VERSION_FALLBACK = "r277.9.7"
+local CELL_VERSION_FALLBACK = "r277.9.7.1"
 
 function F.InitAddonVersion()
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
@@ -35,6 +35,10 @@ function F.InitAddonVersion()
     end
     Cell.version = version
     Cell.versionNum = tonumber(string.match(version, "%d+")) or tonumber(string.match(CELL_VERSION_FALLBACK, "%d+")) or 0
+end
+
+function F.GetNickname(shortname, fullname)
+    return shortname or fullname
 end
 
 -------------------------------------------------
@@ -1680,13 +1684,15 @@ Cell.vars.texture = "Interface\\AddOns\\Cell\\Media\\statusbar.tga"
 Cell.vars.emptyTexture = "Interface\\AddOns\\Cell\\Media\\empty.tga"
 Cell.vars.whiteTexture = "Interface\\AddOns\\Cell\\Media\\white.tga"
 
-local LSM = LibStub("LibSharedMedia-3.0", true)
-LSM:Register("statusbar", "Cell ".._G.DEFAULT, Cell.vars.texture)
-LSM:Register("font", "Visitor", [[Interface\Addons\Cell\Media\Fonts\visitor.ttf]], 255)
+local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+if LSM then
+    LSM:Register("statusbar", "Cell ".._G.DEFAULT, Cell.vars.texture)
+    LSM:Register("font", "Visitor", [[Interface\Addons\Cell\Media\Fonts\visitor.ttf]], 255)
+end
 
 function F.GetBarTexture()
     --! update Cell.vars.texture for further use in UnitButton_OnLoad
-    if LSM:IsValid("statusbar", CellDB["appearance"]["texture"]) then
+    if LSM and LSM:IsValid("statusbar", CellDB["appearance"]["texture"]) then
         Cell.vars.texture = LSM:Fetch("statusbar", CellDB["appearance"]["texture"])
     else
         Cell.vars.texture = "Interface\\AddOns\\Cell\\Media\\statusbar.tga"
@@ -1695,7 +1701,7 @@ function F.GetBarTexture()
 end
 
 function F.GetBarTextureByName(name)
-    if LSM:IsValid("statusbar", name) then
+    if LSM and LSM:IsValid("statusbar", name) then
         return LSM:Fetch("statusbar", name)
     end
     return "Interface\\AddOns\\Cell\\Media\\statusbar.tga"
@@ -2146,7 +2152,7 @@ local function GetOptionsFontInternal(useGameFont)
 end
 
 function F.GetFont(font)
-    if font and LSM:IsValid("font", font) then
+    if font and LSM and LSM:IsValid("font", font) then
         return LSM:Fetch("font", font)
     end
     -- Accidental_Presidency.ttf has incomplete Latin glyph coverage — redirect
@@ -2162,7 +2168,7 @@ function F.GetFontItems()
     local items = {}
     local fonts, fontNames
 
-    -- if LSM then
+    if LSM then
         fonts, fontNames = F.Copy(LSM:HashTable("font")), F.Copy(LSM:List("font"))
         -- insert default font
         tinsert(fontNames, 1, defaultFontName)
@@ -2172,25 +2178,15 @@ function F.GetFontItems()
             tinsert(items, {
                 ["text"] = name,
                 ["font"] = fonts[name],
-                -- ["onClick"] = function()
-                --     CellDB["appearance"]["font"] = name
-                --     Cell.Fire("UpdateAppearance", "font")
-                -- end,
             })
         end
-    -- else
-    --     fontNames = {defaultFontName}
-    --     fonts = {[defaultFontName] = defaultFont}
-
-    --     tinsert(items, {
-    --         ["text"] = defaultFontName,
-    --         ["font"] = defaultFont,
-    --         -- ["onClick"] = function()
-    --         --     CellDB["appearance"]["font"] = defaultFontName
-    --         --     Cell.Fire("UpdateAppearance", "font")
-    --         -- end,
-    --     })
-    -- end
+    else
+        fonts = {[defaultFontName] = defaultFont}
+        tinsert(items, {
+            ["text"] = defaultFontName,
+            ["font"] = defaultFont,
+        })
+    end
     return items, fonts, defaultFontName, defaultFont
 end
 
@@ -3234,6 +3230,45 @@ end
 function F.IsLiveAuraScanBlocked()
     local build = select(4, GetBuildInfo())
     return Cell.isRetail and build and build >= 120100
+end
+
+function F.PauseAuraContainer(container)
+end
+
+function F.GuardAuraContainerEvents(container)
+end
+
+local function StripUnitAuraTree(frame)
+    if not frame then return end
+    if frame.UnregisterEvent then
+        pcall(frame.UnregisterEvent, frame, "UNIT_AURA")
+    end
+    if frame.GetChildren then
+        local children = { frame:GetChildren() }
+        for i = 1, #children do
+            StripUnitAuraTree(children[i])
+        end
+    end
+end
+
+function F.StripCellUnitAura()
+    if F.IterateAllUnitButtons then
+        F.IterateAllUnitButtons(function(b)
+            StripUnitAuraTree(b)
+        end)
+    end
+    if CellParent then
+        StripUnitAuraTree(CellParent)
+    end
+end
+
+function F.ResumeAuraContainer(container)
+    if not container then return end
+    pcall(function()
+        if container.UpdateAllAuras then
+            container:UpdateAllAuras()
+        end
+    end)
 end
 
 function F.IsCooldownRestricted()

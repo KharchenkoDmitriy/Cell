@@ -361,62 +361,7 @@ function F.GetAuraBlacklistBuffSpells(classToken, specIndex)
 end
 
 function F.GetAuraBlacklistDebuffSpells()
-    local list = {}
-    local seen = {}
-    for i = 1, #DebuffSpells do
-        local spell = DebuffSpells[i]
-        tinsert(list, spell)
-        seen[spell.spellId] = true
-    end
-
-    local function addCustomFrom(tbl)
-        if type(tbl) ~= "table" then return end
-        for spellId, entry in pairs(tbl) do
-            if type(spellId) == "number" and spellId > 0 and not seen[spellId] then
-                local listed = entry == true
-                    or (type(entry) == "table" and (entry.combat or entry.ooc))
-                if listed then
-                    local name
-                    local okName, spellName = pcall(F.GetSpellInfo, spellId)
-                    if okName then name = spellName end
-                    tinsert(list, {
-                        spellId = spellId,
-                        display = name or tostring(spellId),
-                        icon = GetSpellIcon(spellId),
-                        custom = true,
-                    })
-                    seen[spellId] = true
-                end
-            end
-        end
-    end
-
-    if CellDB and CellDB["auraBlacklist"] then
-        addCustomFrom(CellDB["auraBlacklist"]["HARMFUL"])
-        addCustomFrom(CellDB["auraBlacklist"]["debuffs"])
-    end
-    return list
-end
-
-function F.TryAddCustomDebuffBlacklist(spellId)
-    spellId = tonumber(spellId)
-    if not spellId or spellId <= 0 then
-        return false, "invalid"
-    end
-    local ok, name = pcall(F.GetSpellInfo, spellId)
-    if not ok or not name then
-        return false, "invalid"
-    end
-    local okEntry, existing = pcall(F.GetAuraBlacklistEntry, spellId, "HARMFUL")
-    local okEntry2, existing2 = pcall(F.GetAuraBlacklistEntry, spellId, "debuffs")
-    if (okEntry and existing) or (okEntry2 and existing2) then
-        return false, "exists", name
-    end
-    local okToggle = pcall(F.ToggleAuraBlacklist, spellId, "HARMFUL", true, true)
-    if not okToggle then
-        return false, "invalid"
-    end
-    return true, "ok", name
+    return DebuffSpells
 end
 
 F.AuraBlacklistClassOrder = {

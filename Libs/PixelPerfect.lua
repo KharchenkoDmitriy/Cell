@@ -160,16 +160,19 @@ function P.Size(frame, width, height)
     frame.width = width
     frame.height = height
     frame:SetSize(P.Scale(width), P.Scale(height))
+    P.DisablePixelSnap(frame)
 end
 
 function P.Width(frame, width)
     frame.width = width
     frame:SetWidth(P.Scale(width))
+    P.DisablePixelSnap(frame)
 end
 
 function P.Height(frame, height)
     frame.height = height
     frame:SetHeight(P.Scale(height))
+    P.DisablePixelSnap(frame)
 end
 
 function P.SetGridSize(region, gridWidth, gridHeight, gridSpacingH, gridSpacingV, columns, rows)
@@ -192,6 +195,7 @@ function P.SetGridSize(region, gridWidth, gridHeight, gridSpacingH, gridSpacingV
     else
         region:SetHeight(P.Scale(gridHeight) * rows + P.Scale(gridSpacingV) * (rows - 1))
     end
+    P.DisablePixelSnap(region)
 end
 
 function P.Point(frame, ...)
@@ -212,6 +216,7 @@ function P.Point(frame, ...)
     tinsert(frame.points, {point, anchorTo or frame:GetParent(), anchorPoint or point, x or 0, y or 0})
     local n = #frame.points
     frame:SetPoint(frame.points[n][1], frame.points[n][2], frame.points[n][3], P.Scale(frame.points[n][4]), P.Scale(frame.points[n][5]))
+    P.DisablePixelSnap(frame)
 end
 
 function P.ClearPoints(frame)
@@ -233,6 +238,7 @@ function P.Resize(frame)
             frame:SetHeight(P.Scale(frame.height))
         end
     end
+    P.DisablePixelSnap(frame)
 end
 
 function P.Reborder(frame, ignoreSnippetVar)
@@ -336,25 +342,58 @@ end
 ---------------------------------------------------------------------
 -- pixel perfect (ElvUI)
 ---------------------------------------------------------------------
-local function CheckPixelSnap(frame, snap)
-    if (frame and not frame:IsForbidden()) and frame.PixelSnapDisabled and snap then
-        frame.PixelSnapDisabled = nil
+local pixelSnapDisabled = setmetatable({}, { __mode = "k" })
+local pixelSnapCreateHooked = setmetatable({}, { __mode = "k" })
+
+function P.DisablePixelSnap(frame)
+    if not frame then return end
+    if issecretvalue and issecretvalue(frame) then return end
+    if issecrettable and issecrettable(frame) then return end
+    if frame.IsForbidden and frame:IsForbidden() then return end
+    if pixelSnapDisabled[frame] then return end
+
+    local target = frame
+    if not frame.SetSnapToPixelGrid and frame.GetStatusBarTexture then
+        target = frame:GetStatusBarTexture()
+        if type(target) ~= "table" or not target.SetSnapToPixelGrid then
+            pixelSnapDisabled[frame] = true
+            return
+        end
+    end
+
+    if target and target.SetSnapToPixelGrid then
+        target:SetSnapToPixelGrid(false)
+        target:SetTexelSnappingBias(0)
+    end
+    pixelSnapDisabled[frame] = true
+
+    if frame.CreateTexture and not pixelSnapCreateHooked[frame] then
+        pixelSnapCreateHooked[frame] = true
+        local origCreateTexture = frame.CreateTexture
+        frame.CreateTexture = function(self, ...)
+            local tex = origCreateTexture(self, ...)
+            if tex then
+                P.DisablePixelSnap(tex)
+            end
+            return tex
+        end
+        if frame.CreateMaskTexture then
+            local origCreateMask = frame.CreateMaskTexture
+            frame.CreateMaskTexture = function(self, ...)
+                local tex = origCreateMask(self, ...)
+                if tex then
+                    P.DisablePixelSnap(tex)
+                end
+                return tex
+            end
+        end
     end
 end
 
-local function DisablePixelSnap(frame)
-    if (frame and not frame:IsForbidden()) and not frame.PixelSnapDisabled then
-        if frame.SetSnapToPixelGrid then
-            frame:SetSnapToPixelGrid(false)
-            frame:SetTexelSnappingBias(0)
-            frame.PixelSnapDisabled = true
-        elseif frame.GetStatusBarTexture then
-            local texture = frame:GetStatusBarTexture()
-            if type(texture) == "table" and texture.SetSnapToPixelGrid then
-                texture:SetSnapToPixelGrid(false)
-                texture:SetTexelSnappingBias(0)
-                frame.PixelSnapDisabled = true
-            end
+local function CheckPixelSnap(frame, snap)
+    if frame and pixelSnapDisabled[frame] and snap then
+        if not (frame.IsForbidden and frame:IsForbidden()) then
+            pixelSnapDisabled[frame] = nil
         end
     end
 end
@@ -364,24 +403,22 @@ local function UpdateMetatable(obj)
 
     if not obj.DisabledPixelSnap and (t.SetSnapToPixelGrid or t.SetStatusBarTexture or t.SetColorTexture or t.SetVertexColor or t.CreateTexture or t.SetTexCoord or t.SetTexture) then
         if t.SetSnapToPixelGrid then hooksecurefunc(t, "SetSnapToPixelGrid", CheckPixelSnap) end
-        if t.SetStatusBarTexture then hooksecurefunc(t, "SetStatusBarTexture", DisablePixelSnap) end
-        if t.SetColorTexture then hooksecurefunc(t, "SetColorTexture", DisablePixelSnap) end
-        if t.SetVertexColor then hooksecurefunc(t, "SetVertexColor", DisablePixelSnap) end
-        if t.CreateTexture then hooksecurefunc(t, "CreateTexture", DisablePixelSnap) end
-        if t.SetTexCoord then hooksecurefunc(t, "SetTexCoord", DisablePixelSnap) end
-        if t.SetTexture then hooksecurefunc(t, "SetTexture", DisablePixelSnap) end
+        if t.SetStatusBarTexture then hooksecurefunc(t, "SetStatusBarTexture", P.DisablePixelSnap) end
+        if t.SetColorTexture then hooksecurefunc(t, "SetColorTexture", P.DisablePixelSnap) end
+        if t.SetVertexColor then hooksecurefunc(t, "SetVertexColor", P.DisablePixelSnap) end
+        if t.CreateTexture then hooksecurefunc(t, "CreateTexture", P.DisablePixelSnap) end
+        if t.SetTexCoord then hooksecurefunc(t, "SetTexCoord", P.DisablePixelSnap) end
+        if t.SetTexture then hooksecurefunc(t, "SetTexture", P.DisablePixelSnap) end
 
         t.DisabledPixelSnap = true
     end
 end
 
-local obj = CreateFrame("Frame")
--- Midnight+: do not hook the shared StatusBar metatable. Those hooks run on
--- Blizzard party/raid health bars too and taint secret HP OnValueChanged paths.
 local build = select(4, GetBuildInfo())
-local skipStatusBarHooks = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE) and build and build >= 120000
-if not skipStatusBarHooks then
+local skipSharedMetatableHooks = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE) and build and build >= 120000
+if not skipSharedMetatableHooks then
+    local obj = CreateFrame("Frame")
     UpdateMetatable(CreateFrame("StatusBar"))
+    UpdateMetatable(obj:CreateTexture())
+    UpdateMetatable(obj:CreateMaskTexture())
 end
-UpdateMetatable(obj:CreateTexture())
-UpdateMetatable(obj:CreateMaskTexture())

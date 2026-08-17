@@ -5,7 +5,7 @@ local F = Cell.funcs
 ---@type CellIndicatorFuncs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 30
+local INIT_VERSION = 31
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -49,8 +49,10 @@ local function ProbeSupported()
         featureReady = false
         return false
     end
-    container:Hide()
-    container:SetParent(nil)
+    pcall(function()
+        container:Hide()
+        container:SetParent(nil)
+    end)
     featureReady = type(container.AddAuraGroup) == "function"
         and type(container.SetUnit) == "function"
         and type(container.SetEnabled) == "function"
@@ -652,18 +654,11 @@ end
 
 local function StopContainer(st)
     if not (st and st.container) then return end
-    pcall(st.container.SetEnabled, st.container, false)
     pcall(st.container.Hide, st.container)
-    if st.container.SetUnit then
-        pcall(st.container.SetUnit, st.container, nil)
-    end
     if st.hlContainer then
-        pcall(st.hlContainer.SetEnabled, st.hlContainer, false)
         pcall(st.hlContainer.Hide, st.hlContainer)
-        if st.hlContainer.SetUnit then
-            pcall(st.hlContainer.SetUnit, st.hlContainer, nil)
-        end
     end
+    st.boundUnit = nil
 end
 
 local function DestroyContainer(st)
@@ -766,10 +761,7 @@ local function CreateIndicatorContainer(unitButton, indicatorName, cfg)
     local unit = ResolveUnit(unitButton) or "player"
     local defaultInitFn = MakeInitAuraButton(cfg)
 
-    container:SetEnabled(false)
-    container:Hide()
     AnchorContainer(container, unitButton, cfg, indicatorName)
-    pcall(container.SetUnit, container, unit)
 
     for i = 1, #groups do
         local g = groups[i]
@@ -804,24 +796,44 @@ local function CreateIndicatorContainer(unitButton, indicatorName, cfg)
     end
 
     AnchorContainer(container, unitButton, cfg, indicatorName)
+    pcall(container.SetUnit, container, unit)
     if container.UpdateAllAuras then
         pcall(container.UpdateAllAuras, container)
     end
     return container
 end
 
+function I.ForEachCombatAuraContainer(func)
+    if not func then return end
+    for _, map in pairs(stateByButton) do
+        if type(map) == "table" then
+            for _, st in pairs(map) do
+                if st and st.container then
+                    func(st.container)
+                end
+                if st and st.hlContainer then
+                    func(st.hlContainer)
+                end
+            end
+        end
+    end
+end
+
 local function DriveContainer(unitButton, indicatorName, cfg, enable)
     local map = stateByButton[unitButton]
     local st = map and map[indicatorName]
     if not (st and st.container and cfg) then return end
+    if Cell.vars.editModeOpen then
+        return
+    end
     local unit = ResolveUnit(unitButton)
     AnchorContainer(st.container, unitButton, cfg, indicatorName)
-    if unit then
-        pcall(st.container.SetUnit, st.container, unit)
-    end
     if enable then
         st.container:Show()
-        st.container:SetEnabled(true)
+        if unit and st.boundUnit ~= unit then
+            pcall(st.container.SetUnit, st.container, unit)
+            st.boundUnit = unit
+        end
         if st.container.UpdateAllAuras then
             pcall(st.container.UpdateAllAuras, st.container)
         end
@@ -881,6 +893,7 @@ local function EnsureIndicatorContainer(unitButton, indicatorName, cfg, allowCre
         return false
     end
     st.container = container
+    st.boundUnit = ResolveUnit(unitButton)
     st.hlContainer = nil
     st.initVersion = INIT_VERSION
     st.highlightType = indicatorName == "dispels" and NormalizeDispelHighlightType(cfg.highlightType) or nil

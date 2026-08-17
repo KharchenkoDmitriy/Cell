@@ -255,7 +255,9 @@ for i = 6, 8 do
             if unit then
                 cleu:RegisterUnitEvent("UNIT_HEALTH", unit)
                 cleu:RegisterUnitEvent("UNIT_MAXHEALTH", unit)
-                cleu:RegisterUnitEvent("UNIT_AURA", unit)
+                if not (F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked()) then
+                    cleu:RegisterUnitEvent("UNIT_AURA", unit)
+                end
             end
         end
     end)

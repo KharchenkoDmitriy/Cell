@@ -477,7 +477,7 @@ end
 local function DriveContainer(unitButton, cfg, enable)
     local st = stateByButton[unitButton]
     if not (st and st.container and cfg) then return end
-    if Cell.vars.editModeOpen then
+    if Cell.vars.editModeOpen or (F.IsEditModeOpen and F.IsEditModeOpen()) then
         return
     end
     local unit = ResolveUnit(unitButton)

@@ -69,6 +69,7 @@ select(2, ...).L = setmetatable({
     ["Icons only"] = "Icons only",
     ["Glow only"] = "Glow only",
     ["enableBlacklistShortcut"] = "Blacklist: Alt+Ctrl+RightClick",
+    ["Debuff Filter (blacklist)"] = "Debuff Filter (blacklist)",
     ["smooth"] = "Smooth",
     ["onlyEnableNotInCombat"] = "Only when I'm not in combat",
 
@@ -114,11 +115,23 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.7.3 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Opening Edit Mode no longer blocks other addons (Bartender4 movers, EditMode.Enter callbacks).</p>
+        <p>* Hide Blizzard Party no longer errors on Blizzard party health ticks (secret current/max health) while the frames are hidden.</p>
+        <p>* Hide Blizzard Party no longer errors on Blizzard party status bar text or portrait health checks (secret health values).</p>
+        <p>* Hide Blizzard Party/Raid: leftover Blizzard frames no longer intercept clicks, and extra unit-frame children stay quiet outside Edit Mode.</p>
+        <h2>TBC</h2>
+        <p>* Debuffs indicator page no longer errors (empty settings) when opened.</p>
+        <p>* Debuffs and Raid Debuffs now have the Animation dropdown (None / Top to bottom / Circular).</p>
+        <br/>
+
         <h1>r277.9.7.2 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Opening Edit Mode no longer errors on Blizzard party/pet health bars (secret health values) when Hide Blizzard Party is enabled.</p>
         <p>* Hide Blizzard Party no longer taints Blizzard party health bars on group updates (secret health values).</p>
         <p>* Hide Blizzard Party no longer errors on Blizzard party aura updates (secret isFullUpdate) or health bar events (secret max health).</p>
+        <p>* Hide Blizzard Party no longer errors when leaving an instance (secret health modifiers on Blizzard party frames).</p>
         <h2>TBC</h2>
         <p>* Raid Debuffs and other border icons no longer cover the spell with a solid cooldown swipe.</p>
         <h2>MoP</h2>

@@ -3719,8 +3719,8 @@ function F.Revise()
         local indicators = layout["indicators"]
         if type(indicators) == "table" then
             for _, t in pairs(indicators) do
-                if t and t["indicatorName"] == "debuffs" then
-                    if t["nonPlayerAuras"] == nil then
+                if t and (t["indicatorName"] == "debuffs" or t["indicatorName"] == "raidDebuffs") then
+                    if t["indicatorName"] == "debuffs" and t["nonPlayerAuras"] == nil then
                         t["nonPlayerAuras"] = false
                     end
                     if t["animationStyle"] == nil then

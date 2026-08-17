@@ -422,6 +422,7 @@ Cell.defaults.layout = {
             ["size"] = {{13, 13}, {17, 17}},
             ["showDuration"] = false,
             ["showAnimation"] = true,
+            ["animationStyle"] = "clock",
             ["showTooltip"] = false,
             ["enableBlacklistShortcut"] = false,
             ["num"] = 3,
@@ -444,6 +445,7 @@ Cell.defaults.layout = {
             ["border"] = 2,
             ["num"] = 1,
             ["showDuration"] = true,
+            ["animationStyle"] = "clock",
             ["font"] = {
                 {"Cell ".._G.DEFAULT, 11, "Outline", false, "TOPRIGHT", 2, 1, {1, 1, 1}},
                 {"Cell ".._G.DEFAULT, 11, "Outline", false, "BOTTOMRIGHT", 2, -1, {1, 1, 1}},

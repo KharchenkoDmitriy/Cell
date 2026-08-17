@@ -280,7 +280,21 @@ local function HandleIndicators(b)
             indicator:SetIconStyle(t["iconStyle"])
         end
         -- update animation
-        if type(t["showAnimation"]) == "boolean" then
+        if type(t["animationStyle"]) == "string" then
+            local style = t["animationStyle"]
+            if style == "none" then
+                if indicator.ShowAnimation then
+                    indicator:ShowAnimation(false)
+                end
+            else
+                if indicator.SetCooldownStyle then
+                    indicator:SetCooldownStyle(style == "clock" and "CLOCK" or "VERTICAL")
+                end
+                if indicator.ShowAnimation then
+                    indicator:ShowAnimation(true)
+                end
+            end
+        elseif type(t["showAnimation"]) == "boolean" and indicator.ShowAnimation then
             indicator:ShowAnimation(t["showAnimation"])
         end
         -- update duration
@@ -817,6 +831,24 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 b.indicators[indicatorName]:SetIconStyle(value)
                 UnitButton_UpdateAuras(b)
             end, true)
+        elseif setting == "animationStyle" then
+            F.IterateAllUnitButtons(function(b)
+                local ind = b.indicators[indicatorName]
+                if not ind then return end
+                if value == "none" then
+                    if ind.ShowAnimation then
+                        ind:ShowAnimation(false)
+                    end
+                else
+                    if ind.SetCooldownStyle then
+                        ind:SetCooldownStyle(value == "clock" and "CLOCK" or "VERTICAL")
+                    end
+                    if ind.ShowAnimation then
+                        ind:ShowAnimation(true)
+                    end
+                end
+                UnitButton_UpdateAuras(b)
+            end, true)
         elseif setting == "checkbutton" then
             if value == "showGroupNumber" then
                 F.IterateAllUnitButtons(function(b)
@@ -956,7 +988,21 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     indicator:SetTexture(value["texture"])
                 end
                 -- update showAnimation
-                if type(value["showAnimation"]) == "boolean" then
+                if type(value["animationStyle"]) == "string" then
+                    local style = value["animationStyle"]
+                    if style == "none" then
+                        if indicator.ShowAnimation then
+                            indicator:ShowAnimation(false)
+                        end
+                    else
+                        if indicator.SetCooldownStyle then
+                            indicator:SetCooldownStyle(style == "clock" and "CLOCK" or "VERTICAL")
+                        end
+                        if indicator.ShowAnimation then
+                            indicator:ShowAnimation(true)
+                        end
+                    end
+                elseif type(value["showAnimation"]) == "boolean" then
                     indicator:ShowAnimation(value["showAnimation"])
                 end
                 -- update showDuration

@@ -4761,7 +4761,7 @@ local function CreateSetting_Auras(parent, index)
     -- show db value
     function widget:SetDBValue(title, t, noUpDownButtons, isZeroValid, hasColorPicker)
         widget.title = title
-        widget.t = t
+        widget.t = t or {}
         widget.noUpDownButtons = noUpDownButtons
         widget.isZeroValid = isZeroValid
         widget.hasColorPicker = hasColorPicker
@@ -4770,14 +4770,14 @@ local function CreateSetting_Auras(parent, index)
 
         if not auraButtons[index] then auraButtons[index] = {} end
 
-        CreateAuraButtons(widget.frame, auraButtons[index], t, noUpDownButtons, isZeroValid, hasColorPicker, function(n, diff)
+        CreateAuraButtons(widget.frame, auraButtons[index], widget.t, noUpDownButtons, isZeroValid, hasColorPicker, function(n, diff)
             local height = (n + 1) * P.Scale(20) - n * P.Scale(1)
             widget.frame:SetHeight(height)
             widget:SetHeight(height + P.Scale(22) + P.Scale(7))
             if diff then parent:SetHeight(parent:GetHeight() + P.Scale(diff)) end
         end, widget.usePicker)
 
-        local height = (#t + 1) * P.Scale(20) - #t * P.Scale(1)
+        local height = (#widget.t + 1) * P.Scale(20) - #widget.t * P.Scale(1)
         widget.frame:SetHeight(height)
         widget:SetHeight(height + P.Scale(22) + P.Scale(7))
     end

@@ -114,6 +114,17 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.7.2 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Opening Edit Mode no longer errors on Blizzard party/pet health bars (secret health values) when Hide Blizzard Party is enabled.</p>
+        <p>* Hide Blizzard Party no longer taints Blizzard party health bars on group updates (secret health values).</p>
+        <p>* Hide Blizzard Party no longer errors on Blizzard party aura updates (secret isFullUpdate) or health bar events (secret max health).</p>
+        <h2>TBC</h2>
+        <p>* Raid Debuffs and other border icons no longer cover the spell with a solid cooldown swipe.</p>
+        <h2>MoP</h2>
+        <p>* Included enderneko's latest Siege of Orgrimmar raid debuffs.</p>
+        <br/>
+
         <h1>r277.9.7.1 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Opening Edit Mode no longer taints the Cooldown Viewer when auras update.</p>

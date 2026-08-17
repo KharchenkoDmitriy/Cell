@@ -688,6 +688,7 @@ function I.CreateTargetedSpells(parent)
     targetedSpells.SetFont = SetFont
     targetedSpells.ShowGlow = ShowGlow
     targetedSpells.HideGlow = HideGlow
+    targetedSpells.SetCooldownStyle = I.Cooldowns_SetCooldownStyle
     targetedSpells.ShowGlowPreview = ShowPreview
     targetedSpells.HideGlowPreview = HidePreview
 

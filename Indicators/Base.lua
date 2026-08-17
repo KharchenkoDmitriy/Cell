@@ -281,8 +281,10 @@ local function Shared_CreateCooldown_Clock(frame)
     P.Point(cooldown, "BOTTOMRIGHT", frame, -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
     cooldown:SetReverse(true)
     cooldown:SetDrawEdge(false)
-    cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
-    cooldown:SetSwipeColor(0, 0, 0, 0.77)
+    if Cell.isRetail then
+        cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
+    end
+    cooldown:SetSwipeColor(0, 0, 0, 0.65)
     -- cooldown:SetEdgeTexture([[Interface\Cooldown\UI-HUD-ActionBar-SecondaryCooldown]])
 
     -- cooldown text
@@ -508,8 +510,10 @@ local function BorderIcon_CreateClockCooldown(frame)
     local cooldown = CreateFrame("Cooldown", nil, frame)
     frame.cooldown = cooldown
     cooldown:SetAllPoints(frame)
-    cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
-    cooldown:SetSwipeColor(1, 1, 1)
+    if Cell.isRetail then
+        cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
+    end
+    cooldown:SetSwipeColor(0, 0, 0, 0.65)
     cooldown:SetHideCountdownNumbers(true)
     if Cell.isMidnight and cooldown.SetCountdownAbbrevThreshold then
         cooldown:SetCountdownAbbrevThreshold(60)
@@ -856,7 +860,7 @@ local function BorderIcon_SetCooldown(frame, start, duration, debuffType, textur
         else
             frame.border:Hide()
             frame.cooldown:Show()
-            frame.cooldown:SetSwipeColor(r, g, b)
+            frame.cooldown:SetSwipeColor(r, g, b, 0.65)
             frame.cooldown:_SetCooldown(start, duration)
 
             frame:SetScript("OnUpdate", nil)
@@ -1005,7 +1009,7 @@ function I.CreateAura_BorderIcon(name, parent, borderSize)
     frame.SetupGlow = function() end
     frame.UpdatePixelPerfect = BorderIcon_UpdatePixelPerfect
 
-    BorderIcon_SetCooldownStyle(frame, Cell.isMidnight and CELL_COOLDOWN_STYLE or "CLOCK")
+    BorderIcon_SetCooldownStyle(frame, CELL_COOLDOWN_STYLE)
 
     return frame
 end

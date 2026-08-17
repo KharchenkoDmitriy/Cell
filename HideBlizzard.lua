@@ -20,89 +20,57 @@ local function IsEditModeOpen()
     return em and em.IsShown and em:IsShown()
 end
 
-local function SoftVisualHide(frame)
+local function SetFrameAlpha(frame, alpha)
     if not frame then return end
     if InCombatLockdown() then return end
+    if frame.IsForbidden and frame:IsForbidden() then return end
+    pcall(frame.SetAlpha, frame, alpha)
+end
+
+local function SoftVisualHide(frame)
     if IsEditModeOpen() then return end
-    pcall(frame.Hide, frame)
+    SetFrameAlpha(frame, 0)
 end
 
-local function HideActiveBlizzardPartyMembers()
-    if _G.PartyFrame and _G.PartyFrame.PartyMemberFramePool then
-        for frame in _G.PartyFrame.PartyMemberFramePool:EnumerateActive() do
-            SoftVisualHide(frame)
-        end
-        for i = 1, (_G.MAX_PARTY_MEMBERS or 4) do
-            SoftVisualHide(_G.PartyFrame["MemberFrame" .. i])
-        end
-    else
-        for i = 1, 4 do
-            SoftVisualHide(_G["PartyMemberFrame" .. i])
-            SoftVisualHide(_G["CompactPartyMemberFrame" .. i])
-        end
-    end
-    local membersPerGroup = _G.MEMBERS_PER_RAID_GROUP or 5
-    for i = 1, membersPerGroup do
-        SoftVisualHide(_G["CompactPartyFrameMember" .. i])
-    end
-    if _G.CompactPartyFrame and _G.CompactPartyFrame.memberUnitFrames then
-        for _, frame in ipairs(_G.CompactPartyFrame.memberUnitFrames) do
-            SoftVisualHide(frame)
-        end
-    end
-    if _G.CompactPartyFrame and _G.CompactPartyFrame.petUnitFrames then
-        for _, frame in ipairs(_G.CompactPartyFrame.petUnitFrames) do
-            SoftVisualHide(frame)
-        end
-    end
-    SoftVisualHide(_G.PartyMemberBackground)
-end
-
-local function HideRaidGroupMembers(group)
-    if not group then return end
-    local membersPerGroup = _G.MEMBERS_PER_RAID_GROUP or 5
-    local name = group.GetName and group:GetName()
-    if type(name) == "string" then
-        for i = 1, membersPerGroup do
-            SoftVisualHide(_G[name .. "Member" .. i])
-        end
-    end
-    if group.memberUnitFrames then
-        for _, frame in ipairs(group.memberUnitFrames) do
-            SoftVisualHide(frame)
-        end
-    end
-    if group.petUnitFrames then
-        for _, frame in ipairs(group.petUnitFrames) do
-            SoftVisualHide(frame)
-        end
-    end
+local function RestoreFrame(frame)
+    SetFrameAlpha(frame, 1)
 end
 
 local function SuppressBlizzParty()
     if not ShouldHideBlizzardParty() then return end
     SoftVisualHide(_G.PartyFrame)
     SoftVisualHide(_G.CompactPartyFrame)
-    HideActiveBlizzardPartyMembers()
+    SoftVisualHide(_G.PartyMemberBackground)
 end
 
 local function SuppressBlizzRaid()
     if not ShouldHideBlizzardRaid() then return end
     SoftVisualHide(_G.CompactRaidFrameContainer)
-    local maxFrames = (_G.MAX_RAID_MEMBERS or 40) * 3
-    for i = 1, maxFrames do
-        SoftVisualHide(_G["CompactRaidFrame" .. i])
-    end
     for i = 1, 8 do
-        local group = _G["CompactRaidGroup" .. i]
-        SoftVisualHide(group)
-        HideRaidGroupMembers(group)
+        SoftVisualHide(_G["CompactRaidGroup" .. i])
     end
 end
 
 local function SuppressBlizzRaidManager()
     if not ShouldHideBlizzardRaidManager() then return end
     SoftVisualHide(_G.CompactRaidFrameManager)
+end
+
+local function RestoreForEditMode()
+    if ShouldHideBlizzardParty() then
+        RestoreFrame(_G.PartyFrame)
+        RestoreFrame(_G.CompactPartyFrame)
+        RestoreFrame(_G.PartyMemberBackground)
+    end
+    if ShouldHideBlizzardRaid() then
+        RestoreFrame(_G.CompactRaidFrameContainer)
+        for i = 1, 8 do
+            RestoreFrame(_G["CompactRaidGroup" .. i])
+        end
+    end
+    if ShouldHideBlizzardRaidManager() then
+        RestoreFrame(_G.CompactRaidFrameManager)
+    end
 end
 
 local function TrySuppressForGroup()
@@ -125,25 +93,18 @@ local function StartEditModeWatcher()
     if editModeWatcherStarted then return end
     editModeWatcherStarted = true
     local watch = CreateFrame("Frame")
-    watch.elapsed = 1
-    watch:SetScript("OnUpdate", function(self, elapsed)
-        self.elapsed = self.elapsed + elapsed
-        if self.elapsed < 0.25 then return end
-        self.elapsed = 0
+    watch:SetScript("OnUpdate", function()
         local open = IsEditModeOpen()
-        if Cell.vars.editModeOpen ~= open then
-            Cell.vars.editModeOpen = open
-            if not open then
-                C_Timer.After(0.5, function()
-                    if not IsEditModeOpen() then
-                        TrySuppressForGroup()
-                    end
-                end)
-            end
-            return
-        end
-        if not open then
-            TrySuppressForGroup()
+        if Cell.vars.editModeOpen == open then return end
+        Cell.vars.editModeOpen = open
+        if open then
+            RestoreForEditMode()
+        else
+            C_Timer.After(0.5, function()
+                if not IsEditModeOpen() then
+                    TrySuppressForGroup()
+                end
+            end)
         end
     end)
 end

@@ -1071,6 +1071,7 @@ function I.CreateRaidDebuffs(parent)
     raidDebuffs.SetFont = I.Cooldowns_SetFont
     raidDebuffs.ShowGlow = RaidDebuffs_ShowGlow
     raidDebuffs.HideGlow = RaidDebuffs_HideGlow
+    raidDebuffs.SetCooldownStyle = I.Cooldowns_SetCooldownStyle
     raidDebuffs.UpdatePixelPerfect = I.Cooldowns_UpdatePixelPerfect
 
     raidDebuffs.ShowTooltip = RaidDebuffs_ShowTooltip
@@ -3192,6 +3193,7 @@ function I.CreateCrowdControls(parent)
     crowdControls.ShowDuration = I.Cooldowns_ShowDuration
     crowdControls.SetOrientation = I.Cooldowns_SetOrientation_WithSpacing
     crowdControls.SetFont = I.Cooldowns_SetFont
+    crowdControls.SetCooldownStyle = I.Cooldowns_SetCooldownStyle
     crowdControls.UpdatePixelPerfect = I.Cooldowns_UpdatePixelPerfect
 
     for i = 1, 3 do

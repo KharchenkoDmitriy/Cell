@@ -1,9 +1,6 @@
 local _, Cell = ...
 local F = Cell.funcs
 
--- Classic / TBC / Wrath / Cata / MoP Hide Blizzard.
--- Keep this separate from retail HideBlizzard.lua (Midnight secret-taint path).
-
 local hiddenParent = CreateFrame("Frame", nil, _G.UIParent)
 hiddenParent:SetAllPoints()
 hiddenParent:Hide()

@@ -32,17 +32,41 @@ function F.IsEditModeOpen()
     return IsEditModeOpen()
 end
 
+local function FrameIsForbidden(frame)
+    if not frame then return true end
+    local ok, result = pcall(function()
+        return frame.IsForbidden and frame:IsForbidden()
+    end)
+    if not ok then return true end
+    local okBool, isForbidden = pcall(function()
+        if result then return true end
+        return false
+    end)
+    return (not okBool) or isForbidden
+end
+
+local function GetFrameScript(frame, script)
+    if not frame or not frame.GetScript then return nil end
+    local ok, handler = pcall(frame.GetScript, frame, script)
+    if not ok then return nil end
+    local okType, kind = pcall(type, handler)
+    if okType and kind == "function" then
+        return handler
+    end
+    return nil
+end
+
 local function SetFrameAlpha(frame, alpha)
     if not frame then return end
     if InCombatLockdown() then return end
-    if frame.IsForbidden and frame:IsForbidden() then return end
+    if FrameIsForbidden(frame) then return end
     pcall(frame.SetAlpha, frame, alpha)
 end
 
 local function SetFrameMouse(frame, enabled)
     if not frame then return end
     if InCombatLockdown() then return end
-    if frame.IsForbidden and frame:IsForbidden() then return end
+    if FrameIsForbidden(frame) then return end
     pcall(frame.EnableMouse, frame, enabled)
     if frame.SetMouseClickEnabled then
         pcall(frame.SetMouseClickEnabled, frame, enabled)
@@ -54,51 +78,73 @@ end
 
 local function StopOnUpdate(frame)
     if not frame then return end
-    if frame.IsForbidden and frame:IsForbidden() then return end
-    if not (frame.GetScript and frame:GetScript("OnUpdate")) then return end
+    if FrameIsForbidden(frame) then return end
+    if not GetFrameScript(frame, "OnUpdate") then return end
     pcall(frame.SetScript, frame, "OnUpdate", nil)
 end
 
-local function FrameHasUnitEvents(frame)
-    if not (frame and frame.IsEventRegistered) then return true end
-    return frame:IsEventRegistered("UNIT_HEALTH")
-        or frame:IsEventRegistered("UNIT_MAXHEALTH")
-        or frame:IsEventRegistered("UNIT_HEALTH_FREQUENT")
-        or frame:IsEventRegistered("UNIT_AURA")
-        or frame:IsEventRegistered("UNIT_NAME_UPDATE")
-        or frame:IsEventRegistered("UNIT_POWER_UPDATE")
-        or frame:IsEventRegistered("UNIT_POWER_FREQUENT")
-        or frame:IsEventRegistered("UNIT_CONNECTION")
-        or frame:IsEventRegistered("UNIT_PHASE")
-        or frame:IsEventRegistered("GROUP_ROSTER_UPDATE")
-        or frame:IsEventRegistered("PLAYER_ENTERING_WORLD")
-        or frame:IsEventRegistered("PLAYER_ROLES_ASSIGNED")
+local function StopScript(frame, script)
+    if not frame then return end
+    if FrameIsForbidden(frame) then return end
+    if not frame.SetScript then return end
+    local handler = GetFrameScript(frame, script)
+    if not handler then return end
+    local savedKey = "__cellOrig" .. script
+    if frame[savedKey] == nil then
+        frame[savedKey] = handler
+    end
+    pcall(frame.SetScript, frame, script, nil)
 end
 
-local function QuietFrame(frame)
+local function RestoreScript(frame, script)
+    if not frame then return end
+    if FrameIsForbidden(frame) then return end
+    local savedKey = "__cellOrig" .. script
+    local orig = frame[savedKey]
+    if orig then
+        pcall(frame.SetScript, frame, script, orig)
+    end
+    frame[savedKey] = nil
+end
+
+local function StopOnEvent(frame)
+    StopScript(frame, "OnEvent")
+end
+
+local function StopOnShow(frame)
+    StopScript(frame, "OnShow")
+end
+
+local function RestoreOnEvent(frame)
+    RestoreScript(frame, "OnEvent")
+    RestoreScript(frame, "OnShow")
+    if frame then
+        frame.__cellSuppressed = nil
+    end
+end
+
+local function QuietFrameInner(frame)
     if not frame then return end
     if IsEditModeOpen() then return end
-    if frame.IsForbidden and frame:IsForbidden() then return end
+    if FrameIsForbidden(frame) then return end
     StopOnUpdate(frame)
-    if FrameHasUnitEvents(frame) then
-        pcall(frame.UnregisterAllEvents, frame)
-    end
+    StopOnEvent(frame)
+    StopOnShow(frame)
+    pcall(frame.UnregisterAllEvents, frame)
 
     local container = frame.HealthBarContainer or frame.HealthBarsContainer
     if container then
         StopOnUpdate(container)
-        if FrameHasUnitEvents(container) then
-            pcall(container.UnregisterAllEvents, container)
-        end
+        StopOnEvent(container)
+        pcall(container.UnregisterAllEvents, container)
     end
 
     local health = (container and (container.HealthBar or container.healthBar))
         or frame.healthbar or frame.healthBar or frame.HealthBar
     if health then
         StopOnUpdate(health)
-        if FrameHasUnitEvents(health) then
-            pcall(health.UnregisterAllEvents, health)
-        end
+        StopOnEvent(health)
+        pcall(health.UnregisterAllEvents, health)
         if health.AnimatedLossBar then
             StopOnUpdate(health.AnimatedLossBar)
         end
@@ -107,9 +153,8 @@ local function QuietFrame(frame)
     local mana = frame.ManaBar or frame.manabar or frame.PowerBar or frame.powerBar
     if mana then
         StopOnUpdate(mana)
-        if FrameHasUnitEvents(mana) then
-            pcall(mana.UnregisterAllEvents, mana)
-        end
+        StopOnEvent(mana)
+        pcall(mana.UnregisterAllEvents, mana)
     end
 
     local extra = {
@@ -124,25 +169,36 @@ local function QuietFrame(frame)
         local child = extra[i]
         if child then
             StopOnUpdate(child)
-            if FrameHasUnitEvents(child) then
-                pcall(child.UnregisterAllEvents, child)
-            end
+            StopOnEvent(child)
+            pcall(child.UnregisterAllEvents, child)
         end
     end
 
     if frame.PetFrame then
         QuietFrame(frame.PetFrame)
-        SetFrameMouse(frame.PetFrame, false)
+        if not frame.PetFrame.__cellSuppressed then
+            SetFrameMouse(frame.PetFrame, false)
+            frame.PetFrame.__cellSuppressed = true
+        end
     end
 
-    SetFrameMouse(frame, false)
+    if not frame.__cellSuppressed then
+        SetFrameMouse(frame, false)
+        frame.__cellSuppressed = true
+    end
+end
+
+local function QuietFrame(frame)
+    pcall(QuietFrameInner, frame)
 end
 
 local function RestoreMemberMouse(frame)
     if not frame then return end
     SetFrameMouse(frame, true)
+    RestoreOnEvent(frame)
     if frame.PetFrame then
         SetFrameMouse(frame.PetFrame, true)
+        RestoreOnEvent(frame.PetFrame)
     end
 end
 
@@ -218,6 +274,7 @@ end
 local function RestoreFrame(frame)
     SetFrameAlpha(frame, 1)
     SetFrameMouse(frame, true)
+    RestoreOnEvent(frame)
 end
 
 local function SuppressBlizzParty()
@@ -306,8 +363,15 @@ local function StartEditModeWatcher()
             end
         end
         if not open then
-            if ShouldHideBlizzardParty() then QuietPartyMembers() end
-            if ShouldHideBlizzardRaid() then QuietRaidMembers() end
+            if ShouldHideBlizzardParty() then
+                QuietFrame(_G.PartyFrame)
+                QuietFrame(_G.CompactPartyFrame)
+                QuietPartyMembers()
+            end
+            if ShouldHideBlizzardRaid() then
+                QuietFrame(_G.CompactRaidFrameContainer)
+                QuietRaidMembers()
+            end
         end
     end)
 end
@@ -344,15 +408,18 @@ end)
 
 function F.HideBlizzardParty()
     StartEditModeWatcher()
+    TrySuppressForGroup()
     C_Timer.After(0.5, TrySuppressForGroup)
 end
 
 function F.HideBlizzardRaid()
     StartEditModeWatcher()
+    TrySuppressForGroup()
     C_Timer.After(0.5, TrySuppressForGroup)
 end
 
 function F.HideBlizzardRaidManager()
     StartEditModeWatcher()
+    TrySuppressForGroup()
     C_Timer.After(0.5, TrySuppressForGroup)
 end

@@ -4,7 +4,6 @@ local F = Cell.funcs
 local P = Cell.pixelPerfectFuncs
 local A = Cell.animations
 
--- 12.0.7+: DoReadyCheck moved to C_PartyInfo (keep legacy fallback for older Classic clients)
 local DoReadyCheck = (C_PartyInfo and C_PartyInfo.DoReadyCheck) or _G.DoReadyCheck
 local InitiateRolePoll = (C_PartyInfo and C_PartyInfo.InitiateRolePoll) or _G.InitiateRolePoll
 

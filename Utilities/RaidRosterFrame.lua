@@ -10,7 +10,6 @@ local GetRaidRosterInfo = GetRaidRosterInfo
 local SwapRaidSubgroup = SwapRaidSubgroup
 local SetRaidSubgroup = SetRaidSubgroup
 
--- 12.0.7+: party roster APIs moved to C_PartyInfo (keep legacy fallback for older Classic clients)
 local SetEveryoneIsAssistant = (C_PartyInfo and C_PartyInfo.SetEveryoneIsAssistant) or _G.SetEveryoneIsAssistant
 local UninviteUnit = (C_PartyInfo and C_PartyInfo.UninviteUnit) or _G.UninviteUnit
 local DemoteAssistant = (C_PartyInfo and C_PartyInfo.DemoteAssistant) or _G.DemoteAssistant

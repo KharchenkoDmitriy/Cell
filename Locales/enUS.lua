@@ -115,6 +115,14 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.7.4 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Hide Blizzard Party no longer errors on group updates (secret max health on Blizzard party frames while Cell-tainted).</p>
+        <p>* Hide Blizzard Party no longer errors after cinematics or UI panel hide/show (Blizzard party Setup refreshing secret max health).</p>
+        <p>* Hide Blizzard Party no longer errors on Compact Party health bars (secret boolean when checking registered events / scripts).</p>
+        <p>* Marks Bar target markers no longer trigger a protected SetRaidTarget() error; they use the secure /tm command instead.</p>
+        <br/>
+
         <h1>r277.9.7.3 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Opening Edit Mode no longer blocks other addons (Bartender4 movers, EditMode.Enter callbacks).</p>

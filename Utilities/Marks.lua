@@ -84,75 +84,71 @@ marks = Cell.CreateFrame("CellRaidMarksFrame_Marks", marksFrame, 196, 20, true)
 marks:SetPoint("BOTTOMLEFT")
 marks:Hide()
 
-local ticker
 local markButtons = {}
 for i = 1, 9 do
-    markButtons[i] = Cell.CreateButton(marks, "", "accent-hover", {20, 20})
+    markButtons[i] = Cell.CreateButton(marks, "", "accent-hover", {20, 20}, false, false, nil, nil, "SecureActionButtonTemplate")
+    markButtons[i]:RegisterForClicks("LeftButtonUp", "RightButtonUp", "LeftButtonDown", "RightButtonDown")
     markButtons[i].texture = markButtons[i]:CreateTexture(nil, "ARTWORK")
     P.Point(markButtons[i].texture, "TOPLEFT", markButtons[i], "TOPLEFT", 2, -2)
     P.Point(markButtons[i].texture, "BOTTOMRIGHT", markButtons[i], "BOTTOMRIGHT", -2, 2)
 
     if i == 9 then
-        -- clear all marks
         markButtons[i].texture:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-        markButtons[i]:SetScript("OnClick", function()
-            RemoveRaidTargets()
-            -- markButtons[i]:SetEnabled(false)
-            -- markButtons[i].texture:SetDesaturated(true)
-            -- for j = 1, 8 do
-            --     SetRaidTarget("player", j)
-            -- end
-            -- C_Timer.After(0.5, function()
-            --     SetRaidTarget("player", 0)
-            --     markButtons[i]:SetEnabled(true)
-            --     markButtons[i].texture:SetDesaturated(false)
-            -- end)
-        end)
+        markButtons[i]:SetAttribute("type", "macro")
+        markButtons[i]:SetAttribute("macrotext", "/tm 0")
     else
         markButtons[i].texture:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
         SetRaidTargetIconTexture(markButtons[i].texture, i)
-        markButtons[i]:RegisterForClicks("LeftButtonDown", "RightButtonDown")
-        markButtons[i]:SetScript("OnClick", function(self, button)
+        markButtons[i]:SetAttribute("type1", "macro")
+        markButtons[i]:SetAttribute("macrotext1", "/tm " .. i)
+        markButtons[i]:SetAttribute("type2", "macro")
+        markButtons[i]:SetAttribute("macrotext2", "/tm " .. i)
+
+        markButtons[i]:HookScript("PreClick", function(self, button)
+            if InCombatLockdown() then return end
             if button == "LeftButton" then
-                -- set raid target icon
-                if GetRaidTargetIndex("target") == i then
-                    SetRaidTarget("target", 0)
-                else
-                    SetRaidTarget("target", i)
+                local hasMark = false
+                local ok, current = pcall(GetRaidTargetIndex, "target")
+                if ok then
+                    local okEq, matches = pcall(function() return current == i end)
+                    hasMark = okEq and matches
                 end
+                self:SetAttribute("macrotext1", hasMark and "/tm 0" or ("/tm " .. i))
             elseif button == "RightButton" then
-                -- lock raid target icon
                 local unit, name, class = F.GetTargetUnitInfo()
-                if unit and name then
-                    if markButtons[i].locked then
-                        F.NotifyMarkUnlock(i, name, class)
-                        SetRaidTarget(markButtons[i].locked, 0)
-                        markButtons[i]:SetBackdropBorderColor(0, 0, 0, 1)
-                        markButtons[i].locked = nil
-                        if markButtons[i].ticker then
-                            markButtons[i].ticker:Cancel()
-                            markButtons[i].ticker = nil
-                        end
-                    else
-                        F.NotifyMarkLock(i, name, class)
-                        SetRaidTarget(unit, i)
-                        markButtons[i]:SetBackdropBorderColor(markColors[i][1], markColors[i][2], markColors[i][3], 1)
-                        markButtons[i].locked = unit
-                        markButtons[i].ticker = C_Timer.NewTicker(1.5, function()
-                            if UnitName(unit) == name then
-                                if GetRaidTargetIndex(unit) ~= i then
-                                    SetRaidTarget(unit, i)
-                                end
-                            else
-                                markButtons[i].locked = nil
-                                markButtons[i].ticker:Cancel()
-                                markButtons[i].ticker = nil
-                                markButtons[i]:SetBackdropBorderColor(0, 0, 0, 1)
-                            end
-                        end)
+                if not unit or not name then return end
+                if self.locked then
+                    F.NotifyMarkUnlock(i, name, class)
+                    self:SetAttribute("macrotext2", "/tm [@" .. self.locked .. "] 0")
+                    self:SetBackdropBorderColor(0, 0, 0, 1)
+                    self.locked = nil
+                    if self.ticker then
+                        self.ticker:Cancel()
+                        self.ticker = nil
                     end
+                else
+                    F.NotifyMarkLock(i, name, class)
+                    self:SetAttribute("macrotext2", "/tm [@" .. unit .. "] " .. i)
+                    self:SetBackdropBorderColor(markColors[i][1], markColors[i][2], markColors[i][3], 1)
+                    self.locked = unit
+                    self.ticker = C_Timer.NewTicker(1.5, function()
+                        if UnitName(unit) ~= name then
+                            self.locked = nil
+                            if self.ticker then
+                                self.ticker:Cancel()
+                                self.ticker = nil
+                            end
+                            self:SetBackdropBorderColor(0, 0, 0, 1)
+                        end
+                    end)
                 end
             end
+        end)
+
+        markButtons[i]:HookScript("PostClick", function(self)
+            if InCombatLockdown() then return end
+            self:SetAttribute("macrotext1", "/tm " .. i)
+            self:SetAttribute("macrotext2", "/tm " .. i)
         end)
     end
 

@@ -1,8 +1,5 @@
----@class Cell
 local _, Cell = ...
----@type CellFuncs
 local F = Cell.funcs
----@type CellIndicatorFuncs
 local I = Cell.iFuncs
 
 local INIT_VERSION = 21
@@ -1122,7 +1119,7 @@ local function DriveContainer(unitButton, cfg, enable)
     local map = stateByButton[unitButton]
     local st = map and map[cfg.indicatorName]
     if not (st and st.container and cfg) then return end
-    if Cell.vars.editModeOpen or (F.IsEditModeOpen and F.IsEditModeOpen()) then
+    if Cell.vars.editModeOpen then
         return
     end
     local unit = ResolveUnit(unitButton)

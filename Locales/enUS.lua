@@ -115,6 +115,13 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.7.5 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Hide Blizzard Party/Raid stay hidden in Edit Mode (they are not restored for moving).</p>
+        <p>* Edit Mode, Cooldown Viewer, and the Game Menu no longer error when Hide Blizzard Party is enabled. Other Edit Mode elements can be moved again.</p>
+        <p>* Hidden Blizzard party and pet frames no longer error on leftover updates (mana text, max health, heal absorb, auras).</p>
+        <br/>
+
         <h1>r277.9.7.4 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Hide Blizzard Party no longer errors on group updates (secret max health on Blizzard party frames while Cell-tainted).</p>

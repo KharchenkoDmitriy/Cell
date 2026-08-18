@@ -1,11 +1,5 @@
----@class Cell
 local _, Cell = ...
----@type CellFuncs
 local F = Cell.funcs
-
--------------------------------------------------
--- aura timing
--------------------------------------------------
 
 function F.GetAuraTiming(auraInfo)
     local expirationTime = auraInfo and auraInfo.expirationTime or 0

@@ -195,10 +195,6 @@ end
 -------------------------------------------------
 -- FIXME: fix health updating boss678
 -- ! BLIZZARD, FIX IT!
--- NOTE: On Midnight (12.0.0+) COMBAT_LOG_EVENT_UNFILTERED is unavailable.
--- Boss6-8 health/aura updates fall back entirely to the periodic poll
--- (elapsed3 >= 5) and UNIT_HEALTH / UNIT_AURA unit events registered below.
--- The CLEU path is guarded by Cell.isMidnight.
 -------------------------------------------------
 local boss678_guidToButton = {}
 local boss678_buttonToGuid = {}
@@ -217,12 +213,8 @@ if not Cell.isMidnight then
         end
     end)
 else
-    -- Midnight: use UNIT_HEALTH and UNIT_AURA for boss6-8 unit events.
-    -- These events fire for units that WoW tracks; boss6-8 visibility may be
-    -- limited but is better than nothing and complements the periodic poll.
     cleu:SetScript("OnEvent", function(self, event, unit)
         local button = unit and F.HandleUnitButton and nil
-        -- resolve unit to button via the boss678 unit map
         for idx = 6, 8 do
             local b = Cell.unitButtons.npc[idx]
             if b and b.states and b.states.unit == unit then
@@ -250,7 +242,6 @@ for i = 6, 8 do
         B.UpdateAll(button)
 
         if Cell.isMidnight then
-            -- Register unit events for this boss slot on Midnight
             local unit = button.states.unit
             if unit then
                 cleu:RegisterUnitEvent("UNIT_HEALTH", unit)
@@ -275,8 +266,6 @@ for i = 6, 8 do
                 cleu:UnregisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
             end
         end
-        -- Note: unit events registered via RegisterUnitEvent are automatically
-        -- unregistered when no units match; no explicit cleanup needed.
     end)
 
     button.helper:HookScript("OnUpdate", function(self, elapsed)

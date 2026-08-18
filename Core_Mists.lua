@@ -1,4 +1,4 @@
-﻿---@class Cell
+---@class Cell
 local Cell = select(2, ...)
 _G.Cell = Cell
 

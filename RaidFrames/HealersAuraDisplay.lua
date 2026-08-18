@@ -1,8 +1,5 @@
----@class Cell
 local _, Cell = ...
----@type CellFuncs
 local F = Cell.funcs
----@type CellIndicatorFuncs
 local I = Cell.iFuncs
 
 local GROUP_KEY = "healers"
@@ -477,7 +474,7 @@ end
 local function DriveContainer(unitButton, cfg, enable)
     local st = stateByButton[unitButton]
     if not (st and st.container and cfg) then return end
-    if Cell.vars.editModeOpen or (F.IsEditModeOpen and F.IsEditModeOpen()) then
+    if Cell.vars.editModeOpen then
         return
     end
     local unit = ResolveUnit(unitButton)

@@ -51,11 +51,22 @@ local cache = {
 }
 lib.cache = cache
 
+local function CanIndexCache(key)
+    if key == nil then return false end
+    if issecretvalue then
+        local ok, secret = pcall(issecretvalue, key)
+        if ok and secret then return false end
+    end
+    return true
+end
+
 function lib:GetCachedInfo(guid)
-    return guid and cache[guid]
+    if not CanIndexCache(guid) then return end
+    return cache[guid]
 end
 
 function lib:GuidToUnit(guid)
+    if not CanIndexCache(guid) then return end
     if cache[guid] then
         return cache[guid].unit
     end

@@ -115,6 +115,14 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.7.7 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Hide Blizzard: opening Edit Mode no longer errors on hidden compact party/raid frames, and the leftover gold target box on those faded frames is gone. Party/Raid stay hidden; Cooldown Viewer and other Edit Mode elements stay usable; the player breath bar stays visible.</p>
+        <p>* Options tooltips no longer warn on load about a missing Cell font.</p>
+        <p>* Unit names and power filters no longer error in combat.</p>
+        <p>* Target highlight only shows on your actual target.</p>
+        <br/>
+
         <h1>r277.9.7.6 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Hide Blizzard Party: hidden traditional party frames no longer error on roster or health updates (secret max health / status text).</p>

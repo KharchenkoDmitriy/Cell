@@ -2852,7 +2852,10 @@ local function GetRole(b)
         end
     end
 
-    local info = LGI:GetCachedInfo(b.states.guid)
+    local info
+    if b.states.guid and F.IsValueNonSecret(b.states.guid) then
+        info = LGI:GetCachedInfo(b.states.guid)
+    end
     if info and F.IsValueNonSecret(info.role) then
         return info.role
     end
@@ -2945,14 +2948,14 @@ ShouldShowPowerBar = function(b)
 
     local class, role = GetClassAndRole(b)
 
-    if class and Cell.vars.currentLayoutTable then
+    if class and F.IsValueNonSecret(class) and Cell.vars.currentLayoutTable then
         local filter = Cell.vars.currentLayoutTable["powerFilters"] and Cell.vars.currentLayoutTable["powerFilters"][class]
         if filter == nil then
             return true
         elseif type(filter) == "boolean" then
             return filter
         else
-            if role then
+            if role and F.IsValueNonSecret(role) then
                 return filter[role]
             else
                 return EvaluateFilterWithoutRole(filter)
@@ -3024,10 +3027,7 @@ local function UnitButton_UpdateTarget(self)
     local unit = self.states.displayedUnit
     if not unit then return end
 
-    -- UnitIsUnit may return a secret boolean in combat; check before boolean test.
-    -- Treat secret as true (better to show highlight than miss the player's target).
-    local isTarget = UnitIsUnit(unit, "target")
-    if not F.IsValueNonSecret(isTarget) or isTarget then
+    if F.IsKnownTrue(UnitIsUnit(unit, "target")) then
         if highlightEnabled then self.widgets.targetHighlight:Show() end
     else
         self.widgets.targetHighlight:Hide()
@@ -3865,8 +3865,6 @@ local function UnitButton_UpdateCombatIcon(self)
     local unit = self.states.displayedUnit
     if not unit then return end
 
-    -- UnitAffectingCombat has no SecretWhen* flag in 12.1, including other units.
-    -- IsKnownTrue still skips a secret boolean instead of erroring.
     if not (indicatorBooleans["combatIcon"] and InCombatLockdown()) and F.IsKnownTrue(UnitAffectingCombat(unit)) then
         self.indicators.combatIcon:Show()
     else

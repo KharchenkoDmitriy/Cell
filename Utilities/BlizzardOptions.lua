@@ -95,18 +95,6 @@ local function RegisterSettingsCategory()
     divider:SetHeight(1)
     themed.divider = divider
 
-    local creditsLabel = MakeFS(card, "GameFontNormal", "CREDITS")
-    creditsLabel:SetPoint("TOPLEFT", divider, "BOTTOMLEFT", 0, -18)
-    themed.creditsLabel = creditsLabel
-
-    local authorLine = MakeFS(card, "GameFontHighlight", "Author: enderneko | Fork base: jdtoppin + Krysio (krysiolol)", 0.90, 0.90, 0.92)
-    authorLine:SetPoint("TOPLEFT", creditsLabel, "BOTTOMLEFT", 0, -10)
-    authorLine:SetWidth(520)
-
-    local forkLine = MakeFS(card, "GameFontHighlightSmall", "Continued by NeRgY - r277.9.7.6 (from Krysio r277.7.5.3)", 0.65, 0.68, 0.74)
-    forkLine:SetPoint("TOPLEFT", authorLine, "BOTTOMLEFT", 0, -6)
-    forkLine:SetWidth(520)
-
     local button
     if Cell.CreateButton then
         button = Cell.CreateButton(card, L["Open Options"], "accent-hover", {180, 24})
@@ -150,7 +138,6 @@ local function RegisterSettingsCategory()
         themed.title:SetTextColor(accent.r, accent.g, accent.b)
         themed.tag:SetTextColor(accent.r, accent.g, accent.b)
         ColorTex(themed.divider, accent, 0.4)
-        themed.creditsLabel:SetTextColor(accent.r, accent.g, accent.b)
     end
 
     ApplyTheme(accent)

@@ -22,7 +22,7 @@ Cell.isCata = WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC
 Cell.isMists = WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC
 Cell.isTWW = LE_EXPANSION_LEVEL_CURRENT == LE_EXPANSION_WAR_WITHIN
 
-local CELL_VERSION_FALLBACK = "r277.9.7.6"
+local CELL_VERSION_FALLBACK = "r277.9.7.7"
 
 function F.InitAddonVersion()
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
@@ -1097,7 +1097,6 @@ function F.HandleUnitButton(type, unit, func, ...)
     for _, b in pairs(Cell.unitButtons.spotlight) do
         if b.states.unit then
             local isMatch = UnitIsUnit(b.states.unit, unit)
-            -- UnitIsUnit may return a secret boolean on Midnight; treat secret as true
             if not F.IsValueNonSecret(isMatch) or isMatch then
                 func(b, ...)
                 handled = true
@@ -1108,12 +1107,9 @@ function F.HandleUnitButton(type, unit, func, ...)
     return handled
 end
 
--- Safe UpdateTextWidth for Midnight 12.0+ (secret values)
--- Safe UpdateTextWidth for Midnight 12.0+ (final robust version)
 function F.UpdateTextWidth(fs, text, width, relativeTo)
     if not fs then return end
 
-    -- Midnight: secret string protection
     if Cell.isMidnight and not F.IsValueNonSecret(text) then
         fs:SetText(text or "")
         return
@@ -1124,7 +1120,6 @@ function F.UpdateTextWidth(fs, text, width, relativeTo)
         return
     end
 
-    -- If width is nil or invalid, just set the full text
     if not width or type(width) ~= "table" then
         fs:SetText(text)
         return
@@ -1137,17 +1132,35 @@ function F.UpdateTextWidth(fs, text, width, relativeTo)
 
     if width[1] == "percentage" then
         local percent = width[2] or 0.75
-        local width = relativeTo:GetWidth() - 2
-        for i = string.utf8len(text), 0, -1 do
+        if not relativeTo then
+            fs:SetText(text)
+            return
+        end
+        local barWidth = relativeTo:GetWidth()
+        if not F.IsValueNonSecret(barWidth) then
+            fs:SetText(text)
+            return
+        end
+        barWidth = barWidth - 2
+        local okLen, len = pcall(string.utf8len, text)
+        if not okLen or not F.IsValueNonSecret(len) then
+            fs:SetText(text)
+            return
+        end
+        for i = len, 0, -1 do
             fs:SetText(string.utf8sub(text, 1, i))
-            if fs:GetWidth() / width <= percent then
+            local fsWidth = fs:GetWidth()
+            if not F.IsValueNonSecret(fsWidth) then
+                break
+            end
+            if fsWidth / barWidth <= percent then
                 break
             end
         end
     elseif width[1] == "length" then
-        if string.len(text) == string.utf8len(text) then -- en
+        if string.len(text) == string.utf8len(text) then
             fs:SetText(string.utf8sub(text, 1, width[2]))
-        else -- non-en
+        else
             fs:SetText(string.utf8sub(text, 1, width[3]))
         end
     end

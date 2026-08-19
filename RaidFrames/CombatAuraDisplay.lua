@@ -294,6 +294,21 @@ local function BuildGroupsForIndicator(indicatorName, cfg)
         if cfg.nonPlayerAuras then
             extra = { excludeSpellIDs = BuildPersonalDebuffExcludeMap() }
         end
+        if cfg.dispellableByMe then
+            local types = {}
+            for i = 1, #DISPEL_TYPE_ORDER do
+                local token = DISPEL_TYPE_ORDER[i]
+                if I.CanDispel(token) then
+                    types[token] = true
+                end
+            end
+            if next(types) then
+                extra = extra or {}
+                extra.includeDispelTypes = types
+            else
+                return groups
+            end
+        end
         groups[#groups + 1] = {
             key = "deb",
             filter = "HARMFUL",
@@ -1273,6 +1288,10 @@ if SUPPORTED then
         C_Timer.After(0, I.RefreshAllCombatAuraDisplays)
     end)
 
+    Cell.RegisterCallback("SpecChanged", "CombatAuraDisplay_SpecChanged", function()
+        C_Timer.After(1.25, I.RefreshAllCombatAuraDisplays)
+    end)
+
     Cell.RegisterCallback("UpdateAppearance", "CombatAuraDisplay_UpdateAppearance", function(which)
         if which == nil or which == "icon" or which == "reset" then
             C_Timer.After(0, I.RefreshAllCombatAuraDisplays)
@@ -1290,6 +1309,7 @@ if SUPPORTED then
     boot:SetScript("OnEvent", function(_, event)
         if event == "PLAYER_ENTERING_WORLD" then
             C_Timer.After(0.5, I.RefreshAllCombatAuraDisplays)
+            C_Timer.After(1.25, I.RefreshAllCombatAuraDisplays)
             return
         end
         RefreshCachedLayouts()

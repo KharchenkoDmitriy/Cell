@@ -1251,12 +1251,6 @@ local function PrivateAuras_UpdateDispelOverlayVisibility(self)
     local targetAlpha = 0
     if self.showDispelOverlay then
         local hasNormalDispel = false
-        
-        -- Check both self.button._debuffs_dispel (for active player dispels)
-        -- AND search self.button._debuffs_cache for any normal (non-secret) dispellable debuffs.
-        -- This ensures that the Blizzard Private Dispel Overlay is hidden if there is
-        -- a normal dispellable debuff on the unit, letting Cell's own debuff/dispel indicators
-        -- take absolute priority for non-private auras.
         if self.button then
             if self.button._debuffs_dispel then
                 for dispelType, value in pairs(self.button._debuffs_dispel) do

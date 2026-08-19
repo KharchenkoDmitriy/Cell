@@ -3,14 +3,10 @@ local F = Cell.funcs
 
 Cell.vars.editModeOpen = false
 
-local hiddenParent = CreateFrame("Frame")
-hiddenParent:Hide()
-
 local hardDisabled = false
 local partyUpdateHooked = false
 local partyShowHooked = false
 local editModeHooked = false
-local pendingReparent = {}
 
 local function ShouldHideBlizzardParty()
     return CellDB and CellDB["general"] and CellDB["general"]["hideBlizzardParty"]
@@ -42,10 +38,6 @@ local function FrameIsForbidden(frame)
     return (not ok) or forbidden
 end
 
-local function SafeCall(fn)
-    pcall(fn)
-end
-
 local function SetFrameAlpha(frame, alpha)
     if not frame then return end
     if FrameIsForbidden(frame) then return end
@@ -67,46 +59,6 @@ local function UnregisterTree(frame)
     if not ok then return end
     for i = 1, #children do
         UnregisterTree(children[i])
-    end
-end
-
-local ApplyHiddenParent
-
-local function ReparentToHidden(frame)
-    if not frame then return end
-    if FrameIsForbidden(frame) then return end
-    local okParent, parent = pcall(frame.GetParent, frame)
-    if okParent and parent == hiddenParent then
-        UnregisterFrameEvents(frame)
-        return
-    end
-    if InCombatLockdown() then
-        pendingReparent[frame] = true
-        return
-    end
-    if IsEditModeShown() then
-        pendingReparent[frame] = true
-        C_Timer.After(0.25, function()
-            ApplyHiddenParent(frame)
-        end)
-        return
-    end
-    pendingReparent[frame] = nil
-    SafeCall(function()
-        frame:UnregisterAllEvents()
-        frame:Hide()
-        if frame:GetParent() ~= hiddenParent then
-            frame:SetParent(hiddenParent)
-        end
-    end)
-end
-
-ApplyHiddenParent = function(frame)
-    if not frame then return end
-    if ShouldHideBlizzardRaid() or ShouldHideBlizzardRaidManager() then
-        ReparentToHidden(frame)
-    else
-        pendingReparent[frame] = nil
     end
 end
 
@@ -140,6 +92,19 @@ local function QuietTraditionalParty()
     SetFrameAlpha(pf, 0)
     SetFrameAlpha(_G.PartyMemberBackground, 0)
     SetFrameAlpha(_G.CompactPartyFrame, 0)
+end
+
+local function QuietCompactRaid()
+    SetFrameAlpha(_G.CompactRaidFrameContainer, 0)
+    for i = 1, 8 do
+        SetFrameAlpha(_G["CompactRaidGroup" .. i], 0)
+    end
+end
+
+local function QuietRaidManager()
+    local manager = _G.CompactRaidFrameManager
+    UnregisterFrameEvents(manager)
+    SetFrameAlpha(manager, 0)
 end
 
 local function HookPartyFrameUpdates()
@@ -179,19 +144,11 @@ local function HardDisableBlizzardFrames()
     end
 
     if ShouldHideBlizzardRaid() then
-        SetFrameAlpha(_G.CompactRaidFrameContainer, 0)
-        for i = 1, 8 do
-            SetFrameAlpha(_G["CompactRaidGroup" .. i], 0)
-        end
+        QuietCompactRaid()
     end
 
     if ShouldHideBlizzardRaid() or ShouldHideBlizzardRaidManager() then
-        if not IsEditModeShown() then
-            ReparentToHidden(_G.CompactRaidFrameManager)
-        end
-        if CompactRaidFrameManager_SetSetting then
-            pcall(CompactRaidFrameManager_SetSetting, "IsShown", "0")
-        end
+        QuietRaidManager()
     end
 
     hardDisabled = true
@@ -207,28 +164,17 @@ end
 
 local function SuppressBlizzRaid()
     if not ShouldHideBlizzardRaid() then return end
-    SetFrameAlpha(_G.CompactRaidFrameContainer, 0)
-    for i = 1, 8 do
-        SetFrameAlpha(_G["CompactRaidGroup" .. i], 0)
-    end
+    QuietCompactRaid()
 end
 
 local function SuppressBlizzRaidManager()
     if not ShouldHideBlizzardRaidManager() then return end
-    SetFrameAlpha(_G.CompactRaidFrameManager, 0)
-end
-
-local function FlushPendingReparent()
-    if IsEditModeShown() or InCombatLockdown() then return end
-    for frame in pairs(pendingReparent) do
-        ApplyHiddenParent(frame)
-    end
+    QuietRaidManager()
 end
 
 local function TrySuppressForGroup()
     if not IsEditModeShown() then
         HardDisableBlizzardFrames()
-        FlushPendingReparent()
     end
     SuppressBlizzRaid()
     SuppressBlizzRaidManager()
@@ -247,6 +193,9 @@ local function HookEditMode()
 
     hooksecurefunc(em, "EnterEditMode", function()
         Cell.vars.editModeOpen = true
+        SuppressBlizzRaid()
+        SuppressBlizzRaidManager()
+        SuppressBlizzParty()
     end)
 
     if type(em.ExitEditMode) == "function" then
@@ -283,6 +232,7 @@ boot:SetScript("OnEvent", function(_, event, addonName)
     if event == "EDIT_MODE_LAYOUTS_UPDATED" and IsEditModeShown() then
         SuppressBlizzParty()
         SuppressBlizzRaid()
+        SuppressBlizzRaidManager()
         return
     end
     QueueSuppress()

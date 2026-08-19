@@ -117,9 +117,11 @@ select(2, ...).L = setmetatable({
 
         <h1>r277.9.7.6 - NeRgY</h1>
         <h2>Retail</h2>
-        <p>* Hide Blizzard Party: Edit Mode stays usable, and hidden traditional party frames no longer error on roster or health updates (secret max health / status text).</p>
+        <p>* Hide Blizzard Party: hidden traditional party frames no longer error on roster or health updates (secret max health / status text).</p>
+        <p>* Hide Blizzard: opening Edit Mode from the Game Menu no longer errors on CompactPartyFrame:SetShown() or compact in-range checks. Party/Raid stay hidden in Edit Mode; Cooldown Viewer and other Edit Mode elements stay usable.</p>
         <p>* Raid Debuffs only show spells from the Raid Debuffs list (personal auras such as Stagger or Fel Armor no longer appear there).</p>
         <p>* Debuffs show all harmful auras in combat, including private auras such as Void Pulsar. The non-player checkbox only hides lust aftereffects such as Exhaustion/Sated.</p>
+        <p>* Debuffs option "Only show debuffs dispellable by me" works again in combat.</p>
         <br/>
 
         <h1>r277.9.7.5 - NeRgY</h1>

@@ -1756,7 +1756,7 @@ local function HandleDebuff(self, auraInfo)
             end
         end
 
-        -- crowdControls (container owns paint when always-on; still strip from legacy debuff buckets)
+        -- crowdControls
         if enabledIndicators["crowdControls"] and I.IsCrowdControls(name, spellId) then
             if not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("crowdControls", self))
                 and self._debuffs.crowdControlsFound < indicatorNums["crowdControls"] then

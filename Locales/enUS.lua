@@ -25,7 +25,7 @@ select(2, ...).L = setmetatable({
     ["showBackground"] = "Show background",
     ["dispellableByMe"] = "Only show debuffs dispellable by me",
     ["nonPlayerAuras"] = "Only show non-player auras",
-    ["nonPlayerAurasTip"] = "Only shows debuffs that were not applied by a player or a player pet.|This hides player effects such as Exhaustion, Forbearance and Temporal Displacement, and keeps most dungeon and raid debuffs.|Turn this off in PvP.",
+    ["nonPlayerAurasTip"] = "Hides lust aftereffects such as Exhaustion, Sated, Forbearance and Temporal Displacement. Encounter debuffs stay visible.",
     ["Private Dispel Overlay"] = "Private Dispel Overlay",
     ["Show private dispel overlay"] = "Show private dispel overlay",
     ["Only dispellable by me"] = "Only dispellable by me",
@@ -114,6 +114,13 @@ select(2, ...).L = setmetatable({
     ["BACKUP_TIPS2"] = "Note for Classic players: Backups do not include Click-Castings and Layout Auto Switch of other characters",
     ["CHANGELOGS"] = [[
 
+
+        <h1>r277.9.7.6 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Hide Blizzard Party: Edit Mode stays usable, and hidden traditional party frames no longer error on roster or health updates (secret max health / status text).</p>
+        <p>* Raid Debuffs only show spells from the Raid Debuffs list (personal auras such as Stagger or Fel Armor no longer appear there).</p>
+        <p>* Debuffs show all harmful auras in combat, including private auras such as Void Pulsar. The non-player checkbox only hides lust aftereffects such as Exhaustion/Sated.</p>
+        <br/>
 
         <h1>r277.9.7.5 - NeRgY</h1>
         <h2>Retail</h2>

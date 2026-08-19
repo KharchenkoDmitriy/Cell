@@ -1163,11 +1163,6 @@ local function PrivateAuras_UpdateAnchorFrame(self, holder)
     local anchorFrame = holder.privateAuraAnchor or holder
     local idx = holder._cellPrivateAuraIndex or 1
 
-    -- Keep private aura anchors explicitly above the indicator parent.
-    -- The private auras container inherits "MEDIUM" strata from indicatorFrame,
-    -- same as every other Cell indicator.  Setting holders/anchorFrames to "HIGH"
-    -- strata ensures Blizzard private aura icons always render above all MEDIUM-frame
-    -- siblings (debuffs, cooldowns, etc.) regardless of their frameLevel.
     local parentStrata = self:GetFrameStrata()
     if parentStrata == "MEDIUM" or parentStrata == "LOW" or parentStrata == "BACKGROUND" then
         holder:SetFrameStrata("HIGH")
@@ -1211,9 +1206,6 @@ local function PrivateAuras_UpdateSize(self, iconsShown)
         end
     end
 
-    -- Keep the configured indicator anchor stable. The private aura slots can
-    -- grow outside this frame, but the parent itself must not resize with
-    -- Max Displayed or the visual position drifts when anchored by center/top.
     if self.width and self.height then
         self:_SetSize(self.width, self.height)
     end
@@ -1285,9 +1277,6 @@ local function PrivateAuras_UpdateDispelOverlayVisibility(self)
         end
     end
 
-    -- Only update alpha if it actually changes.
-    -- Calling SetAlpha continuously during combat can bug out Blizzard's
-    -- internal PrivateAuraContainer update logic, causing the overlay to get stuck.
     if self.dispelOverlayFrame:GetAlpha() ~= targetAlpha then
         self.dispelOverlayFrame:SetAlpha(targetAlpha)
     end
@@ -1334,6 +1323,7 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
                 parent = anchorFrame,
                 isContainer = false,
                 showCountdownFrame = _showCountdownFrame,
+                showCooldownFrame = _showCountdownFrame,
                 showCountdownNumbers = _showCountdownNumbers,
                 iconInfo = {
                     iconWidth = F.GetWidth(holder),
@@ -1360,14 +1350,9 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
             end
         end
 
-        -- Optional Blizzard dispel overlay for private auras (container mode).
-        -- This is the only reliable path for private-aura dispel visuals.
         if self.showDispelOverlay and self.dispelOverlayFrame then
             local overlay = self.dispelOverlayFrame
             local groupType = strfind(unit, "^party") and 4 or 5
-            -- Blizzard container MUST have these numeric limits/flags set
-            -- before AddPrivateAuraAnchor(isContainer=true), otherwise internal
-            -- reserve loops can receive nil counts.
             overlay:SetAttribute("max-buffs", 0)
             overlay:SetAttribute("max-debuffs", 0)
             overlay:SetAttribute("max-dispel-debuffs", 1)
@@ -1380,17 +1365,12 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
             overlay:SetAttribute("icon-size", 10)
             overlay:SetAttribute("set-aura-size-to-icon-size", false)
             overlay:SetAttribute("group-type", groupType)
-            -- 1 = dispellable by me, 2 = all dispellable.
-            -- Respect user option so non-dispellable types for current class
-            -- (e.g. Bleed for Mage) don't trigger overlay.
             overlay:SetAttribute("dispel-indicator-option", self.dispelByMeOnly and 1 or 2)
             overlay:SetAttribute("aura-organization-type", tonumber(self.dispelGradientDirection) or 0)
             overlay:SetAttribute("update-settings", true)
 
             overlay:ClearAllPoints()
             local inset = tonumber(self.dispelOverlayInset) or 0
-            -- Draw the dispel overlay around the whole unit frame area,
-            -- not only around the private-aura indicator icon region.
             local overlayAnchor = self:GetParent() or self
             overlay:SetPoint("TOPLEFT", overlayAnchor, "TOPLEFT", -inset, inset)
             overlay:SetPoint("BOTTOMRIGHT", overlayAnchor, "BOTTOMRIGHT", inset, -inset)

@@ -127,7 +127,7 @@ local function HandleBuff(self, auraInfo)
 
         local skipLegacy = I.ShouldSkipLegacyCombatAura
         if hb.enabledIndicators["defensiveCooldowns"] and isDefensive
-            and not (skipLegacy and skipLegacy("defensiveCooldowns"))
+            and not (skipLegacy and skipLegacy("defensiveCooldowns", self))
             and self._buffs.defensiveFound < hb.indicatorNums["defensiveCooldowns"] then
             self._buffs.defensiveFound = self._buffs.defensiveFound + 1
             local frame = self.indicators.defensiveCooldowns[self._buffs.defensiveFound]
@@ -142,7 +142,7 @@ local function HandleBuff(self, auraInfo)
         end
 
         if hb.enabledIndicators["externalCooldowns"] and isExternal
-            and not (skipLegacy and skipLegacy("externalCooldowns"))
+            and not (skipLegacy and skipLegacy("externalCooldowns", self))
             and self._buffs.externalFound < hb.indicatorNums["externalCooldowns"] then
             self._buffs.externalFound = self._buffs.externalFound + 1
             local frame = self.indicators.externalCooldowns[self._buffs.externalFound]
@@ -157,7 +157,7 @@ local function HandleBuff(self, auraInfo)
         end
 
         if hb.enabledIndicators["offensiveCooldowns"] and isOffensive
-            and not (skipLegacy and skipLegacy("offensiveCooldowns"))
+            and not (skipLegacy and skipLegacy("offensiveCooldowns", self))
             and self._buffs.offensiveFound < hb.indicatorNums["offensiveCooldowns"] then
             self._buffs.offensiveFound = self._buffs.offensiveFound + 1
             local frame = self.indicators.offensiveCooldowns[self._buffs.offensiveFound]
@@ -172,7 +172,7 @@ local function HandleBuff(self, auraInfo)
         end
 
         if hb.enabledIndicators["allCooldowns"] and (isDefensive or isExternal)
-            and not (skipLegacy and skipLegacy("allCooldowns"))
+            and not (skipLegacy and skipLegacy("allCooldowns", self))
             and self._buffs.allFound < hb.indicatorNums["allCooldowns"] then
             self._buffs.allFound = self._buffs.allFound + 1
             local frame = self.indicators.allCooldowns[self._buffs.allFound]

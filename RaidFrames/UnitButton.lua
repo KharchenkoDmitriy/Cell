@@ -1699,9 +1699,8 @@ local function HandleDebuff(self, auraInfo)
             return canPlayerDispelAura
         end
 
-        -- Always-on AuraContainer owns debuff icons when active — skip legacy buckets.
         if enabledIndicators["debuffs"] and not isBlacklisted
-            and not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("debuffs")) then
+            and not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("debuffs", self)) then
             local canShowDebuff = not indicatorBooleans["debuffs"]
             if not canShowDebuff then
                 canShowDebuff = GetCanPlayerDispelAura()
@@ -1721,13 +1720,6 @@ local function HandleDebuff(self, auraInfo)
         -- user created indicators
         I.UpdateCustomIndicators(self, auraInfo, "debuff")
 
-        -- raidDebuffs: Cell's curated tables only. No _IsAuraFilteredOut fallback
-        -- because Blizzard's HARMFUL|RAID filter is broader than Cell's curated
-        -- list and can route personal debuffs (e.g. Luz del mártir) into the
-        -- raidDebuffs indicator. Secret auras that aren't in Cell's tables
-        -- simply don't appear here — the fingerprint handles defensive/external
-        -- classification, and encounter mechanics that apply secret debuffs are
-        -- already in Cell's tables.
         local order = I.GetDebuffOrder(name, spellId, count)
 
         if enabledIndicators["raidDebuffs"] and order then
@@ -1766,7 +1758,7 @@ local function HandleDebuff(self, auraInfo)
 
         -- crowdControls (container owns paint when always-on; still strip from legacy debuff buckets)
         if enabledIndicators["crowdControls"] and I.IsCrowdControls(name, spellId) then
-            if not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("crowdControls"))
+            if not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("crowdControls", self))
                 and self._debuffs.crowdControlsFound < indicatorNums["crowdControls"] then
                 self._debuffs.crowdControlsFound = self._debuffs.crowdControlsFound + 1
                 if Cell.isMidnight then
@@ -2001,7 +1993,7 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
         end
     end
 
-    if not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("debuffs")) then
+    if not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("debuffs", self)) then
         self.indicators.debuffs:UpdateSize(startIndex - 1)
         for i = startIndex, 10 do
             self.indicators.debuffs[i].auraInstanceID = nil
@@ -2009,9 +2001,9 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
         end
     end
 
-    -- update dispels (icons + health overlay owned by always-on AuraContainer when active)
+    -- update dispels
     if (F.UnitInGroup(unit) or UnitIsFriend("player", unit))
-        and not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("dispels")) then
+        and not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("dispels", self)) then
         local dispels = self.indicators.dispels
         -- Restore icon positions from previous secret dispel mode
         if dispels._secretIconsStacked then
@@ -2085,7 +2077,7 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
     end
 
     -- update crowdControls
-    if not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("crowdControls")) then
+    if not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("crowdControls", self)) then
         self.indicators.crowdControls:UpdateSize(self._debuffs.crowdControlsFound)
     end
 
@@ -2263,12 +2255,12 @@ local function UnitButton_UpdateBuffs(self, isFullUpdate)
 
     -- check Mirror Image
     if self._mirror_image and I.IsDefensiveCooldown(55342) then -- exists and enabled
-        if not (skipLegacy and skipLegacy("defensiveCooldowns"))
+        if not (skipLegacy and skipLegacy("defensiveCooldowns", self))
             and self._buffs.defensiveFound < indicatorNums["defensiveCooldowns"] then
             self._buffs.defensiveFound = self._buffs.defensiveFound + 1
             self.indicators.defensiveCooldowns[self._buffs.defensiveFound]:SetCooldown(self._mirror_image, 40, nil, 135994, 0)
         end
-        if not (skipLegacy and skipLegacy("allCooldowns"))
+        if not (skipLegacy and skipLegacy("allCooldowns", self))
             and self._buffs.allFound < indicatorNums["allCooldowns"] then
             self._buffs.allFound = self._buffs.allFound + 1
             self.indicators.allCooldowns[self._buffs.allFound]:SetCooldown(self._mirror_image, 40, nil, 135994, 0)
@@ -2277,12 +2269,12 @@ local function UnitButton_UpdateBuffs(self, isFullUpdate)
 
     -- check Mass Barrier (self)
     if self._mass_barrier and I.IsExternalCooldown(414660) then -- exists and enabled
-        if not (skipLegacy and skipLegacy("externalCooldowns"))
+        if not (skipLegacy and skipLegacy("externalCooldowns", self))
             and self._buffs.externalFound < indicatorNums["externalCooldowns"] then
             self._buffs.externalFound = self._buffs.externalFound + 1
             self.indicators.externalCooldowns[self._buffs.externalFound]:SetCooldown(self._mass_barrier, 60, nil, self._mass_barrier_icon, 0)
         end
-        if not (skipLegacy and skipLegacy("allCooldowns"))
+        if not (skipLegacy and skipLegacy("allCooldowns", self))
             and self._buffs.allFound < indicatorNums["allCooldowns"] then
             self._buffs.allFound = self._buffs.allFound + 1
             self.indicators.allCooldowns[self._buffs.allFound]:SetCooldown(self._mass_barrier, 60, nil, self._mass_barrier_icon, 0)
@@ -2290,23 +2282,23 @@ local function UnitButton_UpdateBuffs(self, isFullUpdate)
     end
 
     -- update defensiveCooldowns
-    if not (skipLegacy and skipLegacy("defensiveCooldowns")) then
+    if not (skipLegacy and skipLegacy("defensiveCooldowns", self)) then
         self.indicators.defensiveCooldowns:UpdateSize(self._buffs.defensiveFound)
     end
 
-    if not (skipLegacy and skipLegacy("offensiveCooldowns")) then
+    if not (skipLegacy and skipLegacy("offensiveCooldowns", self)) then
         if self.indicators.offensiveCooldowns then
             self.indicators.offensiveCooldowns:UpdateSize(self._buffs.offensiveFound or 0)
         end
     end
 
     -- update externalCooldowns
-    if not (skipLegacy and skipLegacy("externalCooldowns")) then
+    if not (skipLegacy and skipLegacy("externalCooldowns", self)) then
         self.indicators.externalCooldowns:UpdateSize(self._buffs.externalFound)
     end
 
     -- update allCooldowns
-    if not (skipLegacy and skipLegacy("allCooldowns")) then
+    if not (skipLegacy and skipLegacy("allCooldowns", self)) then
         self.indicators.allCooldowns:UpdateSize(self._buffs.allFound)
     end
 

@@ -2,7 +2,7 @@ local _, Cell = ...
 local F = Cell.funcs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 31
+local INIT_VERSION = 37
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -91,7 +91,6 @@ local TRACKED = {
     "offensiveCooldowns",
     "externalCooldowns",
     "allCooldowns",
-    "raidDebuffs",
 }
 
 local COOLDOWN_AURAS = {
@@ -134,6 +133,18 @@ local function ResolveSize(cfg)
         return s[1][1] or 13, s[1][2] or 13
     end
     return (s and s[1]) or 13, (s and s[2]) or 13
+end
+
+local PERSONAL_DEBUFF_IDS = {
+    57723, 57724, 80354, 95809, 160455, 264689, 390435, 428628, 25771,
+}
+
+local function BuildPersonalDebuffExcludeMap()
+    local map = {}
+    for i = 1, #PERSONAL_DEBUFF_IDS do
+        map[PERSONAL_DEBUFF_IDS[i]] = true
+    end
+    return map
 end
 
 local function BuildExcludeSpellMap()
@@ -243,24 +254,6 @@ local function BuildOffensiveSpellMap()
     return map
 end
 
-local function BuildRaidDebuffSpellMap()
-    local map = {}
-    local current = I.GetCurrentAreaDebuffs and I.GetCurrentAreaDebuffs()
-    if type(current) ~= "table" then return map end
-    for k, t in pairs(current) do
-        if type(k) == "number" and k > 0 then
-            map[k] = true
-        end
-        if type(t) == "table" then
-            local id = tonumber(t.id)
-            if id and id > 0 then
-                map[id] = true
-            end
-        end
-    end
-    return map
-end
-
 local function CountKeys(map)
     local n = 0
     for _ in pairs(map) do n = n + 1 end
@@ -297,22 +290,14 @@ local function BuildGroupsForIndicator(indicatorName, cfg)
             maxFrameCount = cfg.num or 3,
         }
     elseif indicatorName == "debuffs" then
-        local filter
-        if cfg.dispellableByMe then
-            filter = JoinFilter("HARMFUL", "RAID_PLAYER_DISPELLABLE")
-        elseif cachedLayouts and cachedLayouts.crowdControls then
-            filter = JoinFilter("HARMFUL", "!CROWD_CONTROL")
-        else
-            filter = "HARMFUL"
-        end
         local extra
         if cfg.nonPlayerAuras then
-            extra = { isFromPlayerOrPlayerPet = false }
+            extra = { excludeSpellIDs = BuildPersonalDebuffExcludeMap() }
         end
         groups[#groups + 1] = {
             key = "deb",
-            filter = filter,
-            candidateFilters = cand(extra),
+            filter = "HARMFUL",
+            candidateFilters = extra,
             maxFrameCount = cfg.num or 3,
         }
     elseif indicatorName == "dispels" then
@@ -373,16 +358,6 @@ local function BuildGroupsForIndicator(indicatorName, cfg)
                 filter = "HELPFUL",
                 candidateFilters = cand({ includeSpellIDs = map }),
                 maxFrameCount = cfg.num or 5,
-            }
-        end
-    elseif indicatorName == "raidDebuffs" then
-        local map = BuildRaidDebuffSpellMap()
-        if next(map) then
-            groups[#groups + 1] = {
-                key = "rd",
-                filter = "HARMFUL",
-                candidateFilters = cand({ includeSpellIDs = map }),
-                maxFrameCount = cfg.num or 3,
             }
         end
     end
@@ -529,7 +504,7 @@ local function MakeInitAuraButton(cfg)
         local icon = button:CreateTexture(nil, "ARTWORK")
         icon:SetAllPoints(button)
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        button:SetIcon(icon)
+        pcall(button.SetIcon, button, icon)
 
         local style = ResolveAnimationStyle(cfg)
         local animFrame
@@ -625,6 +600,23 @@ local function HideLegacy(unitButton, indicatorName)
         end
         return
     end
+    if indicatorName == "debuffs" then
+        if ind.Show then
+            pcall(ind.Show, ind)
+        end
+        if ind.SetAlpha then
+            ind:SetAlpha(1)
+        end
+        if type(ind) == "table" then
+            for i = 1, 10 do
+                local child = ind[i]
+                if child and child.Hide then
+                    pcall(child.Hide, child)
+                end
+            end
+        end
+        return
+    end
     if ind.Hide then
         if indicatorName == "raidDebuffs" then
             pcall(ind.Hide, ind)
@@ -658,8 +650,151 @@ local function StopContainer(st)
     st.boundUnit = nil
 end
 
+local paPending = {}
+local paWait = CreateFrame("Frame")
+paWait:SetScript("OnEvent", function()
+    paWait:UnregisterEvent("PLAYER_REGEN_ENABLED")
+    for st, fn in pairs(paPending) do
+        paPending[st] = nil
+        pcall(fn)
+    end
+end)
+
+local function ClearDebuffPrivateAuras(st)
+    if not (st and st.paAnchorIDs) then return end
+    if InCombatLockdown() then
+        paPending[st] = function()
+            ClearDebuffPrivateAuras(st)
+        end
+        paWait:RegisterEvent("PLAYER_REGEN_ENABLED")
+        return
+    end
+    if C_UnitAuras and C_UnitAuras.RemovePrivateAuraAnchor then
+        for i = 1, #st.paAnchorIDs do
+            if st.paAnchorIDs[i] then
+                pcall(C_UnitAuras.RemovePrivateAuraAnchor, st.paAnchorIDs[i])
+            end
+        end
+    end
+    wipe(st.paAnchorIDs)
+end
+
+local function LayoutDebuffPrivateAuras(st, unitButton, cfg)
+    if not (st and st.paHolders) then return end
+    local sizeW, sizeH = ResolveSize(cfg)
+    local spacingX = (cfg.spacing and cfg.spacing[1]) or 0
+    local spacingY = (cfg.spacing and cfg.spacing[2]) or 0
+    local num = math.min(cfg.num or 3, 5)
+    local pos = cfg.position or { "BOTTOMLEFT", "button", "BOTTOMLEFT", 1, 4 }
+    local point = pos[1] or "BOTTOMLEFT"
+    local relative = pos[2]
+    local relativePoint = pos[3] or point
+    local x, y = pos[4] or 0, pos[5] or 0
+    local relativeTo = unitButton
+    if relative == "healthBar" and unitButton.widgets and unitButton.widgets.healthBar then
+        relativeTo = unitButton.widgets.healthBar
+    end
+    local orientation = cfg.orientation or "left-to-right"
+    for i = 1, #st.paHolders do
+        local holder = st.paHolders[i]
+        holder:ClearAllPoints()
+        holder:SetSize(sizeW, sizeH)
+        holder:SetFrameStrata("HIGH")
+        if i == 1 then
+            holder:SetPoint(point, relativeTo, relativePoint, x, y)
+        else
+            local prev = st.paHolders[i - 1]
+            if orientation == "right-to-left" then
+                holder:SetPoint("RIGHT", prev, "LEFT", -spacingX, 0)
+            elseif orientation == "top-to-bottom" then
+                holder:SetPoint("TOP", prev, "BOTTOM", 0, -spacingY)
+            elseif orientation == "bottom-to-top" then
+                holder:SetPoint("BOTTOM", prev, "TOP", 0, spacingY)
+            else
+                holder:SetPoint("LEFT", prev, "RIGHT", spacingX, 0)
+            end
+        end
+        if i <= num then
+            holder:Show()
+        else
+            holder:Hide()
+        end
+    end
+end
+
+local function BindDebuffPrivateAuras(st, unitButton, cfg, unit)
+    if not (unit and C_UnitAuras and C_UnitAuras.AddPrivateAuraAnchor) then return end
+    if InCombatLockdown() then
+        paPending[st] = function()
+            BindDebuffPrivateAuras(st, unitButton, cfg, ResolveUnit(unitButton) or unit)
+        end
+        paWait:RegisterEvent("PLAYER_REGEN_ENABLED")
+        return
+    end
+    local parent = ResolveContainerParent(unitButton)
+    local num = math.min(cfg.num or 3, 5)
+    if not st.paHolders then
+        st.paHolders = {}
+        st.paAnchorIDs = {}
+    end
+    for i = 1, num do
+        local holder = st.paHolders[i]
+        if not holder then
+            holder = CreateFrame("Frame", nil, parent)
+            holder:EnableMouse(false)
+            st.paHolders[i] = holder
+        else
+            holder:SetParent(parent)
+        end
+    end
+    LayoutDebuffPrivateAuras(st, unitButton, cfg)
+    ClearDebuffPrivateAuras(st)
+    st.paAnchorIDs = st.paAnchorIDs or {}
+    local sizeW, sizeH = ResolveSize(cfg)
+    for i = 1, num do
+        local holder = st.paHolders[i]
+        local ok, anchorID = pcall(C_UnitAuras.AddPrivateAuraAnchor, {
+            unitToken = unit,
+            auraIndex = i,
+            parent = holder,
+            isContainer = false,
+            showCountdownFrame = true,
+            showCooldownFrame = true,
+            showCountdownNumbers = false,
+            iconInfo = {
+                iconWidth = sizeW,
+                iconHeight = sizeH,
+                borderScale = sizeW / 16,
+                iconAnchor = {
+                    point = "CENTER",
+                    relativeTo = holder,
+                    relativePoint = "CENTER",
+                    offsetX = 0,
+                    offsetY = 0,
+                },
+            },
+        })
+        if ok and anchorID then
+            st.paAnchorIDs[i] = anchorID
+        end
+    end
+    st.paUnit = unit
+end
+
 local function DestroyContainer(st)
-    if not (st and st.container) then return end
+    if not st then return end
+    ClearDebuffPrivateAuras(st)
+    if st.paHolders then
+        for i = 1, #st.paHolders do
+            local holder = st.paHolders[i]
+            if holder then
+                holder:Hide()
+                holder:SetParent(nil)
+            end
+        end
+        st.paHolders = nil
+    end
+    if not st.container then return end
     StopContainer(st)
     pcall(st.container.SetParent, st.container, nil)
     st.container = nil
@@ -704,13 +839,20 @@ local function AnchorContainer(container, unitButton, cfg, indicatorName)
 
     container:ClearAllPoints()
     container:SetPoint(point, relativeTo, relativePoint, x, y)
-    container:SetSize(1, 1)
+    local orientation = cfg.orientation or "left-to-right"
+    local rowW = numPerLine * sizeW + math.max(numPerLine - 1, 0) * math.abs(spacingX)
+    local rowH = sizeH
+    if orientation == "top-to-bottom" or orientation == "bottom-to-top" then
+        rowW = sizeW
+        rowH = numPerLine * sizeH + math.max(numPerLine - 1, 0) * math.abs(spacingY)
+    end
+    container:SetSize(math.max(rowW, 1), math.max(rowH, 1))
+    pcall(container.SetClipsChildren, container, false)
 
     if container.SetFlowLayoutAnchorPoint then
         pcall(container.SetFlowLayoutAnchorPoint, container, point)
     end
 
-    local orientation = cfg.orientation or "left-to-right"
     local FD = AnchorUtil and AnchorUtil.FlowDirection
     if FD and container.SetFlowLayoutGrowthDirection then
         local h, v = FD.Right, FD.Down
@@ -760,6 +902,8 @@ local function CreateIndicatorContainer(unitButton, indicatorName, cfg)
 
     AnchorContainer(container, unitButton, cfg, indicatorName)
 
+    local added = 0
+    local lastErr
     for i = 1, #groups do
         local g = groups[i]
         local initFn = defaultInitFn
@@ -786,10 +930,15 @@ local function CreateIndicatorContainer(unitButton, indicatorName, cfg)
             groupOpts.sortDirection = AuraContainerSortDirection.Normal
         end
         local addOk, addErr = pcall(container.AddAuraGroup, container, g.key, g.filter, groupOpts)
-        if not addOk then
-            container:SetParent(nil)
-            return nil, tostring(addErr)
+        if addOk then
+            added = added + 1
+        else
+            lastErr = addErr
         end
+    end
+    if added == 0 then
+        container:SetParent(nil)
+        return nil, tostring(lastErr)
     end
 
     AnchorContainer(container, unitButton, cfg, indicatorName)
@@ -834,8 +983,18 @@ local function DriveContainer(unitButton, indicatorName, cfg, enable)
         if st.container.UpdateAllAuras then
             pcall(st.container.UpdateAllAuras, st.container)
         end
+        if indicatorName == "debuffs" then
+            if unit ~= st.paUnit then
+                BindDebuffPrivateAuras(st, unitButton, cfg, unit)
+            else
+                LayoutDebuffPrivateAuras(st, unitButton, cfg)
+            end
+        end
         HideLegacy(unitButton, indicatorName)
     else
+        if indicatorName == "debuffs" then
+            ClearDebuffPrivateAuras(st)
+        end
         StopContainer(st)
         ShowLegacy(unitButton, indicatorName)
     end
@@ -1011,13 +1170,17 @@ local function SyncButton(unitButton, allowCreate)
                 else
                     StopContainer(st)
                 end
-                HideLegacy(unitButton, name)
+                if cachedLayouts and cachedLayouts[name] then
+                    ShowLegacy(unitButton, name)
+                else
+                    HideLegacy(unitButton, name)
+                end
             end
         end
     end
 end
 
-function I.ShouldSkipLegacyCombatAura(indicatorName)
+function I.ShouldSkipLegacyCombatAura(indicatorName, unitButton)
     if not ProbeSupported() or not indicatorName then
         return false
     end
@@ -1035,7 +1198,13 @@ function I.ShouldSkipLegacyCombatAura(indicatorName)
         return false
     end
     RefreshCachedLayouts()
-    return cachedLayouts and cachedLayouts[indicatorName] and true or false
+    if not (cachedLayouts and cachedLayouts[indicatorName]) then
+        return false
+    end
+    if unitButton then
+        return I.HasCombatAuraContainer(unitButton, indicatorName)
+    end
+    return false
 end
 
 function I.CombatAuraDisplayActive()

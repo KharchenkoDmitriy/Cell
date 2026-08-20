@@ -718,7 +718,6 @@ local GetAuraDataBySpellName = C_UnitAuras.GetAuraDataBySpellName
 local function UnitBuffExists(unit, buff)
     local names = buffs[buff]["names"]
     if not names or #names == 0 then
-        -- Fail-open: if spell names cannot be resolved for this buff key, avoid
         -- permanent false-positive "missing buff" indicators.
         return true
     end
@@ -726,9 +725,6 @@ local function UnitBuffExists(unit, buff)
     for _, name in next, names do
         aura = GetAuraDataBySpellName(unit, name, "HELPFUL")
         if aura then
-            -- Midnight 12.0.0+: raid buff spell IDs (1459, 6673, 21562, 462854, etc.) are flagged
-            -- non-secret by Blizzard, so their aura fields (including sourceUnit) are real values.
-            -- For any unexpected secret aura, treat as present but not provided by player.
             if F.IsAuraNonSecret(aura) then
                 return true, aura.sourceUnit == "player"
             else
@@ -777,7 +773,6 @@ local function CheckUnit(unit, updateBtn)
     -- print("CheckUnit", unit)
     if not hasBuffProvider then return end
 
-    -- Midnight 12.0.0+: during restricted(secret) contexts aura reads can be
     -- unreliable for "provided by me" checks, causing false missing-buff icons.
     -- Prefer hiding missing indicators temporarily instead of showing wrong data.
     if Cell.isMidnight and F.IsSecretContextActive and F.IsSecretContextActive() then
@@ -962,7 +957,6 @@ end
 
 function buffTrackerFrame:_CheckUnitAura(unit)
     if type(unit) ~= "string" then return end
-    -- Restricted context just ended: rebuild full snapshot once so stale
     -- missing-buff indicators are cleared immediately.
     if buffTrackerFrame._hadSecretContext and (not F.IsSecretContextActive or not F.IsSecretContextActive()) then
         buffTrackerFrame._hadSecretContext = nil

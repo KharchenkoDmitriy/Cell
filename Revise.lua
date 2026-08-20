@@ -3678,18 +3678,14 @@ function F.Revise()
         end
     end
 
-    -- Migration for Cell r275 (Midnight 12.0.0 compatibility)
     if not CellDB["revise"] or dbRevision < 275 then
-        -- Remove useCleuHealthUpdater setting (CLEU-based health updater removed in 12.0.0)
         if CellDB["general"] then
             CellDB["general"]["useCleuHealthUpdater"] = nil
         end
-        -- Migrate "Flash" bar animation to "Smooth" (Flash removed in 12.0.0)
         if CellDB["appearance"] and CellDB["appearance"]["barAnimation"] == "Flash" then
             CellDB["appearance"]["barAnimation"] = "Smooth"
         end
         -- Note: profile import compatibility warning added elsewhere.
-        -- Saved variable secrets: any secrets stored before this version will be nil'd by WoW.
     end
 
     if Cell.isRetail and GetCompatibilityDB().s2TargetedSpells ~= 2 then
@@ -3870,7 +3866,6 @@ function F.Revise()
         end
     end
 
-    -- Midnight: AoE Healing (no combat log) and Tank Active Mitigation (secret
     -- spell IDs) cannot work. Force them off for existing layouts.
     if Cell.isMidnight then
         for _, layout in pairs(CellDB["layouts"]) do

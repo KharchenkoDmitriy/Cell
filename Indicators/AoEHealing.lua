@@ -10,8 +10,6 @@ local I = Cell.iFuncs
 -------------------------------------------------
 -- NOTE: This indicator relied on COMBAT_LOG_EVENT_UNFILTERED (SPELL_HEAL /
 -- SPELL_PERIODIC_HEAL / SPELL_SUMMON) to detect AoE healing events.
--- COMBAT_LOG_EVENT_UNFILTERED is removed in Midnight (WoW 12.0.0).
--- When Cell.isMidnight is true the eventFrame is never registered, so no
 -- flash animation will trigger. The indicator frame still exists and can be
 -- re-enabled if a suitable non-CLEU API becomes available in a future build.
 
@@ -93,7 +91,6 @@ function I.CreateAoEHealing(parent)
 end
 
 function I.EnableAoEHealing(enabled)
-    -- On Midnight (12.0.0+) COMBAT_LOG_EVENT_UNFILTERED is unavailable;
     -- the eventFrame has no OnEvent script in that case, so registration
     -- is intentionally skipped.
     if Cell.isMidnight then return end

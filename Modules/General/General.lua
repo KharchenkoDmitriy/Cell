@@ -331,7 +331,6 @@ local function CreateMiscPane()
     alwaysUpdateAurasCB:SetEnabled(Cell.isMists)
 
     -- NOTE: useCleuHealthUpdater (Faster Health Updates) was removed in r275.
-    -- CLEU-based health updates are not available in Midnight 12.0.0+.
 
     translitCB = Cell.CreateCheckButton(miscPane, L["Translit Cyrillic to Latin"], function(checked, self)
         CellDB["general"]["translit"] = checked

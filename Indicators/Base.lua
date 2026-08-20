@@ -7,16 +7,9 @@ local I = Cell.iFuncs
 ---@type PixelPerfectFuncs
 local P = Cell.pixelPerfectFuncs
 
--- NOTE (Midnight 12.0.0+): Health text formatting with arithmetic on health/maxHealth
--- is guarded for secret values in Indicators/Built-in.lua (HealthText_SetValue).
--- All other numeric display in this file uses SetText/SetFormattedText which accept secrets.
 
 local LCG = LibStub("LibCustomGlow-1.0")
 
--- Midnight 12.0.0+: helper for stack text display (most common pattern)
--- Secret stack counts are passed through directly; SetText is C-level and
--- renders secret values safely. We cannot test == 0/1, so secret stacks
--- always display (may show "1" for single-stack auras, which is acceptable).
 local function _StackText(count)
     if not F.IsValueNonSecret(count) then return count end
     count = count or 0
@@ -87,8 +80,6 @@ end
 -------------------------------------------------
 -- Shared
 -------------------------------------------------
--- Apply font settings to Blizzard's CooldownFrame countdown text (Midnight)
--- Only applies to CooldownFrame cooldowns (BorderIcon), not StatusBar (BarIcon)
 local function GetCountdownFrame(frame)
     return frame._countdownCooldown or frame.cooldown
 end
@@ -126,9 +117,7 @@ end
 local function Shared_SetFont(frame, font1, font2)
     I.SetFont(frame.stack, frame, unpack(font1))
     I.SetFont(frame.duration, frame, unpack(font2))
-    -- Store duration font config for Midnight countdown text on CooldownFrame
     frame._durationFont = font2
-    -- Live-update countdown FontString if it exists; reset cache flag
     if Cell.isMidnight then
         frame._countdownFontApplied = false
         ApplyCountdownFont(frame, font2)
@@ -172,9 +161,6 @@ end
 local function VerticalCooldown_OnUpdate(self, elapsed)
     self.elapsed = (self.elapsed or 0) + elapsed
     if self.elapsed >= 0.1 then
-        -- Track value in Lua variable instead of GetValue() — avoids permanent
-        -- taint from secret SetValue() calls (12.0+). GetValue() returns tainted
-        -- forever once any secret value is passed to SetValue/SetMinMaxValues.
         self._currentValue = (self._currentValue or 0) + self.elapsed
         self:SetValue(self._currentValue)
         self.elapsed = 0
@@ -487,10 +473,7 @@ local function Icon_OnUpdate_ElapsedTime(frame, elapsed)
 end
 
 -------------------------------------------------
--- Midnight 12.0.0+: C-level cooldown display via DurationObject
--- These methods use GetAuraDuration → DurationObject → SetCooldownFromDurationObject
--- (BorderIcon) or EvaluateElapsedPercent (BarIcon). No Lua arithmetic on secret values.
--- APIs return nil for expired/invalid auras (no pcall needed).
+-- cooldown from aura
 -------------------------------------------------
 local _GetAuraDuration = C_UnitAuras and C_UnitAuras.GetAuraDuration
 local _GetAuraAppDisplayCount = C_UnitAuras and C_UnitAuras.GetAuraApplicationDisplayCount
@@ -683,7 +666,6 @@ local function BorderIcon_SetCooldownStyle(frame, style)
     end
 end
 
--- BorderIcon: SetCooldownFromAura — drives CooldownFrame with DurationObject
 local function BorderIcon_SetCooldownFromAura(frame, unit, auraInstanceID, texture, refreshing)
     if texture == nil then
         frame:Hide()
@@ -699,9 +681,6 @@ local function BorderIcon_SetCooldownFromAura(frame, unit, auraInstanceID, textu
         frame.stack:SetText("")
     end
 
-    -- Cooldown swipe via DurationObject
-    -- Swipe color defaults to black; UnitButton.lua overrides border/swipe color
-    -- for dispel types via bracket curves after this call.
     local durObj = _GetAuraDuration and _GetAuraDuration(unit, auraInstanceID)
     if durObj and frame.style == "VERTICAL" and frame.cooldown and frame.cooldown.SetDurationObject then
         frame.cooldown:SetDurationObject(durObj)
@@ -745,11 +724,6 @@ local function BorderIcon_SetCooldownFromAura(frame, unit, auraInstanceID, textu
     end
 end
 
--- BarIcon: SetCooldownFromAura — CooldownFrame overlay for clock-swipe animation.
--- DurationObject:EvaluateElapsedPercent/EvaluateRemainingPercent both error in tainted
--- combat contexts, so StatusBar can't be driven by DurationObject directly.
--- NOTE: Built-in indicators (debuffs, defensives, externals) use BorderIcon on Midnight.
--- This BarIcon path remains for user-created custom indicators that use BarIcon.
 local function BarIcon_SetCooldownFromAura(frame, unit, auraInstanceID, texture, refreshing)
     frame.icon:SetTexture(texture)
     if _GetAuraAppDisplayCount then
@@ -917,8 +891,6 @@ end
 local function BorderIcon_ShowDuration(frame, show)
     frame.showDuration = show
     if Cell.isMidnight then
-        -- Midnight: Cell's duration text is always hidden (produces invisible output
-        -- with secrets). Only toggle Blizzard's built-in countdown.
         frame.duration:Hide()
         BorderIcon_SetCountdownVisibility(frame, show)
         if show then
@@ -926,7 +898,6 @@ local function BorderIcon_ShowDuration(frame, show)
             frame._countdownFontApplied = true
         end
     else
-        -- Pre-Midnight: use Cell's own duration text
         if show then
             frame.duration:Show()
         else
@@ -1002,8 +973,6 @@ function I.CreateAura_BorderIcon(name, parent, borderSize)
     frame.SetCooldownFromAura = BorderIcon_SetCooldownFromAura
     frame.ShowDuration = BorderIcon_ShowDuration
     frame.SetCooldownStyle = BorderIcon_SetCooldownStyle
-    -- BarIcon-compatible methods (no-ops for BorderIcon, needed when used as
-    -- cooldown indicator child frames which call these on all children)
     frame.ShowAnimation = function() end
     frame.ShowStack = BorderIcon_ShowStack
     frame.SetupGlow = function() end
@@ -1507,8 +1476,6 @@ end
 
 local circled = {"①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩","⑪","⑫","⑬","⑭","⑮","⑯","⑰","⑱","⑲","⑳","㉑","㉒","㉓","㉔","㉕","㉖","㉗","㉘","㉙","㉚","㉛","㉜","㉝","㉞","㉟","㊱","㊲","㊳","㊴","㊵","㊶","㊷","㊸","㊹","㊺","㊻","㊼","㊽","㊾","㊿"}
 local function Text_SetCooldown(frame, start, duration, debuffType, texture, count)
-    -- Secret stack count: can't compare or index circled[], pass directly to
-    -- SetText (C-level, renders secret values safely)
     local isSecretCount = not F.IsValueNonSecret(count)
 
     if duration == 0 then
@@ -1534,7 +1501,6 @@ local function Text_SetCooldown(frame, start, duration, debuffType, texture, cou
 
         if frame.durationTbl[1] then
             if isSecretCount then
-                -- Can't concatenate secret with " "; skip stack prefix for duration text
                 frame._count = ""
             else
                 count = count or 0
@@ -1740,7 +1706,23 @@ local function Bar_OnUpdate(bar, elapsed)
     if bar._elapsed >= 0.1 then
         bar._elapsed = 0
         -- update color
-        if bar.colors[3][1] and bar._remain <= bar.colors[3][2] then
+        local dc = Cell.vars.iconDurationColors
+        if dc then
+            if bar._remain < dc[3][4] then
+                if bar.state ~= 3 then
+                    bar.state = 3
+                    bar:SetStatusBarColor(dc[3][1], dc[3][2], dc[3][3])
+                end
+            elseif bar._remain < (dc[2][4] * bar._duration) then
+                if bar.state ~= 2 then
+                    bar.state = 2
+                    bar:SetStatusBarColor(dc[2][1], dc[2][2], dc[2][3])
+                end
+            elseif bar.state ~= 1 then
+                bar.state = 1
+                bar:SetStatusBarColor(dc[1][1], dc[1][2], dc[1][3])
+            end
+        elseif bar.colors[3][1] and bar._remain <= bar.colors[3][2] then
             if bar.state ~= 3 then
                 bar.state = 3
                 bar:SetStatusBarColor(bar.colors[3][3][1], bar.colors[3][3][2], bar.colors[3][3][3], bar.colors[3][3][4])
@@ -1860,6 +1842,15 @@ function I.CreateAura_Bar(name, parent)
     bar.SetMaxValue = Bar_SetMaxValue
     bar.SetupGlow = Shared_SetupGlow
     bar.SetColors = Bar_SetColors
+    bar._SetOrientation = bar.SetOrientation
+    function bar:SetOrientation(orientation)
+        if orientation == "vertical" or orientation == "top-to-bottom" or orientation == "bottom-to-top" then
+            self:_SetOrientation("VERTICAL")
+        else
+            self:_SetOrientation("HORIZONTAL")
+        end
+        self:SetReverseFill(orientation == "right-to-left" or orientation == "bottom-to-top")
+    end
 
     return bar
 end

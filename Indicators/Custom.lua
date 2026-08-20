@@ -5,14 +5,6 @@ local F = Cell.funcs
 ---@class CellIndicatorFuncs
 local I = Cell.iFuncs
 
--- NOTE for Custom Indicator authors (Midnight 12.0.0+):
--- In restricted contexts (encounters, M+, PvP, combat), aura data fields
--- (spellId, expirationTime, applications, icon, etc.) are Secret Values.
--- - DO NOT compare secret values with == or use arithmetic on them
--- - DO NOT use secret values as table keys
--- - FontString:SetText() and SetTexture() ACCEPT secrets safely
--- - Use F.IsValueNonSecret(val) to check if a value is non-secret
--- - Use GetRestrictedActionStatus(0) to check if aura access is restricted
 
 -------------------------------------------------
 -- custom indicators
@@ -72,7 +64,6 @@ function I.UpdateIndicatorTable(indicatorTable)
         customIndicators[auraType][indicatorName]["trackByName"] = indicatorTable["trackByName"]
         customIndicators[auraType][indicatorName]["keepInHealers"] = indicatorTable["keepInHealers"]
 
-        -- Name lookup for secret aura dedup on Midnight (spellId puede ser secreto, name suele ser legible)
         if Cell.isMidnight and not indicatorTable["trackByName"] then
             local nameLookup = {}
             for _, spellId in ipairs(indicatorTable["auras"]) do
@@ -189,7 +180,6 @@ local function UpdateCustomIndicators(layout, indicatorName, setting, value, val
         else
             customIndicators[value][indicatorName]["auras"] = F.ConvertSpellTable(value2, customIndicators[value][indicatorName]["trackByName"])
         end
-        -- Rebuild name lookup when spell list changes (Midnight secret aura support)
         if Cell.isMidnight and value == "buff" and customIndicators["buff"][indicatorName]
             and not customIndicators["buff"][indicatorName]["trackByName"] then
             local nameLookup = {}
@@ -210,7 +200,6 @@ local function UpdateCustomIndicators(layout, indicatorName, setting, value, val
                 else
                     customIndicators["buff"][indicatorName]["auras"] = F.ConvertSpellTable(customIndicators["buff"][indicatorName]["_auras"], value2)
                 end
-                -- Rebuild name lookup when trackByName changes (Midnight secret aura support)
                 if Cell.isMidnight then
                     if not value2 then
                         -- Switched FROM trackByName=true TO false: build name lookup
@@ -343,7 +332,6 @@ function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
     end
     local sourceUnit = auraInfo.sourceUnit
 
-    -- check Bleed (isHarmful is safe: guarded by isHelpful non-secret check above)
     if auraInfo.isHarmful then
         debuffType = I.CheckDebuffType(debuffType, auraInfo.spellId)
     end
@@ -359,7 +347,6 @@ function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
             and not indicatorTable["keepInHealers"] then
             local spell = indicatorTable["trackByName"] and auraInfo.name or auraInfo.spellId
             local matchedAura = spell and F.IsValueNonSecret(spell) and indicatorTable["auras"][spell]
-            -- Midnight: si spellId es secreto, probamos con el name lookup (trackByName=false)
             if not matchedAura and not indicatorTable["trackByName"] and Cell.isMidnight
                 and not F.IsValueNonSecret(auraInfo.spellId)
                 and auraInfo.name and F.IsValueNonSecret(auraInfo.name) then
@@ -401,7 +388,6 @@ function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
                 and consumedSpell == spell then
             else
                 local matchedAura = spell and F.IsValueNonSecret(spell) and indicatorTable["auras"][spell]
-                -- Midnight: si spellId es secreto, probamos con el name lookup (trackByName=false)
                 if not matchedAura and not indicatorTable["trackByName"] and Cell.isMidnight
                     and not F.IsValueNonSecret(auraInfo.spellId)
                     and auraInfo.name and F.IsValueNonSecret(auraInfo.name) then

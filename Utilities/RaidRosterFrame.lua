@@ -476,7 +476,6 @@ local function CreateRaidRosterGrid(parent, index)
         end
 
 
-
         -- save
         grid.fullName = name -- contains server name for cross-realm players
 

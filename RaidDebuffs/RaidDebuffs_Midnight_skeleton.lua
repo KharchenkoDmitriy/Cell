@@ -1,5 +1,4 @@
 ---------------------------------------------------------------------
--- File: RaidDebuffs_Midnight.lua
 -- Author: enderneko (enderneko-dev@outlook.com)
 -- Created : 2026-03-09
 -- Note: Spell IDs extracted from wago.tools DB2 JournalEncounterSection.
@@ -239,13 +238,11 @@ local debuffs = {
             -- 1245391, -- Gloom
             -- 1245420, -- Gloomfield
             -- 1245554, -- Gloomtouched
-            -- 1249748, -- Midnight Flames
             -- 1245645, -- Rakfang
             -- 1248847, -- Radiant Barrier
             -- 1272867, -- Aura of Light
             -- 1244413, -- Nullsnap
             -- 1252157, -- Nullzone Implosion
-            -- 1255763, -- Midnight Manifestation
             -- 1251686, -- Unbound Shadow
             -- 1265152, -- Impale
             -- 1280458, -- Grappling Maw
@@ -375,7 +372,7 @@ local debuffs = {
             -- 1242803, -- Light Flames
             -- 1242815, -- Void Flames
         },
-        [2740] = { -- Midnight Falls
+        [2740] = {
             -- 1273158, -- Death's Requiem
             -- 1249609, -- Dark Rune
             -- 1249584, -- Dissonance
@@ -413,7 +410,6 @@ local debuffs = {
             -- 1282034, -- Into the Darkwell
             -- 1282008, -- Abyssal Pool
             -- 1282412, -- Core Harvest
-            -- 1266622, -- Midnight
             -- 1266113, -- Torchbearer
             -- 1284525, -- Galvanize
             -- 1282246, -- Void Cores
@@ -559,7 +555,7 @@ local debuffs = {
         },
     },
 
-    [1312] = { -- Midnight
+    [1312] = {
         ["general"] = {
         },
         [2827] = { -- Lu'ashal

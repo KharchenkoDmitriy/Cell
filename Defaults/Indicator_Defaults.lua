@@ -270,7 +270,6 @@ end
 -- dispels: custom debuff type color
 -------------------------------------------------
 function I.GetDebuffTypeColor(debuffType)
-    -- Midnight 12.0.0+: debuffType may be secret; cannot use as table key
     if issecretvalue and issecretvalue(debuffType) then return 0, 0, 0 end
     if debuffType and CellDB["debuffTypeColor"][debuffType] then
         return CellDB["debuffTypeColor"][debuffType]["r"], CellDB["debuffTypeColor"][debuffType]["g"],
@@ -288,7 +287,6 @@ function I.SetDebuffTypeColor(debuffType, r, g, b)
     end
 end
 
--- Midnight 12.0.0 removed the DebuffTypeColor global; provide a local fallback
 -- with the standard Blizzard debuff type colors
 local CellDebuffTypeColorFallback = {
     ["none"]    = {r = 0.80, g = 0.00, b = 0.00},

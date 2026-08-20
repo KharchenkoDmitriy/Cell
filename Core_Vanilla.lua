@@ -145,6 +145,9 @@ function F.UpdateLayout(layoutGroupType)
         local layout = Cell.vars.layoutAutoSwitch[layoutGroupType]
         Cell.vars.layoutGroupType = layoutGroupType
 
+        local prevLayout = Cell.vars.currentLayout
+        local prevHidden = Cell.vars.isHidden
+
         if layout == "hide" then
             Cell.vars.isHidden = true
             Cell.vars.currentLayout = "default"
@@ -155,9 +158,11 @@ function F.UpdateLayout(layoutGroupType)
             Cell.vars.currentLayoutTable = CellDB["layouts"][layout]
         end
 
-        F.IterateAllUnitButtons(function(b)
-            b._indicatorsReady = nil
-        end, true)
+        if prevLayout ~= Cell.vars.currentLayout or prevHidden ~= Cell.vars.isHidden then
+            F.IterateAllUnitButtons(function(b)
+                b._indicatorsReady = nil
+            end, true)
+        end
 
         Cell.Fire("UpdateLayout", layout)
         Cell.Fire("UpdateIndicators")

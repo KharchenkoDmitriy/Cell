@@ -23,7 +23,6 @@ local GetUnitName = GetUnitName
 local UnitClassBase = UnitClassBase
 local UnitHealth = UnitHealth
 local UnitHealthMax = UnitHealthMax
--- local UnitGetIncomingHeals = UnitGetIncomingHeals
 local UnitIsFriend = UnitIsFriend
 local UnitIsUnit = UnitIsUnit
 local UnitIsPlayer = UnitIsPlayer
@@ -421,12 +420,12 @@ local function Process(b)
             -- print("processing_init", GetTime(), b:GetName())
             b._status = "processing"
             HandleIndicators(b)
-            UnitButton_UpdateAuras(b)
+            UnitButton_UpdateAll(b)
         elseif b._status == WAITING_FOR_UPDATE then
             -- print("processing_update", GetTime(), b:GetName())
             b._indicatorsReady = true
             b._status = "processing"
-            UnitButton_UpdateAuras(b)
+            UnitButton_UpdateAll(b)
         end
 
         CellLoadingBar.current = (CellLoadingBar.current or 0) + 1
@@ -473,6 +472,26 @@ local function AddToUpdateQueue(b)
     queue[b] = true
 end
 
+local function MaybeShowUpdater()
+    if next(queue) then
+        updater:Show()
+    end
+end
+
+local function RefreshButtonForGroupSwitch(b)
+    if b._waitingForIndicatorCreation then
+        if b:IsVisible() then
+            AddToInitQueue(b)
+        end
+    else
+        b._updateRequired = 1
+        b._powerUpdateRequired = 1
+        if b:IsVisible() and b._indicatorsReady then
+            UnitButton_UpdateAll(b)
+        end
+    end
+end
+
 -------------------------------------------------
 -- UpdateIndicators
 -------------------------------------------------
@@ -508,13 +527,23 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
 
     else -- Cell.Fire("UpdateIndicators")
         --! layout/groupType switched, check if update is required
-        if activeLayouts[INDEX] == currentLayout then
+        local layoutAlreadyApplied = activeLayouts[INDEX] == currentLayout
+        if not layoutAlreadyApplied then
+            for _, groupLayout in next, activeLayouts do
+                if groupLayout == currentLayout then
+                    layoutAlreadyApplied = true
+                    break
+                end
+            end
+        end
+
+        if layoutAlreadyApplied then
             I.ResetCustomIndicatorTables()
             ResetIndicators()
             F.Debug("  -> NO FULL UPDATE: only reset custom indicator tables")
-            F.IterateAllUnitButtons(AddToUpdateQueue, true, nil, true)
-            F.IterateSharedUnitButtons(AddToInitQueue)
-            updater:Show()
+            F.IterateAllUnitButtons(RefreshButtonForGroupSwitch, true)
+            activeLayouts[INDEX] = currentLayout
+            MaybeShowUpdater()
             return
         end
     end
@@ -532,8 +561,13 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
         F.Debug("  -> FULL UPDATE", INDEX, currentLayout)
         I.ResetCustomIndicatorTables()
         ResetIndicators()
-        F.IterateAllUnitButtons(AddToInitQueue, true)
-        updater:Show()
+        F.IterateAllUnitButtons(function(b)
+            if b._waitingForIndicatorCreation and not b:IsVisible() then
+                return
+            end
+            AddToInitQueue(b)
+        end, true)
+        MaybeShowUpdater()
 
     else
         -- changed in IndicatorsTab
@@ -2216,7 +2250,6 @@ if CELL_USE_LIBHEALCOMM then
         Cell.HealComm = {}
         local function HealComm_UpdateHealPrediction(_, event, casterGUID, spellID, healType, endTime, ...)
             -- print(event, casterGUID, spellID, healType, endTime, ...)
-            -- update incomingHeal
             for i = 1, select("#", ...) do
                 F.HandleUnitButton("guid", select(i, ...), UnitButton_UpdateHealPrediction)
             end
@@ -2580,8 +2613,14 @@ Cell.vars.guids = {} -- guid to unitid
 Cell.vars.names = {} -- name to unitid
 
 local function UnitButton_OnShow(self)
-    self._updateRequired = nil -- prevent UnitButton_UpdateAll twice. when convert party <-> raid, GROUP_ROSTER_UPDATE fired.
+    self._updateRequired = 1
     self._powerUpdateRequired = 1
+    if Cell.loaded and Cell.vars.currentLayoutTable and self._waitingForIndicatorCreation then
+        AddToInitQueue(self)
+        if not updater:IsShown() then
+            updater:Show()
+        end
+    end
     UnitButton_RegisterEvents(self)
 
     --[[
@@ -2808,7 +2847,6 @@ function B.SetOrientation(button, orientation, rotateTexture)
         P.Point(gapTexture, "BOTTOMRIGHT", powerBar, "TOPRIGHT")
         P.Height(gapTexture, CELL_BORDER_SIZE)
 
-        -- update incomingHeal
         P.ClearPoints(incomingHeal)
         P.Point(incomingHeal, "TOPLEFT", healthBar:GetStatusBarTexture(), "TOPRIGHT")
         P.Point(incomingHeal, "BOTTOMLEFT", healthBar:GetStatusBarTexture(), "BOTTOMRIGHT")
@@ -2817,9 +2855,7 @@ function B.SetOrientation(button, orientation, rotateTexture)
             local incomingHealWidth = incomingPercent * barWidth
             local lostHealthWidth = barWidth * (1 - button.states.healthPercent)
 
-            -- print(incomingPercent, barWidth, incomingHealWidth, lostHealthWidth)
             -- FIXME: if incomingPercent is a very tiny number, like 0.005
-            -- P.Scale(incomingHealWidth) ==> 0
             --! if width is set to 0, then the ACTUAL width may be 256!!!
 
             if lostHealthWidth == 0 then
@@ -2871,7 +2907,6 @@ function B.SetOrientation(button, orientation, rotateTexture)
             P.Height(gapTexture, CELL_BORDER_SIZE)
         end
 
-        -- update incomingHeal
         P.ClearPoints(incomingHeal)
         P.Point(incomingHeal, "BOTTOMLEFT", healthBar:GetStatusBarTexture(), "TOPLEFT")
         P.Point(incomingHeal, "BOTTOMRIGHT", healthBar:GetStatusBarTexture(), "TOPRIGHT")
@@ -3100,7 +3135,6 @@ local startTimeCache = {}
 --  -3 absorbsBar
 --  -4 overShieldGlow, overShieldGlowR
 --  -5 shieldBar, shieldBarR
---	-6 incomingHeal, damageFlashTex
 --	-7 healthBar, healthBarLoss
 -- BORDER
 --  0 gapTexture

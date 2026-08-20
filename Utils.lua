@@ -22,7 +22,7 @@ Cell.isCata = WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC
 Cell.isMists = WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC
 Cell.isTWW = LE_EXPANSION_LEVEL_CURRENT == LE_EXPANSION_WAR_WITHIN
 
-local CELL_VERSION_FALLBACK = "r277.9.7.7"
+local CELL_VERSION_FALLBACK = "r277.9.7.8"
 
 function F.InitAddonVersion()
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
@@ -42,9 +42,8 @@ function F.GetNickname(shortname, fullname)
 end
 
 -------------------------------------------------
--- 12.0+ API compatibility shims
+-- compatibility
 -------------------------------------------------
--- IsEncounterInProgress moved to C_InstanceEncounter namespace in 12.0
 if not IsEncounterInProgress and C_InstanceEncounter and C_InstanceEncounter.IsEncounterInProgress then
     IsEncounterInProgress = C_InstanceEncounter.IsEncounterInProgress
 end
@@ -1223,9 +1222,6 @@ local UnitInPartyIsAI = UnitInPartyIsAI or function() end
 local RAID_CLASS_COLORS = RAID_CLASS_COLORS
 local GetPlayerInfoByGUID = GetPlayerInfoByGUID
 
--- Resolve a usable class file token for coloring. On Midnight, UnitClass can be
--- secret (table-index throws / wrong paint). Prefer non-secret UnitClass, then
--- GetPlayerInfoByGUID, then LibGroupInfo cache. Never index RAID_CLASS_COLORS with secrets.
 function F.ResolveUnitClassFile(unit, fallback)
     if unit then
         local classFile = select(2, UnitClass(unit))
@@ -1723,11 +1719,12 @@ end
 local durationRemainProp
 local durationCurveCache = {}
 
-local function ColorFromOpt(c, fb)
+local function ColorFromOpt(c, fb, a)
+    a = a or 1
     if type(c) ~= "table" then
-        return CreateColor(fb[1], fb[2], fb[3], 1)
+        return CreateColor(fb[1], fb[2], fb[3], a)
     end
-    return CreateColor(c[1] or fb[1], c[2] or fb[2], c[3] or fb[3], 1)
+    return CreateColor(c[1] or fb[1], c[2] or fb[2], c[3] or fb[3], a)
 end
 
 local durationPercentProp
@@ -1871,12 +1868,17 @@ local function CollectSpellIds(auras)
         return ids
     end
     for k, v in pairs(auras) do
-        local n = tonumber(v)
-        if not n and type(v) == "table" then
-            n = tonumber(v[1]) or tonumber(v.id) or tonumber(v.spellId)
-        end
-        if not n then
-            n = tonumber(k)
+        local n
+        local keyId = tonumber(k)
+        if type(v) == "table" then
+            local first = tonumber(v[1]) or tonumber(v.id) or tonumber(v.spellId)
+            if keyId and keyId > 100 and (not first or first < 1000 or first == keyId) then
+                n = keyId
+            else
+                n = first
+            end
+        else
+            n = tonumber(v) or keyId
         end
         if n and n > 0 and not seen[n] then
             seen[n] = true
@@ -1946,6 +1948,16 @@ local function ReadCooldownTotal(button)
     end
 end
 
+local function TryAuraDuration(unit, iid)
+    if not (unit and C_UnitAuras and C_UnitAuras.GetAuraDuration) then
+        return
+    end
+    local ok, dur = pcall(C_UnitAuras.GetAuraDuration, unit, iid)
+    if ok then
+        return dur
+    end
+end
+
 local function ResolveAuraDuration(button, unit, spellIds)
     if button.GetAuraDuration then
         local ok, dur = pcall(button.GetAuraDuration, button)
@@ -1953,23 +1965,43 @@ local function ResolveAuraDuration(button, unit, spellIds)
             return dur
         end
     end
-    local iid
-    if button.GetAuraInstance then
-        local ok, u, data = pcall(button.GetAuraInstance, button)
-        if ok then
-            unit = unit or u
-            iid = data and data.auraInstanceID
-        end
-    end
-    if not iid and button.GetAuraInstanceID then
+    unit = unit or ResolveAuraUnit(button)
+    if button.GetAuraInstanceID then
         local ok, id = pcall(button.GetAuraInstanceID, button)
         if ok then
-            iid = id
+            local dur = TryAuraDuration(unit, id)
+            if dur then
+                return dur
+            end
         end
     end
-    unit = unit or ResolveAuraUnit(button)
-    if unit and iid and C_UnitAuras and C_UnitAuras.GetAuraDuration then
-        local ok, dur = pcall(C_UnitAuras.GetAuraDuration, unit, iid)
+    if button.GetAuraInstance then
+        local ok, a, b = pcall(button.GetAuraInstance, button)
+        if ok then
+            local okd, dur = pcall(function()
+                return TryAuraDuration(unit, a)
+                    or TryAuraDuration(unit, b)
+                    or TryAuraDuration(unit, a and a.auraInstanceID)
+                    or TryAuraDuration(unit, b and b.auraInstanceID)
+            end)
+            if okd and dur then
+                return dur
+            end
+        end
+    end
+    if button.GetAuraData then
+        local ok, data = pcall(button.GetAuraData, button)
+        if ok and type(data) == "table" then
+            local dur = TryAuraDuration(unit or data.unit, data.auraInstanceID)
+            if dur then
+                return dur
+            end
+        end
+    end
+    do
+        local ok, dur = pcall(function()
+            return TryAuraDuration(unit, button.auraInstanceID) or TryAuraDuration(unit, button.auraInstanceId)
+        end)
         if ok and dur then
             return dur
         end
@@ -1983,17 +2015,38 @@ local function ResolveAuraDuration(button, unit, spellIds)
                     data = d
                 end
             end
-            if not data and C_UnitAuras.GetPlayerAuraBySpellID and (unit == "player" or UnitIsUnit and UnitIsUnit(unit, "player")) then
+            if not data and C_UnitAuras.GetPlayerAuraBySpellID and (unit == "player" or (UnitIsUnit and UnitIsUnit(unit, "player"))) then
                 local ok, d = pcall(C_UnitAuras.GetPlayerAuraBySpellID, spellIds[i])
                 if ok then
                     data = d
                 end
             end
-            if data and data.auraInstanceID and C_UnitAuras.GetAuraDuration then
-                local ok, dur = pcall(C_UnitAuras.GetAuraDuration, unit, data.auraInstanceID)
-                if ok and dur then
-                    return dur
+            if type(data) == "table" then
+                local got = TryAuraDuration(unit, data.auraInstanceID)
+                if got then
+                    return got
                 end
+            end
+        end
+    end
+    if unit and spellIds and C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+        local want = {}
+        for i = 1, #spellIds do
+            want[spellIds[i]] = true
+        end
+        for i = 1, 80 do
+            local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HELPFUL")
+            if not ok or not data then
+                break
+            end
+            local got
+            pcall(function()
+                if data.spellId and want[data.spellId] then
+                    got = TryAuraDuration(unit, data.auraInstanceID)
+                end
+            end)
+            if got then
+                return got
             end
         end
     end
@@ -2119,7 +2172,7 @@ local function BindColorCurve(button, fontString, formatter, curve, prop)
     return colorLanded
 end
 
-function F.BindAuraDurationText(button, fontString, formatter, auras)
+function F.BindAuraDurationText(button, fontString, formatter, auras, colorsOverride)
     if not (button and fontString and button.SetDurationText) then
         return
     end
@@ -2131,7 +2184,7 @@ function F.BindAuraDurationText(button, fontString, formatter, auras)
         fontString._cellDurColorDriver = nil
     end
 
-    local colors = Cell.vars.iconDurationColors
+    local colors = colorsOverride or Cell.vars.iconDurationColors
     if not colors then
         TrySetDurationText(button, fontString, formatter, nil, nil)
         return
@@ -2155,6 +2208,252 @@ function F.BindAuraDurationText(button, fontString, formatter, auras)
         end
     end
     BindColorCurve(button, fontString, formatter, MakeRemainColorCurve(sec, yellowUntil, c1, c2, c3), GetRemainProp())
+end
+
+local function PackAuraBarDurationColors(colors)
+    if Cell.vars.iconDurationColors then
+        return Cell.vars.iconDurationColors
+    end
+    if type(colors) ~= "table" or type(colors[1]) ~= "table" then
+        return nil
+    end
+    local pctOn = colors[2] and colors[2][1]
+    local secOn = colors[3] and colors[3][1]
+    if not pctOn and not secOn then
+        return nil
+    end
+    local c1 = colors[1]
+    local pct = (pctOn and tonumber(colors[2][2])) or 0
+    local sec = (secOn and tonumber(colors[3][2])) or 0
+    local c2 = (pctOn and type(colors[2][3]) == "table" and colors[2][3]) or c1
+    local c3 = (secOn and type(colors[3][3]) == "table" and colors[3][3]) or c2
+    return {
+        { c1[1] or 0, c1[2] or 1, c1[3] or 0, c1[4] or 1 },
+        { c2[1] or 1, c2[2] or 1, c2[3] or 0, pct },
+        { c3[1] or 1, c3[2] or 0, c3[3] or 0, sec },
+    }
+end
+
+local function MakeRemainPercentCurve(pct, cLow, cHigh)
+    if not (C_CurveUtil and C_CurveUtil.CreateColorCurve and CreateColor) then
+        return nil
+    end
+    pct = tonumber(pct) or 0
+    if pct <= 0 then
+        return nil
+    end
+    local curve = C_CurveUtil.CreateColorCurve()
+    local stepType = Enum and Enum.LuaCurveType and Enum.LuaCurveType.Step
+    if stepType then
+        curve:SetType(stepType)
+    end
+    curve:AddPoint(0, ColorFromOpt(cLow, { 1, 1, 0 }))
+    curve:AddPoint(pct, ColorFromOpt(cHigh, { 0, 1, 0 }))
+    curve:AddPoint(1, ColorFromOpt(cHigh, { 0, 1, 0 }))
+    return curve
+end
+
+local function EnsureBarColorOverlay(bar, c1)
+    return bar and bar._cellDurationColorTex
+end
+
+local function ApplyDurationBarBinding(button, bar, curve)
+    if not (button and bar and button.SetDurationBar and curve) then
+        return
+    end
+    local bind = { curve = curve, property = GetRemainProp() }
+    local function BaseOpts()
+        local opts = {}
+        local dirEnum = Enum and Enum.StatusBarTimerDirection
+        if dirEnum and dirEnum.ElapsedTime then
+            opts.direction = dirEnum.ElapsedTime
+        end
+        if Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate then
+            opts.interpolation = Enum.StatusBarInterpolation.Immediate
+        end
+        return opts
+    end
+    local extras = { "color", "fillColor", "barColor", "statusBarColor", "textColor" }
+    for i = 1, #extras do
+        local opts = BaseOpts()
+        opts[extras[i]] = bind
+        if pcall(button.SetDurationBar, button, bar, opts) then
+            return
+        end
+    end
+    pcall(button.SetDurationBar, button, bar, BaseOpts())
+end
+
+local function ReadBarTotalDuration(bar)
+    if not bar then
+        return
+    end
+    local ok, _, maxV = pcall(bar.GetMinMaxValues, bar)
+    if ok and IsPlainNumber(maxV) and maxV > 1.5 then
+        return NormalizeDuration(maxV)
+    end
+end
+
+local function ApplyBarDurationColor(bar, color)
+    if not (bar and color and color.GetRGB) then
+        return
+    end
+    pcall(function()
+        local r, g, b, a
+        if color.GetRGBA then
+            r, g, b, a = color:GetRGBA()
+        else
+            r, g, b = color:GetRGB()
+            a = 1
+        end
+        bar:SetStatusBarColor(r, g, b, a or 1)
+        local tex = bar:GetStatusBarTexture()
+        if tex then
+            tex:SetVertexColor(r, g, b, a or 1)
+        end
+    end)
+end
+
+local function TickAuraDurationColor(state)
+    local button = state.button
+    if not button then
+        return
+    end
+    local now = GetTime()
+    if state.lastTick and now - state.lastTick < 0.05 then
+        return
+    end
+    state.lastTick = now
+    local colors = Cell.vars.iconDurationColors or state.colors
+    if not colors then
+        return
+    end
+    local bar = state.bar
+    local curve = button._cellDurationColorCurve
+    local dur = ResolveAuraDuration(button, ResolveAuraUnit(button), state.spellIds)
+    local sec = (colors[3] and tonumber(colors[3][4])) or 0
+    local pct = (colors[2] and tonumber(colors[2][4])) or 0
+    if dur and not state.boundRemainThree and pct > 0 and sec > 0 and state.fs and button.SetDurationText then
+        local total = ReadAuraTotalDuration(dur) or ReadButtonTotalDuration(button, state.spellIds)
+        if total and total >= 6 and total > sec * 2 then
+            local yellowUntil = pct * total
+            if yellowUntil > sec + 1 then
+                local remainCurve = MakeRemainColorCurve(sec, yellowUntil, colors[1], colors[2], colors[3])
+                if remainCurve and BindColorCurve(button, state.fs, state.formatter, remainCurve, GetRemainProp()) then
+                    state.boundRemainThree = true
+                    button._cellDurationColorCurve = remainCurve
+                    button._cellDurationColorIsPercent = false
+                    curve = remainCurve
+                end
+            end
+        end
+    end
+    if not bar then
+        return
+    end
+    local color
+    if dur and curve then
+        if button._cellDurationColorIsPercent and dur.EvaluateRemainingPercent then
+            local ok, c = pcall(dur.EvaluateRemainingPercent, dur, curve)
+            if ok then
+                color = c
+            end
+        elseif dur.EvaluateRemainingDuration then
+            local ok, c = pcall(dur.EvaluateRemainingDuration, dur, curve)
+            if ok then
+                color = c
+            end
+        end
+    end
+    if not color and curve and C_UnitAuras and C_UnitAuras.GetAuraDurationRemainingPercent then
+        local unit = ResolveAuraUnit(button)
+        local iid
+        if button.GetAuraInstanceID then
+            local ok, id = pcall(button.GetAuraInstanceID, button)
+            if ok then
+                iid = id
+            end
+        end
+        if not iid and button.GetAuraInstance then
+            pcall(function()
+                local _, data = button:GetAuraInstance()
+                iid = data and data.auraInstanceID
+            end)
+        end
+        if unit and iid then
+            local ok, c = pcall(C_UnitAuras.GetAuraDurationRemainingPercent, unit, iid, curve)
+            if ok then
+                color = c
+            end
+        end
+    end
+    if color then
+        ApplyBarDurationColor(bar, color)
+    end
+end
+
+function F.AttachAuraDurationColorDriver(button, auras, colors, bar, fontString, formatter)
+    if not button then
+        return
+    end
+    local packed = colors
+    if colors and colors[2] and type(colors[2][1]) == "boolean" then
+        packed = PackAuraBarDurationColors(colors)
+    end
+    packed = packed or Cell.vars.iconDurationColors
+    if not packed then
+        return
+    end
+
+    local state = button._cellDurColorState
+    if not state then
+        state = { button = button }
+        button._cellDurColorState = state
+    end
+    state.auras = auras or state.auras
+    state.colors = packed
+    state.spellIds = CollectSpellIds(state.auras)
+    if formatter then
+        state.formatter = formatter
+    end
+    if bar then
+        state.bar = bar
+    end
+    if fontString then
+        state.fs = fontString
+    elseif button._cellDurationFS then
+        state.fs = button._cellDurationFS
+    end
+
+    if not button._cellDurColorDriver then
+        local driver = CreateFrame("Frame", nil, button)
+        driver:SetSize(1, 1)
+        button._cellDurColorDriver = driver
+        local elapsed = 0
+        driver:SetScript("OnUpdate", function(_, dt)
+            elapsed = elapsed + dt
+            if elapsed < 0.1 then
+                return
+            end
+            elapsed = 0
+            local st = button._cellDurColorState
+            if st then
+                TickAuraDurationColor(st)
+            end
+        end)
+    end
+    if bar and not bar._cellBarColorHooked then
+        bar._cellBarColorHooked = true
+        bar:HookScript("OnUpdate", function()
+            local st = button._cellDurColorState
+            if st then
+                TickAuraDurationColor(st)
+            end
+        end)
+    end
+end
+
+function F.BindAuraBarDurationColor(button, bar, formatter, colors, auras)
 end
 
 -- Helper: choose font based on locale and "Use Game Font" setting (shared with Widgets.lua)
@@ -2209,7 +2508,6 @@ end
 function F.GetTexCoord(width, height)
     -- ULx,ULy, LLx,LLy, URx,URy, LRx,LRy
     local texCoord = {0.12, 0.12, 0.12, 0.88, 0.88, 0.12, 0.88, 0.88}
-    -- Guard invalid/secret sizes: keep default crop to avoid Inf/NaN tex coords.
     if not width or not height then return texCoord end
     if F.IsValueNonSecret and (not F.IsValueNonSecret(width) or not F.IsValueNonSecret(height)) then
         return texCoord
@@ -2599,11 +2897,9 @@ end
 
 if Cell.isRetail then
     function F.FindDebuffByIds(unit, spellIds)
-        -- Midnight 12.0.0+: aura fields are secret during restricted contexts
         if Cell.isMidnight and F.IsAuraRestricted() then return {} end
         local debuffs = {}
         AuraUtil.ForEachAura(unit, "HARMFUL", nil, function(name, icon, count, debuffType, duration, expirationTime, source, isStealable, nameplateShowPersonal, spellId)
-            -- Guard: spellId may be secret even when IsAuraRestricted is false
             if not F.IsValueNonSecret(spellId) then return end
             if spellIds[spellId] then
                 debuffs[spellId] = I.CheckDebuffType(debuffType, spellId)
@@ -2613,11 +2909,9 @@ if Cell.isRetail then
     end
 
     function F.FindAuraByDebuffTypes(unit, types)
-        -- Midnight 12.0.0+: aura fields are secret during restricted contexts
         if Cell.isMidnight and F.IsAuraRestricted() then return {} end
         local debuffs = {}
         AuraUtil.ForEachAura(unit, "HARMFUL", nil, function(name, icon, count, debuffType, duration, expirationTime, source, isStealable, nameplateShowPersonal, spellId)
-            -- Guard: spellId/debuffType may be secret even when IsAuraRestricted is false
             if not F.IsValueNonSecret(spellId) or not F.IsValueNonSecret(debuffType) then return end
             if types == "all" or types[debuffType] then
                 debuffs[spellId] = I.CheckDebuffType(debuffType, spellId)
@@ -3218,7 +3512,7 @@ if Cell.isMists then
 end
 
 -------------------------------------------------
--- Secret value utilities (Patch 12.0.0+)
+-- secrets
 -------------------------------------------------
 function F.HasAnySecretValues(...)
     if not Cell.isMidnight then return false end
@@ -3243,6 +3537,144 @@ end
 function F.IsLiveAuraScanBlocked()
     local build = select(4, GetBuildInfo())
     return Cell.isRetail and build and build >= 120100
+end
+
+function F.InitEngineAuraButtonOnce(button)
+    if not button or button._cellAuraInited then
+        return false
+    end
+    button._cellAuraInited = true
+    return true
+end
+
+local AURA_PARK_CAP = 2
+
+function F.StampAuraFont(font)
+    if type(font) ~= "table" then
+        return tostring(font or "")
+    end
+    local function part(v)
+        if type(v) ~= "table" then
+            return tostring(v or "")
+        end
+        return table.concat({
+            tostring(v[1] or ""),
+            tostring(v[2] or ""),
+            tostring(v[3] or ""),
+            tostring(v[4] or ""),
+        }, ",")
+    end
+    if type(font[1]) == "table" or type(font[2]) == "table" then
+        return part(font[1]) .. "/" .. part(font[2])
+    end
+    return part(font)
+end
+
+function F.AuraParkKey(...)
+    local n = select("#", ...)
+    local t = {}
+    for i = 1, n do
+        local v = select(i, ...)
+        if type(v) == "boolean" then
+            t[i] = v and "1" or "0"
+        elseif v == nil then
+            t[i] = ""
+        else
+            t[i] = tostring(v)
+        end
+    end
+    local colors = Cell.vars.iconDurationColors
+    if type(colors) == "table" then
+        for i = 1, 3 do
+            local c = colors[i]
+            if type(c) == "table" then
+                t[#t + 1] = tostring(c[1]) .. "," .. tostring(c[2]) .. "," .. tostring(c[3]) .. "," .. tostring(c[4])
+            end
+        end
+    end
+    return table.concat(t, "|")
+end
+
+function F.QuiesceAuraContainer(container)
+    if not container then return end
+    pcall(function()
+        container:Hide()
+        if container.SetUnit then
+            container:SetUnit(nil)
+        end
+        container:ClearAllPoints()
+        container:SetParent(UIParent)
+        container:SetAlpha(0)
+        container:SetSize(1, 1)
+    end)
+end
+
+function F.ParkAuraContainer(parkMap, key, container)
+    if not container then return end
+    F.QuiesceAuraContainer(container)
+    if type(parkMap) ~= "table" or type(key) ~= "string" or key == "" then
+        return
+    end
+    if not parkMap[key] then
+        local n = 0
+        local dropKey
+        for k in pairs(parkMap) do
+            n = n + 1
+            if not dropKey then
+                dropKey = k
+            end
+        end
+        if n >= AURA_PARK_CAP and dropKey then
+            parkMap[dropKey] = nil
+        end
+    end
+    parkMap[key] = container
+end
+
+function F.AcquireParkedAuraContainer(parkMap, key, parent)
+    if type(parkMap) ~= "table" or type(key) ~= "string" or key == "" then
+        return nil
+    end
+    local container = parkMap[key]
+    if not container then
+        return nil
+    end
+    parkMap[key] = nil
+    parent = parent or UIParent
+    pcall(function()
+        container:SetAlpha(1)
+        container:SetParent(parent)
+    end)
+    return container
+end
+
+function F.ApplyAuraGroupTuning(container, groupKey, filter, opts)
+    if not (container and groupKey) then
+        return false
+    end
+    if container.HasAuraGroup and not container:HasAuraGroup(groupKey) then
+        return false
+    end
+    if not container.HasAuraGroup then
+        return false
+    end
+    if filter and container.SetAuraGroupFilterString then
+        pcall(container.SetAuraGroupFilterString, container, groupKey, filter)
+    end
+    opts = opts or {}
+    if opts.maxFrameCount and container.SetAuraGroupMaxFrameCount then
+        pcall(container.SetAuraGroupMaxFrameCount, container, groupKey, opts.maxFrameCount)
+    end
+    if opts.candidateFilters and container.SetAuraGroupCandidateFilters then
+        pcall(container.SetAuraGroupCandidateFilters, container, groupKey, opts.candidateFilters)
+    end
+    if opts.layout and container.SetAuraGroupLayout then
+        pcall(container.SetAuraGroupLayout, container, groupKey, opts.layout)
+    end
+    if opts.sortMethod and container.SetAuraGroupSortMethod then
+        pcall(container.SetAuraGroupSortMethod, container, groupKey, opts.sortMethod, opts.sortDirection)
+    end
+    return true
 end
 
 function F.PauseAuraContainer(container)
@@ -3356,7 +3788,7 @@ function F.IsFontValid(font)
 end
 
 -------------------------------------------------
--- Midnight communication helpers
+-- communication
 -------------------------------------------------
 local restrictedChatTypes = {
     PARTY = true,

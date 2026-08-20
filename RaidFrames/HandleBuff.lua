@@ -23,8 +23,6 @@ local function HandleBuff(self, auraInfo)
     local spellId = auraInfo.spellId
     local source = auraInfo.sourceUnit
 
-    -- Si el usuario blacklisteó este buff me lo salto.
-    -- Las auras secretas no se pueden comparar por spellId así que las salteo.
     if spellId and not auraInfo._hasSecrets and F.IsAuraBlacklisted and F.IsAuraBlacklisted(spellId, "HELPFUL") then return end
 
     local start, duration
@@ -48,21 +46,8 @@ local function HandleBuff(self, auraInfo)
         local isOffensive = false
         local secretAuraUnitTrustworthy = F.IsSecretAuraUnitTrustworthy and F.IsSecretAuraUnitTrustworthy(unit, self)
 
-        -- Combat guard: fuera de combate solo confío en Step 1 (tablas curadas)
-        -- y el cache. Fingerprint y timing producen falsos positivos con
-        -- class buffs y flasks cuando los spellIds son opacos para otros
-        -- miembros de la raid fuera de combate en Midnight.
         local inCombat = UnitAffectingCombat("player")
 
-        -- Cache de clasificación: en Midnight a veces un aura llega con datos
-        -- legibles y después se vuelve secreta. Con el cache no pierdo la
-        -- clasificación en el siguiente UNIT_AURA.
-        --
-        -- Guard fuera de combate: si el aura es secreta y no estamos en combate,
-        -- no confío en el cache. Steps 2/2.5/3 (que requieren combate) pudieron
-        -- haber clasificado un aura durante combate y el cache la arrastra fuera.
-        -- Esto causa falsos positivos donde class buffs/flasks/etc. aparecen
-        -- fuera de combate porque su fingerprint matcheó durante combate.
         local classified = self._buffs._classified and self._buffs._classified[auraInstanceID]
         if classified and (inCombat or not auraInfo._hasSecrets) then
             isDefensive = classified == "defensive"
@@ -90,15 +75,11 @@ local function HandleBuff(self, auraInfo)
             end
         end
 
-        -- Cacheo la clasificación.
         if not classified and (isDefensive or isExternal or isOffensive) then
             self._buffs._classified = self._buffs._classified or {}
             self._buffs._classified[auraInstanceID] = isDefensive and "defensive" or (isExternal and "external" or "offensive")
         end
 
-        -- Usa filtros Blizzard con PLAYER para verificar source=player.
-        -- CRÍTICO: type guards en cada resultado porque _IsAuraFilteredOut
-        -- puede devolver nil para auras secretas en Midnight, y `not nil = true`.
         local isPlayerCast = false
         if isExternal or isDefensive or isOffensive then
             if not auraInfo._hasSecrets then

@@ -6,11 +6,7 @@ local I = Cell.iFuncs
 local LCG = LibStub("LibCustomGlow-1.0")
 
 --[[
-    Targeted Spells (party only)
-
-    Resolve cast targets via class / role / race / sex fingerprinting when
-    UnitIsUnit(nameplateXtarget, partyN) is unreliable. Show only when exactly
-    one party member matches. Disabled in raid.
+    Targeted Spells
 ]]
 
 local UnitExists = UnitExists
@@ -49,7 +45,6 @@ local castsOnUnit, sortedCastsOnUnit = {}, {}
 local gen = {} -- sourceUnit -> generation (stale timer guard)
 local plateTokens = {}
 
--- roster fingerprint cache (party only)
 local rosterByClass = {}
 local rosterRole, rosterRace, rosterSex = {}, {}, {}
 local lastRosterSync = 0

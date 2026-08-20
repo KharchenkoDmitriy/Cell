@@ -157,7 +157,6 @@ end
 
 local function SetOnUpdate(indicator, type, icon, stack, extra)
     indicator.preview = indicator.preview or CreateFrame("Frame", nil, indicator)
-    -- Midnight BorderIcon preview: use reversed swipe so the colored border
     -- is visible as base and black fills in (matches in-game SetCooldownFromAura).
     local isMidnightBorderIcon = Cell.isMidnight and indicator.cooldown
         and indicator.cooldown._SetCooldown and not indicator.cooldown.SetMinMaxValues
@@ -1759,11 +1758,7 @@ local DEBUFFS_TOOLTIP1 = L["This will make these icons not click-through-able"].
 local DEBUFFS_TOOLTIP2 = L["This will make these icons not click-through-able"]
 local TARGETED_SPELLS_PARTY_NOTE = "|cffb7b7b7Works in party only (not in raid). Enemy nameplates must be enabled.|r"
 local TARGETED_SPELLS_PTR_WARNING = "warning:On current Midnight Patch, many dungeon casts hide the cast target from addons, so icons/glow may not appear even when the spell is listed."
--- Midnight: Blizzard's countdown text doesn't support anchor/offset, use simplified font widget.
--- Pre-Midnight: Cell's own duration text supports full positioning.
 local midnightDurationFont = Cell.isMidnight and "font-noOffset:durationFont" or "font2:durationFont"
--- Midnight: Blizzard's countdown only supports Always/Never, no thresholds.
--- Pre-Midnight: Cell's duration text supports percentage/time thresholds.
 local midnightDurationVisibility = Cell.isMidnight and "durationVisibilitySimple" or "durationVisibility"
 if Cell.isRetail or Cell.isMists then
     indicatorSettings = {
@@ -2080,7 +2075,6 @@ local function ShowIndicatorSettings(id)
                 Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "font", indicatorTable["font"])
             end)
 
-        -- font-noOffset:durationFont (Midnight: simplified font widget for paired font config)
         elseif string.find(currentSetting, "^font%-noOffset:") then
             local _, setting = string.split(":", currentSetting)
             -- Map setting name to font index (durationFont = index 2)

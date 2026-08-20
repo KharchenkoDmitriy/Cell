@@ -100,12 +100,6 @@ Cell.MIN_INDICATORS_VERSION = 275
 Cell.MIN_DEBUFFS_VERSION = 275
 Cell.MIN_QUICKASSIST_VERSION = 275
 
--- Patch 12.0.0+ Secret Value Testing CVars (use in-game to force restrictions):
--- /run SetCVar("secretCombatRestrictionsForced", 1)
--- /run SetCVar("secretEncounterRestrictionsForced", 1)
--- /run SetCVar("secretChallengeModeRestrictionsForced", 1)
--- /run SetCVar("secretPvPMatchRestrictionsForced", 1)
--- Reset: /run SetCVar("secretCombatRestrictionsForced", 0)
 
 function F.Debug(arg, ...)
     if debugMode then
@@ -591,7 +585,6 @@ function eventFrame:ADDON_LOADED(arg1)
         -- auraBlacklist --------------------------------------------------------------------------
         if type(CellDB["auraBlacklist"]) ~= "table" then CellDB["auraBlacklist"] = {["buffs"]={}, ["debuffs"]={}} end
 
-        -- debuffBlacklist → auraBlacklist.debuffs migration (Retail/Midnight)
         if Cell.isRetail and type(CellDB["debuffBlacklist"]) == "table" then
             local target = CellDB["auraBlacklist"]["debuffs"]
             for _, sid in ipairs(CellDB["debuffBlacklist"]) do
@@ -944,7 +937,6 @@ function eventFrame:PLAYER_LOGIN()
     Cell.vars.playerNameFull = F.UnitFullName("player")
 
     --! init bgMaxPlayers
-    -- Midnight 12.0.0 removed GetBattlegroundInfo; guard for compatibility
     if GetBattlegroundInfo then
         for i = 1, GetNumBattlegroundTypes() do
             local bgName, _, _, _, _, _, bgId, maxPlayers = GetBattlegroundInfo(i)

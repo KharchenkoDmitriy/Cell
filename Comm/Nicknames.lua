@@ -73,7 +73,6 @@ local function CheckNicknames()
             if nic_check then nic_check:Cancel() end
             nic_check = C_Timer.NewTimer(random(3), function()
                 UpdateSendChannel()
-                -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
                 if Cell.isMidnight and F.IsCommRestricted and F.IsCommRestricted() then
                     F.Debug("Cell: Comm suppressed - restricted context (CELL_CNIC)")
                     return
@@ -165,7 +164,6 @@ local function UpdateNicknames(which, value1, value2)
             if nic_check then nic_check:Cancel() end
             -- disabled, notify others
             UpdateSendChannel()
-            -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
             if Cell.isMidnight and F.IsCommRestricted and F.IsCommRestricted() then
                 F.Debug("Cell: Comm suppressed - restricted context (CELL_NIC sync-off)")
             else
@@ -188,7 +186,6 @@ local function UpdateNicknames(which, value1, value2)
         -- notify others
         if IsInGroup() and CellDB["nicknames"]["sync"] then
             UpdateSendChannel()
-            -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
             if Cell.isMidnight and F.IsCommRestricted and F.IsCommRestricted() then
                 F.Debug("Cell: Comm suppressed - restricted context (CELL_NIC mine)")
             else
@@ -234,7 +231,6 @@ Comm:RegisterComm("CELL_CNIC", function(prefix, message, channel, sender)
     if nic_send then nic_send:Cancel() end
     nic_send = C_Timer.NewTimer(3, function()
         UpdateSendChannel()
-        -- Addon comms blocked during encounters/M+/PvP on Midnight 12.0.0+
         if Cell.isMidnight and F.IsCommRestricted and F.IsCommRestricted() then
             F.Debug("Cell: Comm suppressed - restricted context (CELL_NIC nic_send)")
             return

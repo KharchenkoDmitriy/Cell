@@ -2,7 +2,7 @@ local _, Cell = ...
 local F = Cell.funcs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 37
+local INIT_VERSION = 47
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -48,7 +48,8 @@ local function ProbeSupported()
     end
     pcall(function()
         container:Hide()
-        container:SetParent(nil)
+        container:SetParent(UIParent)
+        container:SetAlpha(0)
     end)
     featureReady = type(container.AddAuraGroup) == "function"
         and type(container.SetUnit) == "function"
@@ -92,6 +93,11 @@ local TRACKED = {
     "externalCooldowns",
     "allCooldowns",
 }
+
+local TRACKED_SET = {}
+for i = 1, #TRACKED do
+    TRACKED_SET[TRACKED[i]] = true
+end
 
 local COOLDOWN_AURAS = {
     defensiveCooldowns = true,
@@ -435,6 +441,9 @@ end
 
 local function MakeInitDispelAuraButton(cfg, token, unitButton)
     return function(button)
+        if not F.InitEngineAuraButtonOnce(button) then
+            return
+        end
         local sizeW, sizeH = ResolveSize(cfg)
         local iconStyle = cfg.iconStyle or "blizzard"
         local showIcons = iconStyle ~= "none"
@@ -512,6 +521,9 @@ end
 
 local function MakeInitAuraButton(cfg)
     return function(button)
+        if not F.InitEngineAuraButtonOnce(button) then
+            return
+        end
         local sizeW, sizeH = ResolveSize(cfg)
         pcall(button.SetSize, button, sizeW, sizeH)
         F.SetupEngineAuraButtonMouse(button, cfg.showTooltip ~= true, cfg)
@@ -796,6 +808,29 @@ local function BindDebuffPrivateAuras(st, unitButton, cfg, unit)
     st.paUnit = unit
 end
 
+local function MakeParkKey(indicatorName, cfg)
+    local sizeW, sizeH = ResolveSize(cfg)
+    local groups = BuildGroupsForIndicator(indicatorName, cfg)
+    local keys = {}
+    for i = 1, #groups do
+        keys[i] = groups[i].key
+    end
+    return F.AuraParkKey(
+        indicatorName,
+        INIT_VERSION,
+        sizeW,
+        sizeH,
+        ResolveAnimationStyle(cfg),
+        cfg and cfg.showDuration,
+        cfg and cfg.showStack ~= false,
+        cfg and cfg.showTooltip,
+        F.StampAuraFont(cfg and cfg.font),
+        table.concat(keys, ","),
+        indicatorName == "dispels" and NormalizeDispelHighlightType(cfg and cfg.highlightType) or "",
+        cfg and cfg.iconStyle
+    )
+end
+
 local function DestroyContainer(st)
     if not st then return end
     ClearDebuffPrivateAuras(st)
@@ -804,17 +839,20 @@ local function DestroyContainer(st)
             local holder = st.paHolders[i]
             if holder then
                 holder:Hide()
-                holder:SetParent(nil)
+                F.QuiesceAuraContainer(holder)
             end
         end
         st.paHolders = nil
     end
     if not st.container then return end
     StopContainer(st)
-    pcall(st.container.SetParent, st.container, nil)
+    st.parks = st.parks or {}
+    F.ParkAuraContainer(st.parks, st.parkKey, st.container)
     st.container = nil
+    st.boundUnit = nil
+    st.parkKey = nil
     if st.hlContainer then
-        pcall(st.hlContainer.SetParent, st.hlContainer, nil)
+        F.QuiesceAuraContainer(st.hlContainer)
         st.hlContainer = nil
     end
 end
@@ -825,7 +863,6 @@ local function DestroyButtonState(unitButton)
     for _, st in pairs(map) do
         DestroyContainer(st)
     end
-    stateByButton[unitButton] = nil
 end
 
 local function AnchorContainer(container, unitButton, cfg, indicatorName)
@@ -892,19 +929,7 @@ local function AnchorContainer(container, unitButton, cfg, indicatorName)
     container:SetFrameLevel((parent:GetFrameLevel() or 0) + (cfg.frameLevel or 5))
 end
 
-local function CreateIndicatorContainer(unitButton, indicatorName, cfg)
-    local groups = BuildGroupsForIndicator(indicatorName, cfg)
-    if #groups == 0 then
-        return nil, "skip"
-    end
-
-    EnsureAuraContainerLoaded()
-    local parent = ResolveContainerParent(unitButton)
-    local ok, container = pcall(CreateFrame, "AuraContainer", nil, parent, "CustomAuraContainerTemplate")
-    if not ok or not container then
-        return nil, tostring(container)
-    end
-
+local function CombatLayout(cfg, indicatorName)
     local sizeW, sizeH = ResolveSize(cfg)
     local spacingX = (cfg.spacing and cfg.spacing[1]) or 0
     local spacingY = (cfg.spacing and cfg.spacing[2]) or 0
@@ -912,6 +937,66 @@ local function CreateIndicatorContainer(unitButton, indicatorName, cfg)
         spacingX = -math.floor(sizeW / 2)
         spacingY = -math.floor(sizeH / 2)
     end
+    return sizeW, sizeH, spacingX, spacingY
+end
+
+local function CombatGroupOpts(g, cfg, indicatorName, initFn)
+    local sizeW, sizeH, spacingX, spacingY = CombatLayout(cfg, indicatorName)
+    local groupOpts = {
+        maxFrameCount = g.maxFrameCount or cfg.num or 3,
+        layout = {
+            elementWidth = sizeW,
+            elementHeight = sizeH,
+            elementSpacing = spacingX,
+            lineSpacing = spacingY,
+        },
+    }
+    if initFn then
+        groupOpts.initializeFrame = initFn
+    end
+    if g.candidateFilters then
+        groupOpts.candidateFilters = g.candidateFilters
+    end
+    if AuraContainerSortMethod and AuraContainerSortMethod.Default then
+        groupOpts.sortMethod = AuraContainerSortMethod.Default
+    end
+    if AuraContainerSortDirection and AuraContainerSortDirection.Normal then
+        groupOpts.sortDirection = AuraContainerSortDirection.Normal
+    end
+    return groupOpts
+end
+
+local function ApplyCombatTuning(container, indicatorName, cfg)
+    if not (container and cfg) then return end
+    local groups = BuildGroupsForIndicator(indicatorName, cfg)
+    for i = 1, #groups do
+        local g = groups[i]
+        F.ApplyAuraGroupTuning(container, g.key, g.filter, CombatGroupOpts(g, cfg, indicatorName))
+    end
+end
+
+local function CreateIndicatorContainer(unitButton, indicatorName, cfg, existing)
+    local groups = BuildGroupsForIndicator(indicatorName, cfg)
+    if #groups == 0 then
+        return nil, "skip"
+    end
+
+    local parent = ResolveContainerParent(unitButton)
+    local container = existing
+    if container then
+        pcall(function()
+            container:SetAlpha(1)
+            container:SetParent(parent)
+        end)
+    else
+        EnsureAuraContainerLoaded()
+        local ok, created = pcall(CreateFrame, "AuraContainer", nil, parent, "CustomAuraContainerTemplate")
+        if not ok or not created then
+            return nil, tostring(created)
+        end
+        container = created
+    end
+
     local unit = ResolveUnit(unitButton) or "player"
     local defaultInitFn = MakeInitAuraButton(cfg)
 
@@ -925,34 +1010,22 @@ local function CreateIndicatorContainer(unitButton, indicatorName, cfg)
         if g.dispelToken then
             initFn = MakeInitDispelAuraButton(cfg, g.dispelToken, unitButton)
         end
-        local groupOpts = {
-            maxFrameCount = g.maxFrameCount or cfg.num or 3,
-            initializeFrame = initFn,
-            layout = {
-                elementWidth = sizeW,
-                elementHeight = sizeH,
-                elementSpacing = spacingX,
-                lineSpacing = spacingY,
-            },
-        }
-        if g.candidateFilters then
-            groupOpts.candidateFilters = g.candidateFilters
-        end
-        if AuraContainerSortMethod and AuraContainerSortMethod.Default then
-            groupOpts.sortMethod = AuraContainerSortMethod.Default
-        end
-        if AuraContainerSortDirection and AuraContainerSortDirection.Normal then
-            groupOpts.sortDirection = AuraContainerSortDirection.Normal
-        end
-        local addOk, addErr = pcall(container.AddAuraGroup, container, g.key, g.filter, groupOpts)
-        if addOk then
+        local groupOpts = CombatGroupOpts(g, cfg, indicatorName, initFn)
+        local hasGroup = container.HasAuraGroup and container:HasAuraGroup(g.key)
+        if existing and (not container.HasAuraGroup or hasGroup) then
+            F.ApplyAuraGroupTuning(container, g.key, g.filter, groupOpts)
             added = added + 1
         else
-            lastErr = addErr
+            local addOk, addErr = pcall(container.AddAuraGroup, container, g.key, g.filter, groupOpts)
+            if addOk then
+                added = added + 1
+            else
+                lastErr = addErr
+            end
         end
     end
     if added == 0 then
-        container:SetParent(nil)
+        F.QuiesceAuraContainer(container)
         return nil, tostring(lastErr)
     end
 
@@ -988,6 +1061,7 @@ local function DriveContainer(unitButton, indicatorName, cfg, enable)
         return
     end
     local unit = ResolveUnit(unitButton)
+    ApplyCombatTuning(st.container, indicatorName, cfg)
     AnchorContainer(st.container, unitButton, cfg, indicatorName)
     if enable then
         st.container:Show()
@@ -1037,10 +1111,8 @@ local function EnsureIndicatorContainer(unitButton, indicatorName, cfg, allowCre
     end
 
     if st.container then
-        local p = st.container:GetParent()
-        local highlightChanged = indicatorName == "dispels"
-            and st.highlightType ~= NormalizeDispelHighlightType(cfg.highlightType)
-        if (p == UIParent or p == nil or st.initVersion ~= INIT_VERSION or highlightChanged) and allowCreate then
+        local want = MakeParkKey(indicatorName, cfg)
+        if st.parkKey ~= want or st.initVersion ~= INIT_VERSION or not st.container:GetParent() then
             DestroyContainer(st)
         end
     end
@@ -1053,8 +1125,14 @@ local function EnsureIndicatorContainer(unitButton, indicatorName, cfg, allowCre
         return false
     end
 
-    local container, err = CreateIndicatorContainer(unitButton, indicatorName, cfg)
+    local want = MakeParkKey(indicatorName, cfg)
+    st.parks = st.parks or {}
+    local existing = F.AcquireParkedAuraContainer(st.parks, want, ResolveContainerParent(unitButton))
+    local container, err = CreateIndicatorContainer(unitButton, indicatorName, cfg, existing)
     if not container then
+        if existing then
+            F.ParkAuraContainer(st.parks, want, existing)
+        end
         st.createFailed = true
         st.failedVersion = INIT_VERSION
         if err ~= "skip" and not Cell.vars._combatAuraDisplayWarned then
@@ -1064,6 +1142,7 @@ local function EnsureIndicatorContainer(unitButton, indicatorName, cfg, allowCre
         return false
     end
     st.container = container
+    st.parkKey = want
     st.boundUnit = ResolveUnit(unitButton)
     st.hlContainer = nil
     st.initVersion = INIT_VERSION
@@ -1247,9 +1326,21 @@ function I.RefreshAllCombatAuraDisplays()
     if not SUPPORTED then return end
     RefreshCachedLayouts()
     F.IterateAllUnitButtons(function(b)
+        SyncButton(b, true)
+    end, true)
+end
+
+local function RebuildAllCombatAuraDisplays()
+    if not SUPPORTED then return end
+    RefreshCachedLayouts()
+    F.IterateAllUnitButtons(function(b)
         DestroyButtonState(b)
         EnqueueBuild(b)
     end, true)
+end
+
+function I.RebuildAllCombatAuraDisplays()
+    RebuildAllCombatAuraDisplays()
 end
 
 function I.DisableCombatAuraDisplay(unitButton, indicatorName)
@@ -1259,7 +1350,6 @@ function I.DisableCombatAuraDisplay(unitButton, indicatorName)
     if st then
         if not InCombatLockdown() then
             DestroyContainer(st)
-            map[indicatorName] = nil
         else
             StopContainer(st)
         end
@@ -1279,6 +1369,9 @@ if SUPPORTED then
     Cell.RegisterCallback("UpdateIndicators", "CombatAuraDisplay_UpdateIndicators", function(_, indicatorName, setting, value)
         if setting == "enabled" and value == false and indicatorName then
             I.DisableAllCombatAuraDisplays(indicatorName)
+            return
+        end
+        if indicatorName and indicatorName ~= "" and not TRACKED_SET[indicatorName] then
             return
         end
         C_Timer.After(0, I.RefreshAllCombatAuraDisplays)

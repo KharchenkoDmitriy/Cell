@@ -2,7 +2,7 @@ local _, Cell = ...
 local F = Cell.funcs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 21
+local INIT_VERSION = 34
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -45,7 +45,8 @@ local function ProbeSupported()
     end
     pcall(function()
         container:Hide()
-        container:SetParent(nil)
+        container:SetParent(UIParent)
+        container:SetAlpha(0)
     end)
     featureReady = type(container.AddAuraGroup) == "function"
         and type(container.SetUnit) == "function"
@@ -364,10 +365,25 @@ local function AttachHiddenIcon(button)
     return icon
 end
 
-local function DurationBarOpts()
+local function ResolveBarOrientation(orientation)
+    if orientation == "horizontal" or orientation == nil then
+        return "left-to-right"
+    end
+    if orientation == "vertical" then
+        return "top-to-bottom"
+    end
+    return orientation
+end
+
+local function DurationBarOpts(remaining)
     local barOpts = {}
-    if Enum and Enum.StatusBarTimerDirection and Enum.StatusBarTimerDirection.ElapsedTime then
-        barOpts.direction = Enum.StatusBarTimerDirection.ElapsedTime
+    local dirEnum = Enum and Enum.StatusBarTimerDirection
+    if dirEnum then
+        if remaining ~= false and dirEnum.RemainingTime then
+            barOpts.direction = dirEnum.RemainingTime
+        elseif dirEnum.ElapsedTime then
+            barOpts.direction = dirEnum.ElapsedTime
+        end
     end
     if Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate then
         barOpts.interpolation = Enum.StatusBarInterpolation.Immediate
@@ -375,7 +391,8 @@ local function DurationBarOpts()
     return barOpts
 end
 
-local function AttachDurationBar(button, orientation, r, g, b, a)
+local function AttachDurationBar(button, orientation, r, g, b, a, bgr, bgg, bgb, bga)
+    orientation = ResolveBarOrientation(orientation)
     local bar = CreateFrame("StatusBar", nil, button)
     bar:SetAllPoints(button)
     bar:EnableMouse(false)
@@ -384,17 +401,17 @@ local function AttachDurationBar(button, orientation, r, g, b, a)
     else
         bar:SetOrientation("HORIZONTAL")
     end
-    bar:SetReverseFill(true)
+    bar:SetReverseFill(orientation ~= "right-to-left" and orientation ~= "bottom-to-top")
     bar:SetStatusBarTexture(Cell.vars.whiteTexture or Cell.vars.texture)
-    local barTex = bar:GetStatusBarTexture()
-    if barTex then
-        barTex:SetVertexColor(r or 0, g or 1, b or 0, a or 1)
-    end
-    pcall(button.SetDurationBar, button, bar, DurationBarOpts())
+    local bg = bar:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(bar)
+    bg:SetColorTexture(bgr or 0.07, bgg or 0.07, bgb or 0.07, bga or 0.9)
+    bar:SetStatusBarColor(r or 0, g or 1, b or 0, a or 1)
+    pcall(button.SetDurationBar, button, bar, DurationBarOpts(true))
     return bar
 end
 
-local function AttachStackAndDuration(button, cfg, host, animFrame)
+local function AttachStackAndDuration(button, cfg, host, animFrame, skipDurationBind)
     host = host or button
     local textHost = CreateFrame("Frame", nil, host)
     textHost:SetAllPoints(host)
@@ -441,7 +458,10 @@ local function AttachStackAndDuration(button, cfg, host, animFrame)
         else
             duration:SetTextColor(1, 1, 1, 1)
         end
-        F.BindAuraDurationText(button, duration, GetCellDurationFormatter(), cfg.auras)
+        button._cellDurationFS = duration
+        if not skipDurationBind then
+            F.BindAuraDurationText(button, duration, GetCellDurationFormatter(), cfg.auras)
+        end
     end
     return textHost
 end
@@ -490,7 +510,7 @@ local function AttachDurationAnimation(button, cfg)
         if barTex then
             barTex:SetVertexColor(0, 0, 0, 0.77)
         end
-        pcall(button.SetDurationBar, button, bar, DurationBarOpts())
+        pcall(button.SetDurationBar, button, bar, DurationBarOpts(false))
         return bar
     end
 
@@ -735,15 +755,12 @@ local function MakeInitBarButton(cfg)
         if firstColor then
             r, g, b, a = UnpackColor(firstColor, { r, g, b, a })
         end
-        local fillOrientation = (cfg.type == "bar") and (cfg.orientation or "horizontal") or "horizontal"
-        local bar = AttachDurationBar(button, fillOrientation, r, g, b, a)
+        local fillOrientation = (cfg.type == "bar" or cfg.type == "bars") and (cfg.orientation or "horizontal") or "horizontal"
+        local bar = AttachDurationBar(button, fillOrientation, r, g, b, a, bgr, bgg, bgb, bga)
         HookIconColor(ResolveIconTexture(button, icon), texMap, firstColor or { r, g, b, a }, function(color)
             if not (bar and color) then return end
             local cr, cg, cb, ca = UnpackColor(color, { r, g, b, a })
-            local barTex = bar:GetStatusBarTexture()
-            if barTex then
-                barTex:SetVertexColor(cr, cg, cb, ca)
-            end
+            bar:SetStatusBarColor(cr, cg, cb, ca)
         end)
 
         AttachStackAndDuration(button, cfg, button, bar)
@@ -841,13 +858,13 @@ local function MakeInitOverlayButton(cfg, unitButton)
         end
         bar:EnableMouse(false)
         bar:SetStatusBarTexture(Cell.vars.whiteTexture or Cell.vars.texture)
-        local orientation = cfg.orientation or "horizontal"
-        if orientation == "vertical" then
+        local orientation = ResolveBarOrientation(cfg.orientation)
+        if orientation == "top-to-bottom" or orientation == "bottom-to-top" then
             bar:SetOrientation("VERTICAL")
         else
             bar:SetOrientation("HORIZONTAL")
         end
-        bar:SetReverseFill(true)
+        bar:SetReverseFill(orientation ~= "right-to-left" and orientation ~= "bottom-to-top")
         local barTex = bar:GetStatusBarTexture()
         if barTex then
             barTex:SetVertexColor(r, g, b, a)
@@ -855,7 +872,7 @@ local function MakeInitOverlayButton(cfg, unitButton)
         local parent = health or unitButton
         local base = (parent.GetFrameLevel and parent:GetFrameLevel()) or 1
         pcall(bar.SetFrameLevel, bar, base + (cfg.frameLevel or 1) + 55)
-        pcall(button.SetDurationBar, button, bar, DurationBarOpts())
+        pcall(button.SetDurationBar, button, bar, DurationBarOpts(true))
     end
 end
 
@@ -912,6 +929,7 @@ local function MakeInitAuraButton(cfg)
             else
                 duration:SetTextColor(1, 1, 1, 1)
             end
+            button._cellDurationFS = duration
             F.BindAuraDurationText(button, duration, GetCellDurationFormatter(), cfg.auras)
         end
     end
@@ -946,13 +964,62 @@ local function ShowLegacy(unitButton, indicatorName)
     if ind.SetAlpha then ind:SetAlpha(1) end
 end
 
+local function StampCfgValue(v, depth)
+    depth = depth or 0
+    if depth > 3 then
+        return ""
+    end
+    local t = type(v)
+    if t == "table" then
+        local parts = {}
+        for i = 1, 8 do
+            if v[i] ~= nil then
+                parts[#parts + 1] = StampCfgValue(v[i], depth + 1)
+            end
+        end
+        return table.concat(parts, ",")
+    end
+    if t == "boolean" then
+        return v and "1" or "0"
+    end
+    if v == nil then
+        return ""
+    end
+    return tostring(v)
+end
+
+local function MakeParkKey(cfg)
+    local sizeW, sizeH = GetElementSize(cfg)
+    return F.AuraParkKey(
+        cfg.indicatorName,
+        INIT_VERSION,
+        cfg.type,
+        cfg.auraType,
+        sizeW,
+        sizeH,
+        ResolveAnimationStyle(cfg),
+        cfg.showDuration,
+        cfg.showStack ~= false,
+        cfg.showTooltip,
+        cfg.showAnimation,
+        F.StampAuraFont(cfg.font),
+        StampCfgValue(cfg.colors),
+        cfg.texture,
+        cfg.thickness,
+        cfg.barOrientation,
+        StampCfgValue(cfg.duration),
+        StampCfgValue(cfg.stack),
+        StampCfgValue(cfg.glowOptions)
+    )
+end
+
 local function DestroyContainer(st)
     if not (st and st.container) then return end
-    st.container:Hide()
-    pcall(st.container.SetUnit, st.container, nil)
-    st.container:SetParent(nil)
+    st.parks = st.parks or {}
+    F.ParkAuraContainer(st.parks, st.parkKey, st.container)
     st.container = nil
     st.boundUnit = nil
+    st.parkKey = nil
 end
 
 local function AnchorContainer(container, unitButton, cfg)
@@ -1015,65 +1082,17 @@ local function AnchorContainer(container, unitButton, cfg)
     container:SetFrameLevel((parent:GetFrameLevel() or 0) + (cfg.frameLevel or 5))
 end
 
-local function CreateCustomContainer(unitButton, cfg)
-    local spellMap = BuildSpellMap(cfg.auras)
-    if SpellMapCount(spellMap) == 0 then
-        return nil, "empty spell list"
-    end
-
-    EnsureAuraContainerLoaded()
-    local parent = ResolveContainerParent(unitButton, cfg)
-    local ok, container = pcall(CreateFrame, "AuraContainer", nil, parent, "CustomAuraContainerTemplate")
-    if not ok or not container then
-        return nil, tostring(container)
-    end
-
+local function CustomTuneOpts(cfg)
     local sizeW, sizeH = GetElementSize(cfg)
     local spacingX = (cfg.spacing and cfg.spacing[1]) or 0
     local spacingY = (cfg.spacing and cfg.spacing[2]) or 0
-    local filter = BuildFilter(cfg.castBy, cfg.auraType)
-    local unit = ResolveUnit(unitButton) or "player"
     local maxCount = IsSingleSlot(cfg.type) and 1 or (cfg.num or 5)
-    local groupKey = cfg.indicatorName
-
-    AnchorContainer(container, unitButton, cfg)
-
-    local initFrame
-    if cfg.type == "color" then
-        initFrame = MakeInitColorButton(cfg, unitButton)
-    elseif cfg.type == "border" then
-        initFrame = MakeInitBorderButton(cfg, unitButton)
-    elseif cfg.type == "text" then
-        initFrame = MakeInitTextButton(cfg)
-    elseif cfg.type == "rect" then
-        initFrame = MakeInitRectButton(cfg)
-    elseif cfg.type == "bar" or cfg.type == "bars" then
-        initFrame = MakeInitBarButton(cfg)
-    elseif cfg.type == "block" or cfg.type == "blocks" then
-        initFrame = MakeInitBlockButton(cfg)
-    elseif cfg.type == "texture" then
-        initFrame = MakeInitTextureButton(cfg, unitButton)
-    elseif cfg.type == "overlay" then
-        initFrame = MakeInitOverlayButton(cfg, unitButton)
-    else
-        initFrame = MakeInitAuraButton(cfg)
-    end
-    local rawInit = initFrame
-    initFrame = function(button)
-        local ok, err = pcall(rawInit, button)
-        if not ok and not Cell.vars._customAuraInitWarned then
-            Cell.vars._customAuraInitWarned = true
-            F.Print("|cFFFF7D7DCustom indicator setup failed:|r " .. tostring(err))
-        end
-    end
-
-    local groupOpts = {
+    local opts = {
         maxFrameCount = maxCount,
         candidateFilters = {
-            includeSpellIDs = spellMap,
+            includeSpellIDs = BuildSpellMap(cfg.auras),
             excludeSpellIDs = BuildExcludeSpellMap(),
         },
-        initializeFrame = initFrame,
         layout = {
             elementWidth = sizeW,
             elementHeight = sizeH,
@@ -1082,16 +1101,87 @@ local function CreateCustomContainer(unitButton, cfg)
         },
     }
     if AuraContainerSortMethod and AuraContainerSortMethod.Default then
-        groupOpts.sortMethod = AuraContainerSortMethod.Default
+        opts.sortMethod = AuraContainerSortMethod.Default
     end
     if AuraContainerSortDirection and AuraContainerSortDirection.Normal then
-        groupOpts.sortDirection = AuraContainerSortDirection.Normal
+        opts.sortDirection = AuraContainerSortDirection.Normal
+    end
+    return opts
+end
+
+local function ApplyCustomTuning(container, cfg)
+    if not (container and cfg) then return end
+    F.ApplyAuraGroupTuning(container, cfg.indicatorName, BuildFilter(cfg.castBy, cfg.auraType), CustomTuneOpts(cfg))
+end
+
+local function CreateCustomContainer(unitButton, cfg, existing)
+    local spellMap = BuildSpellMap(cfg.auras)
+    if SpellMapCount(spellMap) == 0 then
+        return nil, "empty spell list"
     end
 
-    local addOk, addErr = pcall(container.AddAuraGroup, container, groupKey, filter, groupOpts)
-    if not addOk then
-        container:SetParent(nil)
-        return nil, tostring(addErr)
+    local parent = ResolveContainerParent(unitButton, cfg)
+    local container = existing
+    if container then
+        pcall(function()
+            container:SetAlpha(1)
+            container:SetParent(parent)
+        end)
+    else
+        EnsureAuraContainerLoaded()
+        local ok, created = pcall(CreateFrame, "AuraContainer", nil, parent, "CustomAuraContainerTemplate")
+        if not ok or not created then
+            return nil, tostring(created)
+        end
+        container = created
+    end
+
+    local filter = BuildFilter(cfg.castBy, cfg.auraType)
+    local unit = ResolveUnit(unitButton) or "player"
+    local groupKey = cfg.indicatorName
+    local groupOpts = CustomTuneOpts(cfg)
+
+    AnchorContainer(container, unitButton, cfg)
+
+    if existing then
+        F.ApplyAuraGroupTuning(container, groupKey, filter, groupOpts)
+    else
+        local initFrame
+        if cfg.type == "color" then
+            initFrame = MakeInitColorButton(cfg, unitButton)
+        elseif cfg.type == "border" then
+            initFrame = MakeInitBorderButton(cfg, unitButton)
+        elseif cfg.type == "text" then
+            initFrame = MakeInitTextButton(cfg)
+        elseif cfg.type == "rect" then
+            initFrame = MakeInitRectButton(cfg)
+        elseif cfg.type == "bar" or cfg.type == "bars" then
+            initFrame = MakeInitBarButton(cfg)
+        elseif cfg.type == "block" or cfg.type == "blocks" then
+            initFrame = MakeInitBlockButton(cfg)
+        elseif cfg.type == "texture" then
+            initFrame = MakeInitTextureButton(cfg, unitButton)
+        elseif cfg.type == "overlay" then
+            initFrame = MakeInitOverlayButton(cfg, unitButton)
+        else
+            initFrame = MakeInitAuraButton(cfg)
+        end
+        local rawInit = initFrame
+        groupOpts.initializeFrame = function(button)
+            if not F.InitEngineAuraButtonOnce(button) then
+                return
+            end
+            local ok, err = pcall(rawInit, button)
+            if not ok and not Cell.vars._customAuraInitWarned then
+                Cell.vars._customAuraInitWarned = true
+                F.Print("|cFFFF7D7DCustom indicator setup failed:|r " .. tostring(err))
+            end
+        end
+        local addOk, addErr = pcall(container.AddAuraGroup, container, groupKey, filter, groupOpts)
+        if not addOk then
+            F.QuiesceAuraContainer(container)
+            return nil, tostring(addErr)
+        end
     end
 
     AnchorContainer(container, unitButton, cfg)
@@ -1123,6 +1213,7 @@ local function DriveContainer(unitButton, cfg, enable)
         return
     end
     local unit = ResolveUnit(unitButton)
+    ApplyCustomTuning(st.container, cfg)
     AnchorContainer(st.container, unitButton, cfg)
     if enable then
         st.container:Show()
@@ -1163,8 +1254,8 @@ local function EnsureIndicatorContainer(unitButton, cfg, allowCreate)
     end
 
     if st.container then
-        local p = st.container:GetParent()
-        if (p == UIParent or p == nil or st.initVersion ~= INIT_VERSION) and allowCreate then
+        local want = MakeParkKey(cfg)
+        if st.parkKey ~= want or st.initVersion ~= INIT_VERSION or not st.container:GetParent() then
             DestroyContainer(st)
         end
     end
@@ -1176,8 +1267,14 @@ local function EnsureIndicatorContainer(unitButton, cfg, allowCreate)
         return false
     end
 
-    local container, err = CreateCustomContainer(unitButton, cfg)
+    local want = MakeParkKey(cfg)
+    st.parks = st.parks or {}
+    local existing = F.AcquireParkedAuraContainer(st.parks, want, ResolveContainerParent(unitButton, cfg))
+    local container, err = CreateCustomContainer(unitButton, cfg, existing)
     if not container then
+        if existing then
+            F.ParkAuraContainer(st.parks, want, existing)
+        end
         st.createFailed = true
         st.failedVersion = INIT_VERSION
         if not Cell.vars._customAuraDisplayWarned then
@@ -1187,6 +1284,7 @@ local function EnsureIndicatorContainer(unitButton, cfg, allowCreate)
         return false
     end
     st.container = container
+    st.parkKey = want
     st.boundUnit = ResolveUnit(unitButton)
     st.initVersion = INIT_VERSION
     st.createFailed = nil
@@ -1260,7 +1358,6 @@ local function SyncButton(unitButton, allowCreate)
             if not seen[name] then
                 if not InCombatLockdown() then
                     DestroyContainer(st)
-                    map[name] = nil
                 elseif st.container then
                     st.container:Hide()
                 end
@@ -1310,12 +1407,19 @@ function I.RefreshAllCustomAuraDisplays()
     if not SUPPORTED then return end
     cachedConfigs = nil
     F.IterateAllUnitButtons(function(b)
+        SyncButton(b, true)
+    end, true)
+end
+
+local function RebuildAllCustomAuraDisplays()
+    if not SUPPORTED then return end
+    cachedConfigs = nil
+    F.IterateAllUnitButtons(function(b)
         local map = stateByButton[b]
         if map then
             for _, st in pairs(map) do
                 DestroyContainer(st)
             end
-            stateByButton[b] = nil
         end
         EnqueueBuild(b)
     end, true)

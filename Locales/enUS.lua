@@ -115,9 +115,18 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.7.8 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Hide Blizzard: hidden Blizzard party/raid frames are fully disabled so they no longer error on roster, health, or Edit Mode updates, and the leftover gold target box on those faded frames is gone. Party/Raid stay hidden; Cooldown Viewer and other Edit Mode elements stay usable; the player breath bar stays visible.</p>
+        <p>* Aura displays no longer rebuild on every loading screen or layout switch, and unused AuraContainers are parked and reused instead of being discarded, which was causing Cell's memory use to climb over time.</p>
+        <h2>Classic / TBC</h2>
+        <p>* Converting party to raid no longer rebuilds indicators on every precreated raid button, which was hitching the client even in a 2-player raid and could leave a random set of frames without names, HoTs, or PW:S until reload.</p>
+        <br/>
+
         <h1>r277.9.7.7 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Hide Blizzard: opening Edit Mode no longer errors on hidden compact party/raid frames, and the leftover gold target box on those faded frames is gone. Party/Raid stay hidden; Cooldown Viewer and other Edit Mode elements stay usable; the player breath bar stays visible.</p>
+        <p>* Hide Blizzard Party: hidden Blizzard party health and mana bars no longer error on roster or status updates.</p>
         <p>* Options tooltips no longer warn on load about a missing Cell font.</p>
         <p>* Unit names and power filters no longer error in combat.</p>
         <p>* Target highlight only shows on your actual target.</p>

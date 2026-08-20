@@ -619,7 +619,6 @@ end
 
 function frame:UNIT_LEVEL(unit)
     local guid = UnitGUID(unit)
-    -- Midnight 12.0.0+: nameplate GUIDs may be secret; cannot use as table key
     if not guid or (issecretvalue and issecretvalue(guid)) then return end
     if cache[guid] then
         cache[guid].level = UnitLevel(unit)

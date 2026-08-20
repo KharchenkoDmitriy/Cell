@@ -23,7 +23,6 @@ local GetUnitName = GetUnitName
 local UnitClassBase = UnitClassBase
 local UnitHealth = UnitHealth
 local UnitHealthMax = UnitHealthMax
--- local UnitGetIncomingHeals = UnitGetIncomingHeals
 local UnitIsFriend = UnitIsFriend
 local UnitIsUnit = UnitIsUnit
 local UnitIsPlayer = UnitIsPlayer
@@ -2260,7 +2259,6 @@ if CELL_USE_LIBHEALCOMM then
         Cell.HealComm = {}
         local function HealComm_UpdateHealPrediction(_, event, casterGUID, spellID, healType, endTime, ...)
             -- print(event, casterGUID, spellID, healType, endTime, ...)
-            -- update incomingHeal
             for i = 1, select("#", ...) do
                 F.HandleUnitButton("guid", select(i, ...), UnitButton_UpdateHealPrediction)
             end
@@ -3042,9 +3040,7 @@ local function IncomingHeal_SetValue_Horizontal(self, incomingPercent, healthPer
     local incomingHealWidth = incomingPercent * barWidth
     local lostHealthWidth = barWidth * (1 - healthPercent)
 
-    -- print(incomingPercent, barWidth, incomingHealWidth, lostHealthWidth)
     -- FIXME: if incomingPercent is a very tiny number, like 0.005
-    -- P.Scale(incomingHealWidth) ==> 0
     --! if width is set to 0, then the ACTUAL width may be 256!!!
 
     if lostHealthWidth == 0 then
@@ -3239,7 +3235,6 @@ function B.SetOrientation(button, orientation, rotateTexture)
         P.Point(gapTexture, "BOTTOMRIGHT", powerBar, "TOPRIGHT")
         P.Height(gapTexture, CELL_BORDER_SIZE)
 
-        -- update incomingHeal
         incomingHeal.SetValue = IncomingHeal_SetValue_Horizontal
         P.ClearPoints(incomingHeal)
         P.Point(incomingHeal, "TOPLEFT", healthBar:GetStatusBarTexture(), "TOPRIGHT")
@@ -3305,7 +3300,6 @@ function B.SetOrientation(button, orientation, rotateTexture)
             P.Height(gapTexture, CELL_BORDER_SIZE)
         end
 
-        -- update incomingHeal
         incomingHeal.SetValue = IncomingHeal_SetValue_Vertical
         P.ClearPoints(incomingHeal)
         P.Point(incomingHeal, "BOTTOMLEFT", healthBar:GetStatusBarTexture(), "TOPLEFT")
@@ -3550,7 +3544,6 @@ local startTimeCache = {}
 --  -3 absorbsBar
 --  -4 overShieldGlow, overShieldGlowR
 --  -5 shieldBar, shieldBarR
---	-6 incomingHeal, damageFlashTex
 --	-7 healthBar, healthBarLoss
 -- BORDER
 --  0 gapTexture

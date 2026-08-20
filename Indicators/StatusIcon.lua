@@ -30,9 +30,7 @@ local RESURRECTING = F.GetSpellInfo(160029)
 --   1. SPELL_AURA_REMOVED (soulstone / Resurrecting debuff removal)
 --   2. UNIT_DIED sub-event (to detect soulstone deaths)
 --   3. SPELL_RESURRECT (to detect incoming resurrections)
--- COMBAT_LOG_EVENT_UNFILTERED is removed in Midnight (WoW 12.0.0).
 --
--- Midnight replacements:
 --   - Incoming resurrection: already handled via INCOMING_RESURRECT_CHANGED
 --     in eventFrame + UnitHasIncomingResurrection() in I.UpdateStatusIcon.
 --   - Resurrecting debuff removal: handled by UNIT_AURA → UpdateStatusIcon_Resurrection
@@ -68,7 +66,6 @@ if not Cell.isMidnight then
         end
     end)
 else
-    -- Midnight path: detect soulstone deaths via UNIT_AURA + UNIT_HEALTH.
     -- UNIT_AURA fires when any aura is added/removed on a tracked unit.
     -- We watch for soulstone buff removal and immediately note the guid;
     -- then UNIT_HEALTH (UnitIsDeadOrGhost) confirms the death.
@@ -96,7 +93,6 @@ else
         elseif event == "UNIT_HEALTH" then
             local guid = UnitGUID(unit)
             if not guid then return end
-            -- Midnight 12.0.0+: UnitGUID may return secret strings for non-group units
             if issecretvalue and issecretvalue(guid) then return end
             if UnitIsDeadOrGhost(unit) then
                 if soulstones[guid] then
@@ -213,8 +209,6 @@ function I.UpdateStatusIcon_Resurrection(button, start, duration)
     end
 
     if not start then
-        -- Midnight 12.0.0+: AuraUtil.FindAura/UnpackAuraData fails on secret aura data
-        -- F.IsAuraRestricted() is unreliable; skip entirely on Midnight
         if Cell.isMidnight then
             resurrectionIcon:Hide()
             return
@@ -386,10 +380,8 @@ function I.EnableStatusIcon(enabled)
         end
         -- resurrection / soulstone tracking
         if not Cell.isMidnight then
-            -- Pre-Midnight: use CLEU for soulstone removal, UNIT_DIED, SPELL_RESURRECT
             cleuFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
         else
-            -- Midnight (12.0.0+): COMBAT_LOG_EVENT_UNFILTERED unavailable.
             -- Use UNIT_AURA for soulstone buff tracking and UNIT_HEALTH for
             -- death detection. INCOMING_RESURRECT_CHANGED (above) handles
             -- incoming rez detection via UnitHasIncomingResurrection().

@@ -941,7 +941,6 @@ local function CreateSetting_TextWidth(parent)
 end
 
 
-
 local function CreateSetting_Alpha(parent)
     local widget
 
@@ -1524,7 +1523,6 @@ local function CreateSetting_DurationVisibility(parent)
     return widget
 end
 
--- Midnight: simplified duration visibility with only Always/Never options
 -- (Blizzard's countdown text doesn't support percentage/time thresholds)
 local function CreateSetting_DurationVisibilitySimple(parent)
     local widget
@@ -1561,7 +1559,6 @@ local function CreateSetting_DurationVisibilitySimple(parent)
         end
 
         function widget:SetDBValue(durationVisibility)
-            -- Coerce pre-Midnight threshold values (0.75, 10, etc.) to "Always"
             -- since Blizzard's countdown text only supports on/off, not thresholds.
             -- The saved value isn't modified — only the dropdown display is coerced.
             if durationVisibility and durationVisibility ~= false then
@@ -1737,21 +1734,35 @@ local function CreateSetting_BarOrientation(parent)
         widget = Cell.CreateFrame("CellIndicatorSettings_BarOrientation", parent, 240, 50)
         settingWidgets["barOrientation"] = widget
 
-        widget.orientation = Cell.CreateDropdown(widget, 153)
+        widget.orientation = Cell.CreateDropdown(widget, 245)
         widget.orientation:SetPoint("TOPLEFT", 5, -20)
         widget.orientation:SetItems({
             {
-                ["text"] = L["Horizontal"],
-                ["value"] = "horizontal",
+                ["text"] = L["left-to-right"],
+                ["value"] = "left-to-right",
                 ["onClick"] = function()
-                    widget.func("horizontal")
+                    widget.func("left-to-right")
                 end,
             },
             {
-                ["text"] = L["Vertical"],
-                ["value"] = "vertical",
+                ["text"] = L["right-to-left"],
+                ["value"] = "right-to-left",
                 ["onClick"] = function()
-                    widget.func("vertical")
+                    widget.func("right-to-left")
+                end,
+            },
+            {
+                ["text"] = L["top-to-bottom"],
+                ["value"] = "top-to-bottom",
+                ["onClick"] = function()
+                    widget.func("top-to-bottom")
+                end,
+            },
+            {
+                ["text"] = L["bottom-to-top"],
+                ["value"] = "bottom-to-top",
+                ["onClick"] = function()
+                    widget.func("bottom-to-top")
                 end,
             },
         })
@@ -1767,6 +1778,11 @@ local function CreateSetting_BarOrientation(parent)
 
         -- show db value
         function widget:SetDBValue(orientation)
+            if orientation == "horizontal" then
+                orientation = "left-to-right"
+            elseif orientation == "vertical" then
+                orientation = "top-to-bottom"
+            end
             widget.orientation:SetSelectedValue(orientation)
         end
     else
@@ -8043,7 +8059,6 @@ function Cell.CreateIndicatorSettings(parent, settingsTable)
         elseif string.find(setting, "^numPerLine:") then
             tinsert(widgetsTable, CreateSetting_NumPerLine(parent))
         elseif string.find(setting, "^font%-noOffset:") then
-            -- Midnight: simplified font widget for paired font configs (no anchor/offset)
             tinsert(widgetsTable, CreateSetting_FontNoOffset(parent))
         elseif string.find(setting, "^font") then
             tinsert(widgetsTable, CreateSetting_Font(parent, string.match(setting, "^(font%d?):?.*$")))

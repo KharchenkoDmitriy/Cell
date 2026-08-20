@@ -695,8 +695,6 @@ function I.CreateDebuffs(parent)
         local name = parent:GetName().."Debuff"..i
         local frame
         if Cell.isMidnight then
-            -- Midnight: use BorderIcon for consistent clock-swipe cooldown display
-            -- (DurationObject can't drive StatusBar in tainted combat contexts)
             frame = I.CreateAura_BorderIcon(name, debuffs, 1.5)
         else
             frame = I.CreateAura_BarIcon(name, debuffs)
@@ -953,8 +951,6 @@ eventFrame:SetScript("OnEvent", function()
 end)
 
 local function CheckCondition(operator, checkedValue, currentValue)
-    -- Midnight 12.0.0+: applications (count) may be secret even when spellId is not;
-    -- comparisons on secret values throw errors
     if not F.IsValueNonSecret(currentValue) or not F.IsValueNonSecret(checkedValue) then return end
     if operator == "=" then
         if currentValue == checkedValue then return true end
@@ -972,7 +968,6 @@ local function CheckCondition(operator, checkedValue, currentValue)
 end
 
 function I.GetDebuffOrder(spellName, spellId, count)
-    -- Midnight 12.0.0+: spellId/spellName may be secret; cannot use as table key
     if not F.IsValueNonSecret(spellId) or not F.IsValueNonSecret(spellName) then return end
     local t = currentAreaDebuffs[spellId] or currentAreaDebuffs[spellName]
     if not t then return end
@@ -992,13 +987,11 @@ function I.GetDebuffGlow(spellName, spellId, count)
     return "None", nil
 end
 
--- 12.0+: return the currentAreaDebuffs table for pre-scanning secret auras
 function I.GetCurrentAreaDebuffs()
     return currentAreaDebuffs
 end
 
 function I.IsDebuffUseElapsedTime(spellName, spellId)
-    -- Midnight 12.0.0+: spellId/spellName may be secret; cannot use as table key
     if not F.IsValueNonSecret(spellId) or not F.IsValueNonSecret(spellName) then return end
     local t = currentAreaDebuffs[spellId] or currentAreaDebuffs[spellName]
     if not t then return end
@@ -1281,7 +1274,6 @@ local function PrivateAuras_UpdatePrivateAuraAnchor(self, unit)
     -- stub con firma distinta, el pcall abajo igual lanza error de argumentos.
     if not Cell.isMidnight then return end
 
-    -- 12.0.1+: AddPrivateAuraAnchor/RemovePrivateAuraAnchor cannot be called in combat.
     -- Defer until combat ends if needed.
     if InCombatLockdown() then
         self._pendingUnit = unit
@@ -1595,7 +1587,6 @@ function I.CreateNameText(parent)
         -- update vehicle
         local vp, _, vrp, _, vy = nameText.vehicle:GetPoint(1)
         if vp and vrp and vy then
-            -- Guard against secret string values on vp, vrp, or point (Patch 12.0+)
             if F.IsValueNonSecret(vp) and F.IsValueNonSecret(vrp) and F.IsValueNonSecret(point) then
                 if string.find(vp, "TOP") then
                     vp, vrp = "TOP", "BOTTOM"
@@ -1612,7 +1603,6 @@ function I.CreateNameText(parent)
                     nameText.vehicle:SetPoint(vp, nameText.name, vrp, 0, vy)
                 end
             else
-                -- Fallback for restricted/secret values: use exact string matches on non-secret point,
                 -- and safe default positioning for the vehicle text.
                 local isLeft = (point == "TOPLEFT" or point == "BOTTOMLEFT" or point == "LEFT")
                 local isRight = (point == "TOPRIGHT" or point == "BOTTOMRIGHT" or point == "RIGHT")
@@ -1881,7 +1871,6 @@ local function StatusText_ShowTimer(self)
 
     self.timer:Show()
 
-    -- Midnight 12.0.0+: guid may be secret for NPC/boss units
     local showGuid = self.parent.states.guid
     if F.IsValueNonSecret(showGuid) then
         if showGuid and not startTimeCache[showGuid] then startTimeCache[showGuid] = GetTime() end
@@ -1905,7 +1894,6 @@ local function StatusText_HideTimer(self, reset)
     self.timer:SetText("")
     if reset then
         if self.ticker then self.ticker:Cancel() end
-        -- Midnight 12.0.0+: guid may be secret for NPC/boss units
         local guid = self.parent.states.guid
         if guid and F.IsValueNonSecret(guid) then
             startTimeCache[guid] = nil
@@ -2038,7 +2026,6 @@ local function BuildPattern(config)
     end
 end
 
--- Build a C-level format segment for secret values. Returns the format string
 -- segment (with %d placeholder) and a key identifying which argument to use:
 --   "health" = raw health, "pct" = health percent (0-100), "shields" = absorbs,
 --   "healAbsorbs" = heal absorbs, nil = skip (format is "none")
@@ -2080,9 +2067,7 @@ local function BuildSecretSegment(config)
         argKey = "health"
     end
 
-    -- For absorb percentages, we can't compute absorbs/maxHealth on secrets,
     -- so fall back to abbreviated raw number (no %% suffix).
-    -- Health percent uses UnitHealthPercent (C-level) so it gets a real 0-100 value.
     local isAbsorbPercent = isAbsorb and isPercent
     local isNoSign = config.format:find("_no_sign$") and true or false
     local suffix = (isPercent and not isAbsorbPercent and not isNoSign) and "%%" or ""
@@ -2110,7 +2095,6 @@ local function HealthText_SetFormat(self, format)
     self.shields = BuildPattern(format.shields)
     self.healAbsorbs = BuildPattern(format.healAbsorbs)
 
-    -- Pre-build C-level format segments for use when values are secret.
     -- Each active component gets a segment with a %d/%s placeholder.
     -- Stored individually so the render path can skip zero-value absorb components.
     local segments = {}
@@ -2133,27 +2117,21 @@ local function HealthText_SetFormat(self, format)
 end
 
 local function HealthText_SetValue(self, health, maxHealth, shields, healAbsorbs, unit)
-    -- 12.0+: UnitHealth/UnitHealthMax/absorbs may return secret values in combat.
-    -- C-level SetFormattedText/SetText (AllowedWhenTainted) handles secrets for display.
-    -- The caller in UnitButton passes secrets to C-level directly; this guard is a
     -- safety net for any remaining Lua arithmetic in the formatters below.
     if not F.IsValueNonSecret(health) or not F.IsValueNonSecret(maxHealth)
         or not F.IsValueNonSecret(shields) or not F.IsValueNonSecret(healAbsorbs) then
-        -- Use pre-built secret segments (individual per component).
         -- Absorb components are skipped when their value is known to be 0.
         local segments = self._secretSegments
         local argKeys = self._secretArgKeys
         if segments and argKeys then
             local fmtParts = {}
             local argValues = {}
-            -- Get health percent via C-level API for pct segments
             local healthPct
             for i, key in ipairs(argKeys) do
                 local raw
                 local isAbsorbKey = (key == "shields" or key == "shields_abbr"
                     or key == "healAbsorbs" or key == "healAbsorbs_abbr")
                 if key == "pct" then
-                    -- UnitHealthPercent is C-level and accepts secret values
                     if not healthPct and unit and UnitHealthPercent then
                         if CurveConstants and CurveConstants.ScaleTo100 then
                             healthPct = UnitHealthPercent(unit, true, CurveConstants.ScaleTo100)
@@ -2171,7 +2149,6 @@ local function HealthText_SetValue(self, health, maxHealth, shields, healAbsorbs
                 else
                     raw = 0
                 end
-                -- Skip absorb components that are known to be 0 (non-secret)
                 if isAbsorbKey and F.IsValueNonSecret(raw) and raw == 0 then
                     -- skip this component
                 else
@@ -2195,7 +2172,6 @@ local function HealthText_SetValue(self, health, maxHealth, shields, healAbsorbs
         else
             self.text:SetFormattedText("%d", health)
         end
-        -- GetStringWidth returns secret when text is tainted; use fallback width
         -- so the frame isn't zero-width (which would clip the text entirely).
         local sw = self.text:GetStringWidth()
         self:SetWidth(F.IsValueNonSecret(sw) and sw or 50)
@@ -2233,7 +2209,6 @@ local function HealthText_SetFont(self, font, size, outline, shadow)
         self.text:SetShadowColor(0, 0, 0, 0)
     end
 
-    -- 12.0+: GetStringWidth returns secret when text is tainted; use fallback
     local w = self.text:GetStringWidth()
     self:SetSize((F.IsValueNonSecret(w) and w > 0) and w or 50, size)
 end
@@ -2379,7 +2354,6 @@ local function PowerText_SetColor(self, r, g, b)
     self.text:SetTextColor(r, g, b)
 end
 
--- hideIfEmptyOrFull removed: caused regressions with secret values in 12.0
 
 local function PowerText_UpdatePreviewColor(self, color)
     local r, g, b
@@ -2723,7 +2697,6 @@ local function ShieldBar_SetHorizontalValue(bar, percent)
         barWidth = maxWidth * percent
     end
     bar:SetWidth(max(barWidth, 3))
-    -- Restore border (may have been hidden by SetAbsorbs secret path)
     bar:SetBackdropBorderColor(0, 0, 0, 1)
     -- StatusBar must be "full" so the texture fills the frame;
     -- the frame width controls the visible portion.
@@ -2740,13 +2713,11 @@ local function ShieldBar_SetVerticalValue(bar, percent)
         barHeight = maxHeight * percent
     end
     bar:SetHeight(max(barHeight, 3))
-    -- Restore border (may have been hidden by SetAbsorbs secret path)
     bar:SetBackdropBorderColor(0, 0, 0, 1)
     bar:SetMinMaxValues(0, 1)
     bar:SetValue(1)
 end
 
--- Secret-safe: set width to full health bar, use StatusBar proportional
 -- fill to show shield amount. Keeps original height/position (thin bar at
 -- bottom like power bar). Border hidden so only the filled portion is visible.
 local function ShieldBar_SetAbsorbs(bar, absorbs, healthMax)
@@ -2782,9 +2753,7 @@ function I.CreateShieldBar(parent)
 
     shieldBar._SetPoint = shieldBar.SetPoint
     shieldBar.SetPoint = ShieldBar_SetPoint
-    -- Percentage-based SetValue for normal (non-secret) path
     shieldBar.SetPercent = ShieldBar_SetHorizontalValue
-    -- Secret-safe SetAbsorbs for combat path
     shieldBar.SetAbsorbs = ShieldBar_SetAbsorbs
 
     shieldBar.parentHealthBar = parent.widgets.healthBar

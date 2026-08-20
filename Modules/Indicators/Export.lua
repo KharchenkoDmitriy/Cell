@@ -114,7 +114,6 @@ local function CreateIndicatorsExportFrame()
 
             if name == "debuffs" then
                 if Cell.isRetail then
-                    -- Export the new aura blacklist debuffs (Retail/Midnight)
                     if CellDB["auraBlacklist"] and CellDB["auraBlacklist"]["debuffs"] then
                         data["related"]["auraBlacklist_debuffs"] = CellDB["auraBlacklist"]["debuffs"]
                     end

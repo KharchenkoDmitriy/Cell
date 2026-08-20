@@ -3,7 +3,7 @@ local F = Cell.funcs
 local I = Cell.iFuncs
 
 local GROUP_KEY = "healers"
-local INIT_VERSION = 26
+local INIT_VERSION = 36
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -40,7 +40,8 @@ local function ProbeSupported()
     end
     pcall(function()
         container:Hide()
-        container:SetParent(nil)
+        container:SetParent(UIParent)
+        container:SetAlpha(0)
     end)
     featureReady = type(container.AddAuraGroup) == "function"
         and type(container.SetUnit) == "function"
@@ -243,6 +244,9 @@ local function AttachInvisibleCooldown(button)
 end
 
 local function InitAuraButton(button)
+    if not F.InitEngineAuraButtonOnce(button) then
+        return
+    end
     local cfg = cachedConfig
     local size = (cfg and cfg.size and cfg.size[1]) or 13
     pcall(button.SetSize, button, size, size)
@@ -336,13 +340,29 @@ local function ShowLegacy(unitButton, indicatorName)
     if ind.SetAlpha then ind:SetAlpha(1) end
 end
 
+local function MakeParkKey(cfg)
+    local sizeW = (cfg and cfg.size and cfg.size[1]) or 13
+    local sizeH = (cfg and cfg.size and cfg.size[2]) or 13
+    return F.AuraParkKey(
+        "healers",
+        INIT_VERSION,
+        sizeW,
+        sizeH,
+        ResolveAnimationStyle(cfg),
+        cfg and cfg.showDuration,
+        cfg and cfg.showStack ~= false,
+        F.StampAuraFont(cfg and cfg.font),
+        cfg and cfg.showTooltip
+    )
+end
+
 local function DestroyContainer(st)
     if not (st and st.container) then return end
-    st.container:Hide()
-    pcall(st.container.SetUnit, st.container, nil)
-    st.container:SetParent(nil)
+    st.parks = st.parks or {}
+    F.ParkAuraContainer(st.parks, st.parkKey, st.container)
     st.container = nil
     st.boundUnit = nil
+    st.parkKey = nil
 end
 
 local function AnchorContainer(container, unitButton, cfg)
@@ -404,32 +424,15 @@ local function AnchorContainer(container, unitButton, cfg)
     container:SetFrameLevel((parent:GetFrameLevel() or 0) + (cfg.frameLevel or 5))
 end
 
-local function CreateHealersContainer(unitButton, cfg)
-    local spellMap = BuildSpellMap(cfg.auras)
-    if SpellMapCount(spellMap) == 0 then
-        return nil, "empty spell list"
-    end
-
-    EnsureAuraContainerLoaded()
-    local parent = ResolveContainerParent(unitButton)
-    local ok, container = pcall(CreateFrame, "AuraContainer", nil, parent, "CustomAuraContainerTemplate")
-    if not ok or not container then
-        return nil, tostring(container)
-    end
-
+local function HealersGroupOpts(cfg)
     local sizeW = (cfg.size and cfg.size[1]) or 13
     local sizeH = (cfg.size and cfg.size[2]) or 13
     local spacingX = (cfg.spacing and cfg.spacing[1]) or 0
     local spacingY = (cfg.spacing and cfg.spacing[2]) or 0
-    local filter = BuildFilter(cfg.castBy)
-    local unit = ResolveUnit(unitButton) or "player"
-
-    AnchorContainer(container, unitButton, cfg)
-
     local groupOpts = {
         maxFrameCount = cfg.num or 5,
         candidateFilters = {
-            includeSpellIDs = spellMap,
+            includeSpellIDs = BuildSpellMap(cfg.auras),
             excludeSpellIDs = BuildExcludeSpellMap(),
         },
         initializeFrame = InitAuraButton,
@@ -446,11 +449,50 @@ local function CreateHealersContainer(unitButton, cfg)
     if AuraContainerSortDirection and AuraContainerSortDirection.Normal then
         groupOpts.sortDirection = AuraContainerSortDirection.Normal
     end
+    return groupOpts
+end
 
-    local addOk, addErr = pcall(container.AddAuraGroup, container, GROUP_KEY, filter, groupOpts)
-    if not addOk then
-        container:SetParent(nil)
-        return nil, tostring(addErr)
+local function ApplyHealersTuning(container, cfg)
+    if not (container and cfg) then return end
+    F.ApplyAuraGroupTuning(container, GROUP_KEY, BuildFilter(cfg.castBy), HealersGroupOpts(cfg))
+end
+
+local function CreateHealersContainer(unitButton, cfg, existing)
+    local spellMap = BuildSpellMap(cfg.auras)
+    if SpellMapCount(spellMap) == 0 then
+        return nil, "empty spell list"
+    end
+
+    local parent = ResolveContainerParent(unitButton)
+    local container = existing
+    if container then
+        pcall(function()
+            container:SetAlpha(1)
+            container:SetParent(parent)
+        end)
+    else
+        EnsureAuraContainerLoaded()
+        local ok, created = pcall(CreateFrame, "AuraContainer", nil, parent, "CustomAuraContainerTemplate")
+        if not ok or not created then
+            return nil, tostring(created)
+        end
+        container = created
+    end
+
+    local filter = BuildFilter(cfg.castBy)
+    local unit = ResolveUnit(unitButton) or "player"
+    local groupOpts = HealersGroupOpts(cfg)
+
+    AnchorContainer(container, unitButton, cfg)
+
+    if existing then
+        F.ApplyAuraGroupTuning(container, GROUP_KEY, filter, groupOpts)
+    else
+        local addOk, addErr = pcall(container.AddAuraGroup, container, GROUP_KEY, filter, groupOpts)
+        if not addOk then
+            F.QuiesceAuraContainer(container)
+            return nil, tostring(addErr)
+        end
     end
 
     AnchorContainer(container, unitButton, cfg)
@@ -478,6 +520,7 @@ local function DriveContainer(unitButton, cfg, enable)
         return
     end
     local unit = ResolveUnit(unitButton)
+    ApplyHealersTuning(st.container, cfg)
     AnchorContainer(st.container, unitButton, cfg)
     if enable then
         st.container:Show()
@@ -512,8 +555,8 @@ local function EnsureContainer(unitButton, cfg, allowCreate)
     end
 
     if st.container then
-        local p = st.container:GetParent()
-        if (p == UIParent or p == nil or st.initVersion ~= INIT_VERSION) and allowCreate then
+        local want = MakeParkKey(cfg)
+        if st.parkKey ~= want or st.initVersion ~= INIT_VERSION or not st.container:GetParent() then
             DestroyContainer(st)
         end
     end
@@ -526,8 +569,14 @@ local function EnsureContainer(unitButton, cfg, allowCreate)
         return false
     end
 
-    local container, err = CreateHealersContainer(unitButton, cfg)
+    local want = MakeParkKey(cfg)
+    st.parks = st.parks or {}
+    local existing = F.AcquireParkedAuraContainer(st.parks, want, ResolveContainerParent(unitButton))
+    local container, err = CreateHealersContainer(unitButton, cfg, existing)
     if not container then
+        if existing then
+            F.ParkAuraContainer(st.parks, want, existing)
+        end
         st.createFailed = true
         st.failedVersion = INIT_VERSION
         if not Cell.vars._healersAuraDisplayWarned then
@@ -537,6 +586,7 @@ local function EnsureContainer(unitButton, cfg, allowCreate)
         return false
     end
     st.container = container
+    st.parkKey = want
     st.boundUnit = ResolveUnit(unitButton)
     st.initVersion = INIT_VERSION
     st.createFailed = nil
@@ -586,7 +636,6 @@ local function SyncButton(unitButton, allowCreate)
         local st = stateByButton[unitButton]
         if st then
             DestroyContainer(st)
-            stateByButton[unitButton] = nil
         end
         return
     end
@@ -626,15 +675,25 @@ function I.RefreshAllHealersAuraDisplays()
     if not SUPPORTED then return end
     cachedConfig = ResolveHealersConfig()
     F.IterateAllUnitButtons(function(b)
+        SyncButton(b, true)
+    end, true)
+end
+
+local function RebuildAllHealersAuraDisplays()
+    if not SUPPORTED then return end
+    cachedConfig = ResolveHealersConfig()
+    F.IterateAllUnitButtons(function(b)
         local st = stateByButton[b]
         DestroyContainer(st)
-        stateByButton[b] = nil
         EnqueueBuild(b)
     end, true)
 end
 
 if SUPPORTED then
     Cell.RegisterCallback("UpdateIndicators", "HealersAuraDisplay_UpdateIndicators", function(layout, indicatorName, setting)
+        if indicatorName and indicatorName ~= "" and indicatorName ~= "healers" then
+            return
+        end
         if not layout or not indicatorName or setting == "create" or setting == "remove"
             or setting == "auras" or setting == "position" or setting == "size"
             or setting == "num" or setting == "orientation" or setting == "spacing"

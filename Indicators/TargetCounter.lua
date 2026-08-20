@@ -63,7 +63,6 @@ local function StartTicker()
         for unit in pairs(nameplates) do
             local target = UnitGUID(unit.."target")
 
-            -- Midnight 12.0.0+: UnitGUID for nameplate targets may return secret strings
             if Cell.isMidnight and issecretvalue and issecretvalue(target) then
                 nameplateTargets[unit] = nil
             elseif not target then -- no target

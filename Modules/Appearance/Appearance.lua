@@ -428,7 +428,6 @@ end
 
 local function UpdatePreviewShields(r, g, b)
     -- Preview 3 shows heal prediction, heal absorb, shield, and overshield.
-    -- On Midnight, these widgets are StatusBars (not Textures), so use StatusBar API.
 
     -- Heal prediction
     if CellDB["appearance"]["healPrediction"][1] then
@@ -503,7 +502,6 @@ local function UpdatePreviewShields(r, g, b)
             previewButton2.widgets.shieldBarR:Hide()
         end
 
-        -- Overshield glow
         if CellDB["appearance"]["overshield"][1] and not reverseFilling then
             previewButton2.widgets.overShieldGlow:SetVertexColor(unpack(CellDB["appearance"]["overshield"][2]))
             previewButton2.widgets.overShieldGlow:Show()
@@ -1444,7 +1442,6 @@ local function CreateUnitButtonStylePane()
             end,
         },
     }
-    -- Retail only: "Legacy" = immediate bars on Midnight (Cell_beta-style) for comparison with Smooth
     if Cell.isRetail then
         tinsert(barAnimationItems, {
             ["text"] = L["Legacy"],

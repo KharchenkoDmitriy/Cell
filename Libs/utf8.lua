@@ -156,15 +156,13 @@ end
 
 
 -- returns the number of characters in a UTF-8 string
--- Safe utf8len for Midnight 12.0+ (protects against secret strings)
 local function utf8len (s)
     if type(s) ~= "string" then
         error("bad argument #1 to 'utf8len' (string expected, got ".. type(s).. ")")
     end
 
-    -- Midnight 12.0+: secret string protection
     if issecretvalue and issecretvalue(s) then
-        return 0  -- or 1, doesn't matter, we won't truncate secret names anyway
+        return 0
     end
 
     local pos = 1
@@ -184,15 +182,13 @@ if not string.utf8len then
     string.utf8len = utf8len
 end
 
--- Safe utf8sub for Midnight 12.0+ 
 local function utf8sub (s, i, j)
     if type(s) ~= "string" then
         error("bad argument #1 to 'utf8sub' (string expected, got ".. type(s).. ")")
     end
 
-    -- Midnight 12.0+: secret string protection
     if issecretvalue and issecretvalue(s) then
-        return s  -- return the original secret string as-is
+        return s
     end
 
     -- argument defaults
@@ -253,7 +249,6 @@ local function utf8replace (s, mapping)
 		error("bad argument #2 to 'utf8replace' (table expected, got ".. type(mapping).. ")")
 	end
 
-    -- Midnight 12.0+: secret string protection
     if issecretvalue and issecretvalue(s) then
         return s
     end
@@ -305,7 +300,6 @@ local function utf8reverse (s)
 		error("bad argument #1 to 'utf8reverse' (string expected, got ".. type(s).. ")")
 	end
 
-    -- Midnight 12.0+: secret string protection
     if issecretvalue and issecretvalue(s) then
         return s
     end

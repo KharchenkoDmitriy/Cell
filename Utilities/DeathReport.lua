@@ -39,9 +39,6 @@ local function CheckSendLimit()
 end
 
 ----------------------------------------------------
--- CLEU-detailed path (pre-Midnight retail + Classic)
--- COMBAT_LOG_EVENT_UNFILTERED is removed in 12.0.0 (Midnight).
--- This entire block is skipped when Cell.isMidnight is true.
 ----------------------------------------------------
 local deathLogs -- declared here; only allocated for the CLEU path
 local frame = CreateFrame("Frame")
@@ -170,7 +167,6 @@ if not Cell.isMidnight then
         end
     end)
 else
-    -- Midnight (12.0.0+): COMBAT_LOG_EVENT_UNFILTERED is unavailable.
     -- Simplified death detection: track group units via UNIT_HEALTH and
     -- report death when UnitIsDeadOrGhost() becomes true.
     -- The detailed "killed by X for Y" info is not available without CLEU.
@@ -179,7 +175,6 @@ else
     local function OnUnitHealth(unit)
         if not unit then return end
         local guid = UnitGUID(unit)
-        -- Secret GUIDs can't be used as table keys.
         if Cell.isMidnight and F.IsSecretValue and F.IsSecretValue(guid) then return end
         if UnitIsDeadOrGhost(unit) and not UnitIsFeignDeath(unit) then
             if guid and not reportedDead[guid] then
@@ -273,7 +268,6 @@ end
 ----------------------------------------------------
 local function UpdatePriority(hasHighestPriority)
     if Cell.isMidnight then
-        -- Midnight: CLEU unavailable; UNIT_HEALTH registration is handled in UpdateTools
         return
     end
     if hasHighestPriority and CellDB["tools"]["deathReport"][1] then
@@ -294,8 +288,6 @@ local function UpdateTools(which)
             frame:RegisterEvent("PLAYER_ENTERING_WORLD")
             frame:RegisterEvent("GROUP_ROSTER_UPDATE")
             if Cell.isMidnight then
-                -- Midnight: use UNIT_HEALTH on all roster units to detect deaths.
-                -- UnitHealth() is secret but UnitIsDeadOrGhost() is not.
                 frame:RegisterEvent("UNIT_HEALTH")
             end
 

@@ -14,6 +14,12 @@
 
 **This is a community fork. Donations / tips support my maintenance, not the original Cell authors.**
 
+
+
+[![Discord](https://img.shields.io/discord/1122747237546610760?label=Discord&color=5865F2)](https://discord.gg/9PSe3fKQGJ)
+
+For help, feel free to join the official Discord server here. I'm usually very active there.
+
 ---
 <br>
 

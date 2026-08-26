@@ -447,6 +447,8 @@ Cell.defaults.layout = {
             ["highlightType"] = "edge-bottom",
             ["iconStyle"] = "blizzard",
             ["orientation"] = "right-to-left",
+            ["showDispelFrameBorder"] = false,
+            ["thickness"] = 1,
         }, -- 23
         {
             ["name"] = "Debuffs",
@@ -470,18 +472,21 @@ Cell.defaults.layout = {
             ["dispellableByMe"] = false,
             ["nonPlayerAuras"] = false,
             ["orientation"] = "left-to-right",
+            ["showDispelBorder"] = true,
+            ["thickness"] = 3,
         }, -- 24
         {
-            ["name"] = "Raid Debuffs",
+            ["name"] = "Highlight Debuffs",
             ["indicatorName"] = "raidDebuffs",
             ["type"] = "built-in",
             ["enabled"] = true,
             ["position"] = {"CENTER", "button", "CENTER", 0, 3},
             ["frameLevel"] = 20,
             ["size"] = {22, 22},
-            ["border"] = 2,
             ["num"] = 1,
             ["showDuration"] = true,
+            ["showStack"] = true,
+            ["animationStyle"] = "clock",
             ["font"] = {
                 {"Cell ".._G.DEFAULT, 11, "Outline", false, "TOPRIGHT", 2, 1, {1, 1, 1}},
                 {"Cell ".._G.DEFAULT, 11, "Outline", false, "BOTTOMRIGHT", 2, -1, {1, 1, 1}},
@@ -489,6 +494,7 @@ Cell.defaults.layout = {
             ["onlyShowTopGlow"] = false,
             ["orientation"] = "left-to-right",
             ["showTooltip"] = false,
+            ["filterClasses"] = {["bossaura"] = true},
         }, -- 25
         {
             ["name"] = "Private Auras",

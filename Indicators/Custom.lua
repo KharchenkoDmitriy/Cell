@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 ---@type CellFuncs
 local F = Cell.funcs
@@ -81,21 +81,21 @@ function I.CreateIndicator(parent, indicatorTable)
     local indicatorName = indicatorTable["indicatorName"]
     local indicator
     if indicatorTable["type"] == "icon" then
-        indicator = I.CreateAura_BarIcon(nil, parent.widgets.indicatorFrame)
+        indicator = I.CreateAura_BarIcon(nil, F.BD(parent).widgets.indicatorFrame)
     elseif indicatorTable["type"] == "text" then
-        indicator = I.CreateAura_Text(nil, parent.widgets.indicatorFrame)
+        indicator = I.CreateAura_Text(nil, F.BD(parent).widgets.indicatorFrame)
     elseif indicatorTable["type"] == "bar" then
-        indicator = I.CreateAura_Bar(nil, parent.widgets.indicatorFrame)
+        indicator = I.CreateAura_Bar(nil, F.BD(parent).widgets.indicatorFrame)
     elseif indicatorTable["type"] == "bars" then
-        indicator = I.CreateAura_Bars(nil, parent.widgets.indicatorFrame, 10)
+        indicator = I.CreateAura_Bars(nil, F.BD(parent).widgets.indicatorFrame, 10)
     elseif indicatorTable["type"] == "rect" then
-        indicator = I.CreateAura_Rect(nil, parent.widgets.indicatorFrame)
+        indicator = I.CreateAura_Rect(nil, F.BD(parent).widgets.indicatorFrame)
     elseif indicatorTable["type"] == "icons" then
-        indicator = I.CreateAura_Icons(nil, parent.widgets.indicatorFrame, 10)
+        indicator = I.CreateAura_Icons(nil, F.BD(parent).widgets.indicatorFrame, 10)
     elseif indicatorTable["type"] == "color" then
         indicator = I.CreateAura_Color(nil, parent)
     elseif indicatorTable["type"] == "texture" then
-        indicator = I.CreateAura_Texture(nil, parent.widgets.indicatorFrame)
+        indicator = I.CreateAura_Texture(nil, F.BD(parent).widgets.indicatorFrame)
     elseif indicatorTable["type"] == "glow" then
         if Cell.isRetail then
             indicator = CreateFrame("Frame", nil, parent)
@@ -106,28 +106,30 @@ function I.CreateIndicator(parent, indicatorTable)
             indicator.SetFadeOut = function() end
             indicator.Show = function() end
         else
-            indicator = I.CreateAura_Glow(nil, parent.widgets.highLevelFrame)
+            indicator = I.CreateAura_Glow(nil, F.BD(parent).widgets.highLevelFrame)
         end
     elseif indicatorTable["type"] == "overlay" then
         indicator = I.CreateAura_Overlay(nil, parent)
     elseif indicatorTable["type"] == "block" then
-        indicator = I.CreateAura_Block(nil, parent.widgets.indicatorFrame)
+        indicator = I.CreateAura_Block(nil, F.BD(parent).widgets.indicatorFrame)
     elseif indicatorTable["type"] == "blocks" then
-        indicator = I.CreateAura_Blocks(nil, parent.widgets.indicatorFrame, 10)
+        indicator = I.CreateAura_Blocks(nil, F.BD(parent).widgets.indicatorFrame, 10)
     elseif indicatorTable["type"] == "border" then
-        indicator = I.CreateAura_Border(nil, parent.widgets.highLevelFrame)
+        indicator = I.CreateAura_Border(nil, F.BD(parent).widgets.highLevelFrame)
+    elseif indicatorTable["type"] == "highlightDebuffs" then
+        indicator = I.CreateAura_Icons(nil, F.BD(parent).widgets.indicatorFrame, 10)
     end
-    parent.indicators[indicatorName] = indicator
+    F.BD(parent).indicators[indicatorName] = indicator
 
     return indicator
 end
 
 function I.RemoveIndicator(parent, indicatorName, auraType)
-    local indicator = parent.indicators[indicatorName]
+    local indicator = F.BD(parent).indicators[indicatorName]
     indicator:ClearAllPoints()
     indicator:Hide()
     indicator:SetParent(nil)
-    parent.indicators[indicatorName] = nil
+    F.BD(parent).indicators[indicatorName] = nil
     enabledIndicators[indicatorName] = nil
     customIndicators[auraType][indicatorName] = nil
 end
@@ -140,12 +142,12 @@ function I.RemoveAllCustomIndicators(parent)
     --     wipe(customIndicators["debuff"])
     -- end
 
-    for indicatorName, indicator in pairs(parent.indicators) do
+    for indicatorName, indicator in pairs(F.BD(parent).indicators) do
         if string.find(indicatorName, "^indicator") then
             indicator:ClearAllPoints()
             indicator:Hide()
             indicator:SetParent(nil)
-            parent.indicators[indicatorName] = nil
+            F.BD(parent).indicators[indicatorName] = nil
         end
     end
 end
@@ -234,13 +236,13 @@ Cell.RegisterCallback("UpdateIndicators", "UpdateCustomIndicators", UpdateCustom
 -- reset
 -------------------------------------------------
 function I.ResetCustomIndicators(unitButton, auraType)
-    local unit = unitButton.states.displayedUnit
+    local unit = F.BD(unitButton).states.displayedUnit
 
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
-        if enabledIndicators[indicatorName] and unitButton.indicators[indicatorName]
+        if enabledIndicators[indicatorName] and F.BD(unitButton).indicators[indicatorName]
             and not (I.ShouldSkipLegacyHealers and I.ShouldSkipLegacyHealers(indicatorTable))
             and not (I.ShouldSkipLegacyCustom and I.ShouldSkipLegacyCustom(indicatorTable)) then
-            unitButton.indicators[indicatorName]:Hide(true)
+            F.BD(unitButton).indicators[indicatorName]:Hide(true)
             if indicatorTable["num"] then
                 if not indicatorTable["found"][unit] then
                     indicatorTable["found"][unit] = {}
@@ -305,7 +307,7 @@ local function Update(indicator, indicatorTable, unit, spell, start, duration, d
 end
 
 function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
-    local unit = unitButton.states.displayedUnit
+    local unit = F.BD(unitButton).states.displayedUnit
 
     local auraType = auraTypeOverride
     if not auraType then
@@ -342,7 +344,7 @@ function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
 
     -- Pass 1: mark spell as consumed if any non-Healers indicator would match
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
-        if indicatorName and enabledIndicators[indicatorName] and unitButton.indicators[indicatorName]
+        if indicatorName and enabledIndicators[indicatorName] and F.BD(unitButton).indicators[indicatorName]
             and indicatorTable["name"] ~= "Healers"
             and not indicatorTable["keepInHealers"] then
             local spell = indicatorTable["trackByName"] and auraInfo.name or auraInfo.spellId
@@ -374,7 +376,7 @@ function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
 
     -- Pass 2: process all indicators (Healers skips consumed spells)
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
-        if indicatorName and enabledIndicators[indicatorName] and unitButton.indicators[indicatorName]
+        if indicatorName and enabledIndicators[indicatorName] and F.BD(unitButton).indicators[indicatorName]
             and not (I.ShouldSkipLegacyHealers and I.ShouldSkipLegacyHealers(indicatorTable))
             and not (I.ShouldSkipLegacyCustom and I.ShouldSkipLegacyCustom(indicatorTable)) then
             local spell  --* trackByName
@@ -407,9 +409,9 @@ function I.UpdateCustomIndicators(unitButton, auraInfo, auraTypeOverride)
                     end
                     if castByMatches then
                         if auraType == "buff" then
-                            Update(unitButton.indicators[indicatorName], indicatorTable, unit, spell, start, duration, debuffType, icon, count, auraInfo.refreshing)
+                            Update(F.BD(unitButton).indicators[indicatorName], indicatorTable, unit, spell, start, duration, debuffType, icon, count, auraInfo.refreshing)
                         else -- debuff
-                            Update(unitButton.indicators[indicatorName], indicatorTable, unit, spell, start, duration, debuffType, icon, count, auraInfo.refreshing)
+                            Update(F.BD(unitButton).indicators[indicatorName], indicatorTable, unit, spell, start, duration, debuffType, icon, count, auraInfo.refreshing)
                         end
                     end
                 end
@@ -432,11 +434,11 @@ local function comparator(a, b)
 end
 
 function I.ShowCustomIndicators(unitButton, auraType)
-    if not unitButton._indicatorsReady then return end
+    if not F.BD(unitButton)._indicatorsReady then return end
 
-    local unit = unitButton.states.displayedUnit
+    local unit = F.BD(unitButton).states.displayedUnit
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
-        local indicator = unitButton.indicators[indicatorName]
+        local indicator = F.BD(unitButton).indicators[indicatorName]
         if indicator and enabledIndicators[indicatorName]
             and not (I.ShouldSkipLegacyHealers and I.ShouldSkipLegacyHealers(indicatorTable))
             and not (I.ShouldSkipLegacyCustom and I.ShouldSkipLegacyCustom(indicatorTable)) then

@@ -1,8 +1,8 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local F = Cell.funcs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 47
+local INIT_VERSION = 57
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -13,10 +13,41 @@ local EDGE_FADE_BOTTOM = "Interface\\AddOns\\Cell\\Media\\Edge-Fade-Bottom"
 local WHITE_TEXTURE = "Interface\\AddOns\\Cell\\Media\\white"
 local DISPEL_FULL_ALPHA = 0.5
 
+----------------------------------------------------
+-- debuff-type border color (icon outline)
+-- Uses Blizzard's official AddDispelTypeTexture API: you hand the engine a
+-- plain, uncolored texture and it fills in the correct atlas/vertex-color/
+-- visibility itself, per aura, entirely inside privileged code. This is the
+-- sanctioned way to show a dispel-type decoration without ever reading the
+-- (often secret) dispel type in our own insecure code.
+----------------------------------------------------
+local DISPEL_BORDER_STYLE = Enum and Enum.CustomAuraButtonDispelTypeTextureStyle
+    and Enum.CustomAuraButtonDispelTypeTextureStyle.PreserveAsset
+local DISPEL_BORDER_OPTS = DISPEL_BORDER_STYLE and {
+    style = DISPEL_BORDER_STYLE,
+    showWhenHarmful = true,
+    showWhenHelpful = false,
+}
+
+local function RegisterDispelBorderStrips(button, edges)
+    if not DISPEL_BORDER_OPTS then return end
+    local addFn = button.AddDispelTypeTexture or button.SetAuraBorder
+    if not addFn then return end
+    for i = 1, #edges do
+        pcall(addFn, button, edges[i], DISPEL_BORDER_OPTS)
+    end
+end
+
 local stateByButton = setmetatable({}, { __mode = "k" })
 local featureReady
-local durationFormatter
 local cachedLayouts
+
+-- Set whenever something had to skip real work because of combat lockdown
+-- (e.g. a container destroy got downgraded to a mere stop -- see SyncButton
+-- below) and genuinely needs a catch-up pass once combat ends. PLAYER_REGEN_ENABLED
+-- only pays for a full-raid resync when this is actually true, instead of
+-- unconditionally re-driving every unit button on every single combat transition.
+local needsCombatCatchup = false
 
 local function NormalizeDispelHighlightType(ht)
     if ht == "edge-top" then
@@ -57,7 +88,7 @@ local function ProbeSupported()
     return featureReady
 end
 local function ResolveUnit(unitButton)
-    local unit = unitButton.states and (unitButton.states.displayedUnit or unitButton.states.unit)
+    local unit = F.BD(unitButton).states and (F.BD(unitButton).states.displayedUnit or F.BD(unitButton).states.unit)
     if type(unit) == "string" and unit ~= "" then
         return unit
     end
@@ -68,8 +99,8 @@ local function ResolveUnit(unitButton)
 end
 
 local function ResolveContainerParent(unitButton)
-    if unitButton.widgets and unitButton.widgets.indicatorFrame then
-        return unitButton.widgets.indicatorFrame
+    if F.BD(unitButton).widgets and F.BD(unitButton).widgets.indicatorFrame then
+        return F.BD(unitButton).widgets.indicatorFrame
     end
     return unitButton
 end
@@ -86,6 +117,7 @@ end
 
 local TRACKED = {
     "crowdControls",
+    "raidDebuffs",
     "debuffs",
     "dispels",
     "defensiveCooldowns",
@@ -97,6 +129,13 @@ local TRACKED = {
 local TRACKED_SET = {}
 for i = 1, #TRACKED do
     TRACKED_SET[TRACKED[i]] = true
+end
+
+local ALL_TRACKED = {}
+
+local function IsHighlightDebuffCfg(t)
+    return t and t.type == "highlightDebuffs" and type(t.indicatorName) == "string"
+        and t.indicatorName:find("^indicator") and t.indicatorName ~= ""
 end
 
 local COOLDOWN_AURAS = {
@@ -120,17 +159,44 @@ local function RefreshCachedLayouts()
     else
         wipe(cachedLayouts)
     end
+    wipe(ALL_TRACKED)
+    for i = 1, #TRACKED do
+        ALL_TRACKED[i] = TRACKED[i]
+    end
+
     local layout = Cell.vars.currentLayoutTable
     if not (layout and layout.indicators) then return end
     for _, t in ipairs(layout.indicators) do
         if t.enabled and t.indicatorName then
+            local isTracked = false
             for i = 1, #TRACKED do
                 if t.indicatorName == TRACKED[i] then
-                    cachedLayouts[t.indicatorName] = t
+                    isTracked = true
                 end
+            end
+            if isTracked then
+                cachedLayouts[t.indicatorName] = t
+            elseif IsHighlightDebuffCfg(t) then
+                cachedLayouts[t.indicatorName] = t
+                ALL_TRACKED[#ALL_TRACKED + 1] = t.indicatorName
             end
         end
     end
+end
+
+-- Cooldown-aura indicators (Defensive/External/Offensive/All Cooldowns) switch
+-- between the native engine container and the legacy Lua-driven display purely
+-- based on UnitAffectingCombat (see UseEngineCooldownAuras above) -- so unlike
+-- debuffs/dispels, THEY genuinely need a resync on every single combat
+-- transition, not just when something got deferred. Only these indicators
+-- justify the unconditional sweep in the boot handler below.
+local function AnyCooldownAuraIndicatorActive()
+    RefreshCachedLayouts()
+    if not cachedLayouts then return false end
+    for name in pairs(COOLDOWN_AURAS) do
+        if cachedLayouts[name] then return true end
+    end
+    return false
 end
 
 local function ResolveSize(cfg)
@@ -142,7 +208,7 @@ local function ResolveSize(cfg)
 end
 
 local PERSONAL_DEBUFF_IDS = {
-    57723, 57724, 80354, 95809, 160455, 264689, 390435, 428628, 25771,
+    57723, 57724, 80354, 95809, 160455, 264689, 390435, 428628, 25771, 387847, 386124,
 }
 
 local function BuildPersonalDebuffExcludeMap()
@@ -221,42 +287,78 @@ end
 local function CollectSpellIds(src, dest)
     if type(src) ~= "table" then return dest end
     for k, v in pairs(src) do
-        if type(k) == "number" and k > 0 then
-            dest[k] = true
+        local id = tonumber(k)
+        if id and id > 0 and v then
+            dest[id] = true
         end
         if type(v) == "number" and v > 0 then
             dest[v] = true
-        elseif type(v) == "table" then
-            CollectSpellIds(v, dest)
         end
     end
     return dest
 end
 
+local function FlattenClassSpellTree(tree, dest)
+    if type(tree) ~= "table" then return dest end
+    for k, v in pairs(tree) do
+        if type(k) == "number" and k > 0 then
+            dest[k] = true
+            if type(v) == "table" then
+                for subId in pairs(v) do
+                    if type(subId) == "number" and subId > 0 then
+                        dest[subId] = true
+                    end
+                end
+            end
+        elseif type(v) == "table" then
+            FlattenClassSpellTree(v, dest)
+        end
+    end
+    return dest
+end
+
+local cachedExcludeMap
+local cachedDefMap
+local cachedExtMap
+local cachedOffMap
+
+local function InvalidateCombatSpellMaps()
+    cachedExcludeMap = nil
+    cachedDefMap = nil
+    cachedExtMap = nil
+    cachedOffMap = nil
+end
+
 local function BuildDefensiveSpellMap()
+    if cachedDefMap then return cachedDefMap end
     local map = CollectSpellIds(Cell.vars and Cell.vars.builtInDefensives, {})
     CollectSpellIds(Cell.vars and Cell.vars.customDefensives, map)
     if not next(map) and I.GetDefensives then
-        CollectSpellIds(I.GetDefensives(), map)
+        FlattenClassSpellTree(I.GetDefensives(), map)
     end
+    cachedDefMap = map
     return map
 end
 
 local function BuildExternalSpellMap()
+    if cachedExtMap then return cachedExtMap end
     local map = CollectSpellIds(Cell.vars and Cell.vars.builtInExternals, {})
     CollectSpellIds(Cell.vars and Cell.vars.customExternals, map)
     if not next(map) and I.GetExternals then
-        CollectSpellIds(I.GetExternals(), map)
+        FlattenClassSpellTree(I.GetExternals(), map)
     end
+    cachedExtMap = map
     return map
 end
 
 local function BuildOffensiveSpellMap()
+    if cachedOffMap then return cachedOffMap end
     local map = CollectSpellIds(Cell.vars and Cell.vars.builtInOffensives, {})
     CollectSpellIds(Cell.vars and Cell.vars.customOffensives, map)
     if not next(map) and I.GetOffensives then
-        CollectSpellIds(I.GetOffensives(), map)
+        FlattenClassSpellTree(I.GetOffensives(), map)
     end
+    cachedOffMap = map
     return map
 end
 
@@ -266,9 +368,99 @@ local function CountKeys(map)
     return n
 end
 
+local function GetExcludeSpellMap()
+    if cachedExcludeMap then return cachedExcludeMap end
+    cachedExcludeMap = BuildExcludeSpellMap()
+    return cachedExcludeMap
+end
+
+local function BuildRaidDebuffSpellMap()
+    local map = {}
+    local list = I.GetCurrentAreaDebuffs and I.GetCurrentAreaDebuffs()
+    if type(list) ~= "table" then
+        return map
+    end
+    for _, entry in pairs(list) do
+        if type(entry) == "table" then
+            local id = tonumber(entry.id)
+            if id and id > 0 then
+                map[id] = true
+            end
+        end
+    end
+    return map
+end
+
+local HIGHLIGHT_DEBUFF_CLASSES = {
+    { key = "nonplayer",   kind = "cand",  cand = { isFromPlayerOrPlayerPet = false } },
+    { key = "priority",    kind = "cand",  cand = { isPriorityAura = true } },
+    { key = "cc",          kind = "token", token = "CROWD_CONTROL" },
+    { key = "bossaura",    kind = "cand",  cand = { isBossAura = true } },
+    { key = "roleaura",    kind = "cand",  cand = { isRoleAura = true } },
+    { key = "raid",        kind = "token", token = "RAID" },
+    { key = "raidcombat",  kind = "token", token = "RAID_IN_COMBAT" },
+    { key = "dispellable", kind = "token", token = "RAID_PLAYER_DISPELLABLE" },
+    { key = "dispeltyped", kind = "cand",  cand = { includeDispelTypes = { Magic = true, Curse = true, Disease = true, Poison = true, Bleed = true } } },
+}
+
+local function BuildHighlightDebuffGroups(cfg, cand)
+    local fc = cfg.filterClasses
+    if type(fc) ~= "table" or not next(fc) then return {} end
+
+    local groups = {}
+    local negTokens = {} -- "!TOKEN" for every previously-enabled token class
+    local negCand -- accumulated candidate-side negation for previously-enabled cand classes
+
+    for i = 1, #HIGHLIGHT_DEBUFF_CLASSES do
+        local class = HIGHLIGHT_DEBUFF_CLASSES[i]
+        if fc[class.key] then
+            local extra
+            if negCand then
+                extra = {}
+                for k, v in pairs(negCand) do extra[k] = v end
+            end
+
+            if class.kind == "token" then
+                local tokens = { "HARMFUL", class.token }
+                for n = 1, #negTokens do tokens[#tokens + 1] = negTokens[n] end
+                groups[#groups + 1] = {
+                    key = "hd_" .. class.key,
+                    filter = table.concat(tokens, "|"),
+                    candidateFilters = cand(extra),
+                    maxFrameCount = cfg.num or 3,
+                }
+                negTokens[#negTokens + 1] = "!" .. class.token
+            else
+                extra = extra or {}
+                for k, v in pairs(class.cand) do extra[k] = v end
+                groups[#groups + 1] = {
+                    key = "hd_" .. class.key,
+                    filter = "HARMFUL",
+                    candidateFilters = cand(extra),
+                    maxFrameCount = cfg.num or 3,
+                }
+                negCand = negCand or {}
+                if class.cand.includeDispelTypes then
+                    negCand.excludeDispelTypes = class.cand.includeDispelTypes
+                elseif class.cand.isFromPlayerOrPlayerPet == false then
+                    negCand.isFromPlayerOrPlayerPet = true
+                else
+                    for k, v in pairs(class.cand) do
+                        if type(v) == "boolean" then
+                            negCand[k] = not v
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return groups
+end
+
 local function BuildGroupsForIndicator(indicatorName, cfg)
     local groups = {}
-    local exclude = BuildExcludeSpellMap()
+    local exclude = GetExcludeSpellMap()
     local hasExclude = CountKeys(exclude) > 0
 
     local function cand(extra)
@@ -282,7 +474,13 @@ local function BuildGroupsForIndicator(indicatorName, cfg)
             c = {}
         end
         if hasExclude then
-            c.excludeSpellIDs = exclude
+            if c.excludeSpellIDs then
+                for id in pairs(exclude) do
+                    c.excludeSpellIDs[id] = true
+                end
+            else
+                c.excludeSpellIDs = exclude
+            end
         end
         if not next(c) then return nil end
         return c
@@ -295,10 +493,18 @@ local function BuildGroupsForIndicator(indicatorName, cfg)
             candidateFilters = cand(),
             maxFrameCount = cfg.num or 3,
         }
+    elseif indicatorName == "raidDebuffs" or cfg.type == "highlightDebuffs" then
+        local hdGroups = BuildHighlightDebuffGroups(cfg, cand)
+        for i = 1, #hdGroups do
+            groups[#groups + 1] = hdGroups[i]
+        end
     elseif indicatorName == "debuffs" then
         local extra
         if cfg.nonPlayerAuras then
-            extra = { excludeSpellIDs = BuildPersonalDebuffExcludeMap() }
+            extra = {
+                excludeSpellIDs = BuildPersonalDebuffExcludeMap(),
+                isFromPlayerOrPlayerPet = false,
+            }
         end
         if cfg.dispellableByMe then
             local types = {}
@@ -318,7 +524,7 @@ local function BuildGroupsForIndicator(indicatorName, cfg)
         groups[#groups + 1] = {
             key = "deb",
             filter = "HARMFUL",
-            candidateFilters = extra,
+            candidateFilters = cand(extra),
             maxFrameCount = cfg.num or 3,
         }
     elseif indicatorName == "dispels" then
@@ -420,23 +626,7 @@ local function StyleFont(fs, fontCfg, defaultSize)
 end
 
 local function GetCellDurationFormatter()
-    if durationFormatter then return durationFormatter end
-    if C_StringUtil and C_StringUtil.CreateNumericRuleFormatter and Enum and Enum.NumericRuleFormatRounding then
-        local Up = Enum.NumericRuleFormatRounding.Up
-        local Down = Enum.NumericRuleFormatRounding.Down
-        local formatter = C_StringUtil.CreateNumericRuleFormatter()
-        local ok = pcall(formatter.SetBreakpoints, formatter, {
-            { threshold = 0,     format = "%d",  step = 1, rounding = Up },
-            { threshold = 60,    format = "%dm", step = 1, rounding = Down, components = { { div = 60 } } },
-            { threshold = 3600,  format = "%dh", step = 1, rounding = Down, components = { { div = 3600 } } },
-            { threshold = 86400, format = "%dd", step = 1, rounding = Down, components = { { div = 86400 } } },
-        })
-        if ok then
-            durationFormatter = formatter
-            return durationFormatter
-        end
-    end
-    return nil
+    return F.GetAuraDurationFormatter and F.GetAuraDurationFormatter() or nil
 end
 
 local function MakeInitDispelAuraButton(cfg, token, unitButton)
@@ -448,7 +638,7 @@ local function MakeInitDispelAuraButton(cfg, token, unitButton)
         local iconStyle = cfg.iconStyle or "blizzard"
         local showIcons = iconStyle ~= "none"
         local mode = NormalizeDispelHighlightType(cfg and cfg.highlightType)
-        local health = unitButton and unitButton.widgets and unitButton.widgets.healthBar
+        local health = unitButton and F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar
         local r, g, b = I.GetDebuffTypeColor(token)
         r, g, b = r or 1, g or 1, b or 1
         local isEdge = mode == "edge-top" or mode == "edge-bottom"
@@ -491,6 +681,39 @@ local function MakeInitDispelAuraButton(cfg, token, unitButton)
                 tex:SetVertexColor(1, 1, 1, 1)
             end
         end
+
+        -- Frame border: strips anchored to the WHOLE unit frame (not the health bar),
+        -- owned by this per-token button so they inherit its show/hide from Blizzard's
+        -- engine automatically -- same technique as the health-bar overlay above, just
+        -- anchored differently. No extra "which token is active" tracking needed.
+        if unitButton and cfg.showDispelFrameBorder == true then
+            local bt = cfg.thickness or 3
+            local lvl = (unitButton.GetFrameLevel and unitButton:GetFrameLevel() or 1)
+                + 40 + (DISPEL_TYPE_LEVEL[token] or 1)
+            pcall(button.SetFrameLevel, button, lvl)
+
+            local function mkStrip()
+                local s = button:CreateTexture(nil, "OVERLAY")
+                s:SetColorTexture(r, g, b, 1)
+                return s
+            end
+            local top = mkStrip()
+            top:SetPoint("TOPLEFT", unitButton, "TOPLEFT", 0, 0)
+            top:SetPoint("TOPRIGHT", unitButton, "TOPRIGHT", 0, 0)
+            top:SetHeight(bt)
+            local bottom = mkStrip()
+            bottom:SetPoint("BOTTOMLEFT", unitButton, "BOTTOMLEFT", 0, 0)
+            bottom:SetPoint("BOTTOMRIGHT", unitButton, "BOTTOMRIGHT", 0, 0)
+            bottom:SetHeight(bt)
+            local left = mkStrip()
+            left:SetPoint("TOPLEFT", unitButton, "TOPLEFT", 0, 0)
+            left:SetPoint("BOTTOMLEFT", unitButton, "BOTTOMLEFT", 0, 0)
+            left:SetWidth(bt)
+            local right = mkStrip()
+            right:SetPoint("TOPRIGHT", unitButton, "TOPRIGHT", 0, 0)
+            right:SetPoint("BOTTOMRIGHT", unitButton, "BOTTOMRIGHT", 0, 0)
+            right:SetWidth(bt)
+        end
     end
 end
 
@@ -519,19 +742,67 @@ local function AttachInvisibleCooldown(button)
     return cooldown
 end
 
-local function MakeInitAuraButton(cfg)
+local function MakeInitAuraButton(cfg, unit, wantBorder)
     return function(button)
-        if not F.InitEngineAuraButtonOnce(button) then
-            return
-        end
         local sizeW, sizeH = ResolveSize(cfg)
         pcall(button.SetSize, button, sizeW, sizeH)
         F.SetupEngineAuraButtonMouse(button, cfg.showTooltip ~= true, cfg)
+        if not F.InitEngineAuraButtonOnce(button) then
+            if button._cellStackFS then
+                button._cellStackFS:SetShown(cfg.showStack ~= false)
+            end
+            if button._cellDurationFS and cfg.showDuration then
+                F.BindAuraDurationText(button, button._cellDurationFS, GetCellDurationFormatter(), cfg.auras)
+            end
+            F.RestyleEngineAuraButtonFonts(button, cfg, StyleFont)
+            return
+        end
 
         local icon = button:CreateTexture(nil, "ARTWORK")
         icon:SetAllPoints(button)
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         pcall(button.SetIcon, button, icon)
+
+        if wantBorder and DISPEL_BORDER_OPTS then
+            -- Four thin edge strips, fully within the button's own bounds (immune to
+            -- both re-anchoring by SetIcon and clipping by the container's grid
+            -- layout). Flat white base: the engine multiplies its dispel color in via
+            -- SetVertexColor once registered -- an uncolored texture has nothing for
+            -- the engine to tint. Hidden on creation; the engine is what shows these
+            -- once registered via AddDispelTypeTexture below.
+            local t = cfg.thickness or 3
+            local edges = {}
+            local top = button:CreateTexture(nil, "OVERLAY")
+            top:SetColorTexture(1, 1, 1, 1)
+            top:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
+            top:SetPoint("TOPRIGHT", button, "TOPRIGHT", 0, 0)
+            top:SetHeight(t)
+            top:Hide()
+            edges[1] = top
+            local bottom = button:CreateTexture(nil, "OVERLAY")
+            bottom:SetColorTexture(1, 1, 1, 1)
+            bottom:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 0, 0)
+            bottom:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
+            bottom:SetHeight(t)
+            bottom:Hide()
+            edges[2] = bottom
+            local left = button:CreateTexture(nil, "OVERLAY")
+            left:SetColorTexture(1, 1, 1, 1)
+            left:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
+            left:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 0, 0)
+            left:SetWidth(t)
+            left:Hide()
+            edges[3] = left
+            local right = button:CreateTexture(nil, "OVERLAY")
+            right:SetColorTexture(1, 1, 1, 1)
+            right:SetPoint("TOPRIGHT", button, "TOPRIGHT", 0, 0)
+            right:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
+            right:SetWidth(t)
+            right:Hide()
+            edges[4] = right
+            button._cellDebuffBorder = edges
+            RegisterDispelBorderStrips(button, edges)
+        end
 
         local style = ResolveAnimationStyle(cfg)
         local animFrame
@@ -581,40 +852,27 @@ local function MakeInitAuraButton(cfg)
             or (button.GetFrameLevel and button:GetFrameLevel())
             or 1
         textHost:SetFrameLevel(baseLevel + 10)
+        button._cellAuraTextHost = textHost
 
-        if cfg.showStack ~= false then
-            local stack = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-            local fontCfg = cfg.font and cfg.font[1]
-            local ox = (type(fontCfg) == "table" and fontCfg[6]) or 2
-            local oy = (type(fontCfg) == "table" and fontCfg[7]) or 1
-            stack:ClearAllPoints()
-            stack:SetPoint("TOPRIGHT", textHost, "TOPRIGHT", ox, oy)
-            stack:SetJustifyH("RIGHT")
-            StyleFont(stack, fontCfg, 11)
-            if type(fontCfg) == "table" and type(fontCfg[8]) == "table" then
-                stack:SetTextColor(fontCfg[8][1] or 1, fontCfg[8][2] or 1, fontCfg[8][3] or 1, fontCfg[8][4] or 1)
-            else
-                stack:SetTextColor(1, 1, 1, 1)
-            end
-            pcall(button.SetApplicationCount, button, stack, {})
-        end
+        local stack = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        stack:SetJustifyH("RIGHT")
+        button._cellStackFS = stack
+        pcall(button.SetApplicationCount, button, stack, {})
+        stack:SetShown(cfg.showStack ~= false)
 
         if cfg.showDuration then
             local duration = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-            local fontCfg = cfg.font and cfg.font[2]
-            local ox = (type(fontCfg) == "table" and fontCfg[6]) or 2
-            local oy = (type(fontCfg) == "table" and fontCfg[7]) or -1
-            duration:ClearAllPoints()
-            duration:SetPoint("BOTTOMRIGHT", textHost, "BOTTOMRIGHT", ox, oy)
             duration:SetJustifyH("RIGHT")
-            StyleFont(duration, fontCfg, 11)
+            button._cellDurationFS = duration
             F.BindAuraDurationText(button, duration, GetCellDurationFormatter(), cfg.auras)
         end
+
+        F.RestyleEngineAuraButtonFonts(button, cfg, StyleFont)
     end
 end
 
 local function HideLegacy(unitButton, indicatorName)
-    local ind = unitButton.indicators and indicatorName and unitButton.indicators[indicatorName]
+    local ind = F.BD(unitButton).indicators and indicatorName and F.BD(unitButton).indicators[indicatorName]
     if not ind then return end
     if indicatorName == "dispels" then
         if type(ind) == "table" then
@@ -627,7 +885,7 @@ local function HideLegacy(unitButton, indicatorName)
         end
         return
     end
-    if indicatorName == "debuffs" then
+    if indicatorName == "debuffs" or indicatorName == "raidDebuffs" then
         if ind.Show then
             pcall(ind.Show, ind)
         end
@@ -642,14 +900,13 @@ local function HideLegacy(unitButton, indicatorName)
                 end
             end
         end
+        if indicatorName == "raidDebuffs" and ind.HideGlow then
+            pcall(ind.HideGlow, ind)
+        end
         return
     end
     if ind.Hide then
-        if indicatorName == "raidDebuffs" then
-            pcall(ind.Hide, ind)
-        else
-            pcall(ind.Hide, ind, true)
-        end
+        pcall(ind.Hide, ind, true)
     end
     if ind.SetAlpha then ind:SetAlpha(0) end
     if type(ind) == "table" then
@@ -663,7 +920,7 @@ local function HideLegacy(unitButton, indicatorName)
 end
 
 local function ShowLegacy(unitButton, indicatorName)
-    local ind = unitButton.indicators and indicatorName and unitButton.indicators[indicatorName]
+    local ind = F.BD(unitButton).indicators and indicatorName and F.BD(unitButton).indicators[indicatorName]
     if not ind then return end
     if ind.SetAlpha then ind:SetAlpha(1) end
 end
@@ -718,8 +975,8 @@ local function LayoutDebuffPrivateAuras(st, unitButton, cfg)
     local relativePoint = pos[3] or point
     local x, y = pos[4] or 0, pos[5] or 0
     local relativeTo = unitButton
-    if relative == "healthBar" and unitButton.widgets and unitButton.widgets.healthBar then
-        relativeTo = unitButton.widgets.healthBar
+    if relative == "healthBar" and F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar then
+        relativeTo = F.BD(unitButton).widgets.healthBar
     end
     local orientation = cfg.orientation or "left-to-right"
     for i = 1, #st.paHolders do
@@ -810,10 +1067,33 @@ end
 
 local function MakeParkKey(indicatorName, cfg)
     local sizeW, sizeH = ResolveSize(cfg)
-    local groups = BuildGroupsForIndicator(indicatorName, cfg)
-    local keys = {}
-    for i = 1, #groups do
-        keys[i] = groups[i].key
+    local groupSig = indicatorName or ""
+    if indicatorName == "raidDebuffs" then
+        groupSig = "rd_boss"
+    elseif indicatorName == "debuffs" then
+        groupSig = "deb:" .. (cfg and cfg.nonPlayerAuras and "1" or "0") .. (cfg and cfg.dispellableByMe and "1" or "0")
+            .. ":" .. (cfg and cfg.showDispelBorder ~= false and "1" or "0") .. ":" .. tostring(cfg and cfg.thickness or 3)
+    elseif indicatorName == "crowdControls" then
+        groupSig = "cc"
+    elseif indicatorName == "dispels" then
+        local filters = cfg and cfg.filters or {}
+        local parts = {}
+        for i = 1, #DISPEL_TYPE_ORDER do
+            local token = DISPEL_TYPE_ORDER[i]
+            if filters[token] then
+                parts[#parts + 1] = string.lower(token)
+            end
+        end
+        groupSig = "dis:" .. table.concat(parts, ",")
+            .. ":" .. (cfg and cfg.showDispelFrameBorder == true and "1" or "0") .. ":" .. tostring(cfg and cfg.thickness or 3)
+    elseif indicatorName == "defensiveCooldowns" then
+        groupSig = "def"
+    elseif indicatorName == "offensiveCooldowns" then
+        groupSig = "off"
+    elseif indicatorName == "externalCooldowns" then
+        groupSig = "ext"
+    elseif indicatorName == "allCooldowns" then
+        groupSig = "allcd"
     end
     return F.AuraParkKey(
         indicatorName,
@@ -825,9 +1105,10 @@ local function MakeParkKey(indicatorName, cfg)
         cfg and cfg.showStack ~= false,
         cfg and cfg.showTooltip,
         F.StampAuraFont(cfg and cfg.font),
-        table.concat(keys, ","),
+        groupSig,
         indicatorName == "dispels" and NormalizeDispelHighlightType(cfg and cfg.highlightType) or "",
-        cfg and cfg.iconStyle
+        cfg and cfg.iconStyle,
+        ""
     )
 end
 
@@ -847,7 +1128,11 @@ local function DestroyContainer(st)
     if not st.container then return end
     StopContainer(st)
     st.parks = st.parks or {}
-    F.ParkAuraContainer(st.parks, st.parkKey, st.container)
+    if st.unitButton and F.IsHeaderAuraContainer(st.unitButton, st.container) then
+        F.QuiesceAuraContainer(st.container)
+    else
+        F.ParkAuraContainer(st.parks, st.parkKey, st.container)
+    end
     st.container = nil
     st.boundUnit = nil
     st.parkKey = nil
@@ -885,8 +1170,8 @@ local function AnchorContainer(container, unitButton, cfg, indicatorName)
     local x, y = pos[4] or 0, pos[5] or 0
 
     local relativeTo = unitButton
-    if relative == "healthBar" and unitButton.widgets and unitButton.widgets.healthBar then
-        relativeTo = unitButton.widgets.healthBar
+    if relative == "healthBar" and F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar then
+        relativeTo = F.BD(unitButton).widgets.healthBar
     end
 
     container:ClearAllPoints()
@@ -966,12 +1251,22 @@ local function CombatGroupOpts(g, cfg, indicatorName, initFn)
     return groupOpts
 end
 
-local function ApplyCombatTuning(container, indicatorName, cfg)
+local function ApplyCombatTuning(container, indicatorName, cfg, st)
     if not (container and cfg) then return end
     local groups = BuildGroupsForIndicator(indicatorName, cfg)
     for i = 1, #groups do
         local g = groups[i]
         F.ApplyAuraGroupTuning(container, g.key, g.filter, CombatGroupOpts(g, cfg, indicatorName))
+    end
+    local stamp = F.StampAuraFont(cfg.font)
+        .. "|" .. tostring(cfg.showDuration)
+        .. "|" .. tostring(cfg.showStack ~= false)
+        .. "|" .. ResolveAnimationStyle(cfg)
+    if not st or st.styleStamp ~= stamp then
+        F.RestyleAuraContainerFonts(container, cfg, StyleFont)
+        if st then
+            st.styleStamp = stamp
+        end
     end
 end
 
@@ -990,15 +1285,24 @@ local function CreateIndicatorContainer(unitButton, indicatorName, cfg, existing
         end)
     else
         EnsureAuraContainerLoaded()
-        local ok, created = pcall(CreateFrame, "AuraContainer", nil, parent, "CustomAuraContainerTemplate")
-        if not ok or not created then
-            return nil, tostring(created)
+        -- Header-born container only on SecureGroupHeader children (party/raid).
+        -- Spotlight/solo/NPC/pet have no button.AuraContainer — always CreateFrame.
+        if indicatorName == "debuffs" and Cell.isMidnight then
+            container = F.AdoptHeaderAuraContainer(unitButton, parent, "debuffs")
         end
-        container = created
+        if not container then
+            local ok, created = pcall(CreateFrame, "AuraContainer", nil, parent, "CustomAuraContainerTemplate")
+            if not ok or not created then
+                return nil, tostring(created)
+            end
+            container = created
+        end
     end
 
     local unit = ResolveUnit(unitButton) or "player"
-    local defaultInitFn = MakeInitAuraButton(cfg)
+    -- Debuff-type border: debuffs only for now, user-configurable (enabled + thickness).
+    local wantBorder = indicatorName == "debuffs" and cfg.showDispelBorder ~= false
+    local defaultInitFn = MakeInitAuraButton(cfg, unit, wantBorder)
 
     AnchorContainer(container, unitButton, cfg, indicatorName)
 
@@ -1012,7 +1316,10 @@ local function CreateIndicatorContainer(unitButton, indicatorName, cfg, existing
         end
         local groupOpts = CombatGroupOpts(g, cfg, indicatorName, initFn)
         local hasGroup = container.HasAuraGroup and container:HasAuraGroup(g.key)
-        if existing and (not container.HasAuraGroup or hasGroup) then
+        -- Deliberately not gated on `existing`: a header-adopted container can
+        -- already have this group registered even though `existing` is nil, so
+        -- only whether the group exists on THIS container decides retune vs. add.
+        if (not container.HasAuraGroup) or hasGroup then
             F.ApplyAuraGroupTuning(container, g.key, g.filter, groupOpts)
             added = added + 1
         else
@@ -1057,11 +1364,11 @@ local function DriveContainer(unitButton, indicatorName, cfg, enable)
     local map = stateByButton[unitButton]
     local st = map and map[indicatorName]
     if not (st and st.container and cfg) then return end
-    if Cell.vars.editModeOpen then
+    if Cell.funcs.IsEditModeOpen and Cell.funcs.IsEditModeOpen() then
         return
     end
     local unit = ResolveUnit(unitButton)
-    ApplyCombatTuning(st.container, indicatorName, cfg)
+    ApplyCombatTuning(st.container, indicatorName, cfg, st)
     AnchorContainer(st.container, unitButton, cfg, indicatorName)
     if enable then
         st.container:Show()
@@ -1102,6 +1409,13 @@ local function EnsureIndicatorContainer(unitButton, indicatorName, cfg, allowCre
         map[indicatorName] = st
     end
 
+    if #(BuildGroupsForIndicator(indicatorName, cfg)) == 0 then
+        DestroyContainer(st)
+        st.createFailed = nil
+        st.failedVersion = nil
+        return false
+    end
+
     if st.createFailed and st.failedVersion == INIT_VERSION then
         return false
     end
@@ -1112,7 +1426,8 @@ local function EnsureIndicatorContainer(unitButton, indicatorName, cfg, allowCre
 
     if st.container then
         local want = MakeParkKey(indicatorName, cfg)
-        if st.parkKey ~= want or st.initVersion ~= INIT_VERSION or not st.container:GetParent() then
+        local changed = st.parkKey ~= want or st.initVersion ~= INIT_VERSION or not st.container:GetParent()
+        if changed then
             DestroyContainer(st)
         end
     end
@@ -1133,15 +1448,21 @@ local function EnsureIndicatorContainer(unitButton, indicatorName, cfg, allowCre
         if existing then
             F.ParkAuraContainer(st.parks, want, existing)
         end
+        if err == "skip" then
+            st.createFailed = nil
+            st.failedVersion = nil
+            return false
+        end
         st.createFailed = true
         st.failedVersion = INIT_VERSION
-        if err ~= "skip" and not Cell.vars._combatAuraDisplayWarned then
+        if not Cell.vars._combatAuraDisplayWarned then
             Cell.vars._combatAuraDisplayWarned = true
             F.Print("|cFFFF7D7DCombat AuraContainer (" .. indicatorName .. ") failed:|r " .. tostring(err))
         end
         return false
     end
     st.container = container
+    st.unitButton = unitButton
     st.parkKey = want
     st.boundUnit = ResolveUnit(unitButton)
     st.hlContainer = nil
@@ -1163,6 +1484,9 @@ local function NeedsContainerBuild(unitButton, name, cfg)
     if IsCooldownAuraIndicator(name) and not UseEngineCooldownAuras() then
         return false
     end
+    if #(BuildGroupsForIndicator(name, cfg)) == 0 then
+        return false
+    end
     local map = stateByButton[unitButton]
     local st = map and map[name]
     if st and st.container then return false end
@@ -1176,16 +1500,18 @@ local function PumpBuildQueue()
     local b = table.remove(buildQueue, 1)
     while b do
         buildQueued[b] = nil
-        if b._indicatorsReady then
+        if F.BD(b)._indicatorsReady then
             break
         end
         b = table.remove(buildQueue, 1)
     end
     if not b then return end
 
-    RefreshCachedLayouts()
-    for i = 1, #TRACKED do
-        local name = TRACKED[i]
+    -- cachedLayouts stays valid until RefreshAll/RebuildAll/DisableAll below
+    -- explicitly rebuilds it, so no need to redo it for every queued button.
+    if not cachedLayouts then RefreshCachedLayouts() end
+    for i = 1, #ALL_TRACKED do
+        local name = ALL_TRACKED[i]
         local cfg = cachedLayouts and cachedLayouts[name]
         if NeedsContainerBuild(b, name, cfg) then
             if EnsureIndicatorContainer(b, name, cfg, true) then
@@ -1196,8 +1522,8 @@ local function PumpBuildQueue()
     end
 
     local more = false
-    for i = 1, #TRACKED do
-        local name = TRACKED[i]
+    for i = 1, #ALL_TRACKED do
+        local name = ALL_TRACKED[i]
         local cfg = cachedLayouts and cachedLayouts[name]
         if NeedsContainerBuild(b, name, cfg) then
             more = true
@@ -1223,16 +1549,17 @@ EnqueueBuild = function(unitButton)
 end
 
 local function SyncButton(unitButton, allowCreate)
-    if not unitButton or not unitButton._indicatorsReady then return end
-    RefreshCachedLayouts()
+    if not unitButton or not F.BD(unitButton)._indicatorsReady then return end
+    -- Same reasoning as PumpBuildQueue above.
+    if not cachedLayouts then RefreshCachedLayouts() end
     if allowCreate == nil then
         allowCreate = true
     end
 
     local seen = {}
     local needsBuild = false
-    for i = 1, #TRACKED do
-        local name = TRACKED[i]
+    for i = 1, #ALL_TRACKED do
+        local name = ALL_TRACKED[i]
         local cfg = cachedLayouts and cachedLayouts[name]
         if cfg then
             seen[name] = true
@@ -1263,6 +1590,7 @@ local function SyncButton(unitButton, allowCreate)
                     map[name] = nil
                 else
                     StopContainer(st)
+                    needsCombatCatchup = true
                 end
                 if cachedLayouts and cachedLayouts[name] then
                     ShowLegacy(unitButton, name)
@@ -1324,14 +1652,35 @@ end
 
 function I.RefreshAllCombatAuraDisplays()
     if not SUPPORTED then return end
+    InvalidateCombatSpellMaps()
     RefreshCachedLayouts()
+    local queue = {}
+    local queued = {}
     F.IterateAllUnitButtons(function(b)
-        SyncButton(b, true)
+        if b and not queued[b] then
+            queued[b] = true
+            queue[#queue + 1] = b
+        end
     end, true)
+    if #queue == 0 then return end
+    local idx = 1
+    local function step()
+        local budget = 4
+        while budget > 0 and idx <= #queue do
+            SyncButton(queue[idx], true)
+            idx = idx + 1
+            budget = budget - 1
+        end
+        if idx <= #queue then
+            C_Timer.After(0, step)
+        end
+    end
+    step()
 end
 
 local function RebuildAllCombatAuraDisplays()
     if not SUPPORTED then return end
+    InvalidateCombatSpellMaps()
     RefreshCachedLayouts()
     F.IterateAllUnitButtons(function(b)
         DestroyButtonState(b)
@@ -1367,17 +1716,20 @@ end
 
 if SUPPORTED then
     Cell.RegisterCallback("UpdateIndicators", "CombatAuraDisplay_UpdateIndicators", function(_, indicatorName, setting, value)
+        InvalidateCombatSpellMaps()
         if setting == "enabled" and value == false and indicatorName then
             I.DisableAllCombatAuraDisplays(indicatorName)
             return
         end
-        if indicatorName and indicatorName ~= "" and not TRACKED_SET[indicatorName] then
+        if indicatorName and indicatorName ~= "" and not TRACKED_SET[indicatorName]
+            and not tostring(indicatorName):find("^indicator") then
             return
         end
         C_Timer.After(0, I.RefreshAllCombatAuraDisplays)
     end)
 
     Cell.RegisterCallback("UpdateLayout", "CombatAuraDisplay_UpdateLayout", function()
+        InvalidateCombatSpellMaps()
         C_Timer.After(0, I.RefreshAllCombatAuraDisplays)
     end)
 
@@ -1392,7 +1744,22 @@ if SUPPORTED then
     end)
 
     Cell.RegisterCallback("RaidDebuffsChanged", "CombatAuraDisplay_RaidDebuffs", function()
-        C_Timer.After(0, I.RefreshAllCombatAuraDisplays)
+        C_Timer.After(0, function()
+            F.IterateAllUnitButtons(function(b)
+                local map = stateByButton[b]
+                if map then
+                    for _, name in ipairs({ "raidDebuffs", "debuffs" }) do
+                        local st = map[name]
+                        if st then
+                            st.createFailed = nil
+                            st.failedVersion = nil
+                            DestroyContainer(st)
+                        end
+                    end
+                end
+            end, true)
+            I.RefreshAllCombatAuraDisplays()
+        end)
     end)
 
     local boot = CreateFrame("Frame")
@@ -1401,13 +1768,39 @@ if SUPPORTED then
     boot:RegisterEvent("PLAYER_REGEN_ENABLED")
     boot:SetScript("OnEvent", function(_, event)
         if event == "PLAYER_ENTERING_WORLD" then
+            InvalidateCombatSpellMaps()
+            needsCombatCatchup = false
             C_Timer.After(0.5, I.RefreshAllCombatAuraDisplays)
             C_Timer.After(1.25, I.RefreshAllCombatAuraDisplays)
             return
         end
-        RefreshCachedLayouts()
-        F.IterateAllUnitButtons(function(b)
-            SyncButton(b, true)
-        end, true)
+        -- Cache-clear only: cheap regardless of whether a full resync is needed.
+        InvalidateCombatSpellMaps()
+        -- Defensive/External/Offensive/All Cooldowns switch their whole display
+        -- mode based on combat state (UseEngineCooldownAuras), so if any of them
+        -- are in use, both transitions still need the real resync -- skipping it
+        -- left them showing nothing at all (in and out of combat) once the mode
+        -- flipped out from under them without ever being re-applied.
+        if AnyCooldownAuraIndicatorActive() then
+            needsCombatCatchup = false
+            I.RefreshAllCombatAuraDisplays()
+            return
+        end
+        if event == "PLAYER_REGEN_DISABLED" then
+            -- Entering combat doesn't itself make anything else stale -- real
+            -- config/roster/layout changes already drive their own refresh
+            -- independent of combat state (UpdateIndicators/UpdateLayout/
+            -- RaidDebuffsChanged callbacks above). Nothing to catch up on yet.
+            return
+        end
+        -- Leaving combat: only pay for a full-raid resync of every unit button
+        -- and every tracked indicator if something was actually deferred while
+        -- combat-locked (see needsCombatCatchup writers above). Previously this
+        -- ran unconditionally on every single combat exit, which is why the
+        -- hitch scaled with how much happened during the fight.
+        if needsCombatCatchup then
+            needsCombatCatchup = false
+            I.RefreshAllCombatAuraDisplays()
+        end
     end)
 end

@@ -1,10 +1,11 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 local F = Cell.funcs
 local I = Cell.iFuncs
 local U = Cell.uFuncs
 local A = Cell.animations
 local P = Cell.pixelPerfectFuncs
+local function BD(b) return F.GetButtonData(b) end
 
 local UnitIsConnected = UnitIsConnected
 local InCombatLockdown = InCombatLockdown
@@ -138,19 +139,19 @@ end
 -------------------------------------------------
 local function InitAuraTables(self)
     -- vars
-    self._casts = {}
-    self._timers = {}
+    BD(self)._casts = {}
+    BD(self)._timers = {}
 
     -- for icon animation only
-    self._buffs_cache = {}
-    self._buffs_count_cache = {}
+    BD(self)._buffs_cache = {}
+    BD(self)._buffs_count_cache = {}
 end
 
 local function ResetAuraTables(self)
-    wipe(self._casts)
-    wipe(self._timers)
-    wipe(self._buffs_cache)
-    wipe(self._buffs_count_cache)
+    wipe(BD(self)._casts)
+    wipe(BD(self)._timers)
+    wipe(BD(self)._buffs_cache)
+    wipe(BD(self)._buffs_count_cache)
 end
 
 -------------------------------------------------
@@ -194,33 +195,33 @@ local function HandleBuff(self, auraInfo)
 
     if duration then
         if Cell.vars.iconAnimation == "duration" then
-            local timeIncreased = self._buffs_cache[auraInstanceID] and (expirationTime - self._buffs_cache[auraInstanceID] >= 0.5) or false
-            local countIncreased = self._buffs_count_cache[auraInstanceID] and (count > self._buffs_count_cache[auraInstanceID]) or false
+            local timeIncreased = BD(self)._buffs_cache[auraInstanceID] and (expirationTime - BD(self)._buffs_cache[auraInstanceID] >= 0.5) or false
+            local countIncreased = BD(self)._buffs_count_cache[auraInstanceID] and (count > BD(self)._buffs_count_cache[auraInstanceID]) or false
             refreshing = timeIncreased or countIncreased
         elseif Cell.vars.iconAnimation == "stack" then
-            refreshing = self._buffs_count_cache[auraInstanceID] and (count > self._buffs_count_cache[auraInstanceID]) or false
+            refreshing = BD(self)._buffs_count_cache[auraInstanceID] and (count > BD(self)._buffs_count_cache[auraInstanceID]) or false
         else
             refreshing = false
         end
 
         if (source == "player" and (myBuffs_icon[name] or myBuffs_bar[name])) or offensiveBuffs[spellId] then
-            self._buffs_cache[auraInstanceID] = expirationTime
-            self._buffs_count_cache[auraInstanceID] = count
+            BD(self)._buffs_cache[auraInstanceID] = expirationTime
+            BD(self)._buffs_count_cache[auraInstanceID] = count
         end
 
-        if myBuffs_icon[name] and source == "player" and self._buffIconsFound < 5 then
-            self._buffIconsFound = self._buffIconsFound + 1
-            self.buffIcons[self._buffIconsFound]:SetCooldown(start, duration, nil, icon, count, refreshing, myBuffs_icon[name], buffsGlowType)
+        if myBuffs_icon[name] and source == "player" and BD(self)._buffIconsFound < 5 then
+            BD(self)._buffIconsFound = BD(self)._buffIconsFound + 1
+            self.buffIcons[BD(self)._buffIconsFound]:SetCooldown(start, duration, nil, icon, count, refreshing, myBuffs_icon[name], buffsGlowType)
         end
 
-        if myBuffs_bar[name] and source == "player" and self._buffBarsFound < 5 then
-            self._buffBarsFound = self._buffBarsFound + 1
-            self.buffBars[self._buffBarsFound]:SetCooldown(start, duration, myBuffs_bar[name])
+        if myBuffs_bar[name] and source == "player" and BD(self)._buffBarsFound < 5 then
+            BD(self)._buffBarsFound = BD(self)._buffBarsFound + 1
+            self.buffBars[BD(self)._buffBarsFound]:SetCooldown(start, duration, myBuffs_bar[name])
         end
 
-        if offensiveBuffs[spellId] and self._offensivesFound < 5 then
-            self._offensivesFound = self._offensivesFound + 1
-            self.offensiveIcons[self._offensivesFound]:SetCooldown(start, duration, nil, icon, count, refreshing, offensiveIconGlowColor, offensiveIconGlowType)
+        if offensiveBuffs[spellId] and BD(self)._offensivesFound < 5 then
+            BD(self)._offensivesFound = BD(self)._offensivesFound + 1
+            self.offensiveIcons[BD(self)._offensivesFound]:SetCooldown(start, duration, nil, icon, count, refreshing, offensiveIconGlowColor, offensiveIconGlowType)
             self.offensiveGlow:SetCooldown(start, duration)
         end
     end
@@ -233,8 +234,8 @@ local function QuickAssist_UpdateAuras(self, updateInfo)
     local buffsChanged
 
     if not updateInfo or updateInfo.isFullUpdate then
-        wipe(self._buffs_cache)
-        wipe(self._buffs_count_cache)
+        wipe(BD(self)._buffs_cache)
+        wipe(BD(self)._buffs_count_cache)
         buffsChanged = true
     else
         if updateInfo.addedAuras then
@@ -245,15 +246,15 @@ local function QuickAssist_UpdateAuras(self, updateInfo)
 
         if updateInfo.updatedAuraInstanceIDs then
             for _, auraInstanceID in pairs(updateInfo.updatedAuraInstanceIDs) do
-                if self._buffs_cache[auraInstanceID] then buffsChanged = true end
+                if BD(self)._buffs_cache[auraInstanceID] then buffsChanged = true end
             end
         end
 
         if updateInfo.removedAuraInstanceIDs then
             for _, auraInstanceID in pairs(updateInfo.removedAuraInstanceIDs) do
-                if self._buffs_cache[auraInstanceID] then
-                    self._buffs_cache[auraInstanceID] = nil
-                    self._buffs_count_cache[auraInstanceID] = nil
+                if BD(self)._buffs_cache[auraInstanceID] then
+                    BD(self)._buffs_cache[auraInstanceID] = nil
+                    BD(self)._buffs_count_cache[auraInstanceID] = nil
                     buffsChanged = true
                 end
             end
@@ -265,33 +266,33 @@ local function QuickAssist_UpdateAuras(self, updateInfo)
     end
 
     if buffsChanged then
-        self._buffIconsFound = 0
-        self._buffBarsFound = 0
-        self._offensivesFound = 0
+        BD(self)._buffIconsFound = 0
+        BD(self)._buffBarsFound = 0
+        BD(self)._offensivesFound = 0
 
         self.offensiveGlow:Hide()
 
         -- update myBuffs_icon and offensiveBuffs
         ForEachAura(self, "HELPFUL", HandleBuff)
-        self.buffIcons:UpdateSize(self._buffIconsFound)
-        self.buffBars:UpdateSize(self._buffBarsFound)
+        self.buffIcons:UpdateSize(BD(self)._buffIconsFound)
+        self.buffBars:UpdateSize(BD(self)._buffBarsFound)
 
         -- update offensiveCasts
         if offensivesEnabled then
-            for spellId, start in pairs(self._casts) do
+            for spellId, start in pairs(BD(self)._casts) do
                 local duration = offensiveCasts[spellId][1]
                 -- if start + duration <= GetTime() then
-                --     self._casts[spellId] = nil
+                --     BD(self)._casts[spellId] = nil
                 -- else
-                    if self._offensivesFound < 5 then
-                        self._offensivesFound = self._offensivesFound + 1
-                        self.offensiveIcons[self._offensivesFound]:SetCooldown(start, duration, nil, offensiveCasts[spellId][2], 0, false, offensiveIconGlowColor, offensiveIconGlowType)
+                    if BD(self)._offensivesFound < 5 then
+                        BD(self)._offensivesFound = BD(self)._offensivesFound + 1
+                        self.offensiveIcons[BD(self)._offensivesFound]:SetCooldown(start, duration, nil, offensiveCasts[spellId][2], 0, false, offensiveIconGlowColor, offensiveIconGlowType)
                         self.offensiveGlow:SetCooldown(start, duration)
                     end
                 -- end
             end
         end
-        self.offensiveIcons:UpdateSize(self._offensivesFound)
+        self.offensiveIcons:UpdateSize(BD(self)._offensivesFound)
     end
 end
 
@@ -300,14 +301,14 @@ local function QuickAssist_UpdateCasts(self, spellId)
     if Cell.isMidnight and issecretvalue and issecretvalue(spellId) then return end
     if not offensiveCasts[spellId] then return end
 
-    self._casts[spellId] = GetTime()
+    BD(self)._casts[spellId] = GetTime()
     QuickAssist_UpdateAuras(self)
 
-    if self._timers[spellId] then self._timers[spellId]:Cancel() end
-    self._timers[spellId] = C_Timer.NewTimer(offensiveCasts[spellId][1], function()
+    if BD(self)._timers[spellId] then BD(self)._timers[spellId]:Cancel() end
+    BD(self)._timers[spellId] = C_Timer.NewTimer(offensiveCasts[spellId][1], function()
         -- print("TIMER:QuickAssist_UpdateAuras", spellId)
-        self._timers[spellId] = nil
-        self._casts[spellId] = nil
+        BD(self)._timers[spellId] = nil
+        BD(self)._casts[spellId] = nil
         QuickAssist_UpdateAuras(self)
     end)
 end
@@ -498,6 +499,9 @@ local function QuickAssist_UnregisterEvents(self)
 end
 
 local function QuickAssist_OnEvent(self, event, unit, arg, arg2)
+    if event == "UNIT_AURA" and Cell.isMidnight then
+        return
+    end
     if unit and self.unit == unit then
         if event == "UNIT_AURA" then
             if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
@@ -521,7 +525,7 @@ local function QuickAssist_OnEvent(self, event, unit, arg, arg2)
             QuickAssist_UpdateHealth(self)
 
         elseif event == "UNIT_CONNECTION" then
-            self._updateRequired = 1
+            BD(self)._updateRequired = 1
 
         elseif event == "UNIT_NAME_UPDATE" then
             QuickAssist_UpdateName(self)
@@ -534,7 +538,7 @@ local function QuickAssist_OnEvent(self, event, unit, arg, arg2)
 
     else
         if event == "GROUP_ROSTER_UPDATE" then
-            self._updateRequired = 1
+            BD(self)._updateRequired = 1
 
         elseif event == "PLAYER_TARGET_CHANGED" then
             QuickAssist_UpdateTarget(self)
@@ -544,7 +548,7 @@ end
 
 local function QuickAssist_OnShow(self)
     -- print(GetTime(), "OnShow", self:GetName())
-    self._updateRequired = nil -- prevent QuickAssist_UpdateAll twice. when convert party <-> raid, GROUP_ROSTER_UPDATE fired.
+    BD(self)._updateRequired = nil -- prevent QuickAssist_UpdateAll twice. when convert party <-> raid, GROUP_ROSTER_UPDATE fired.
     QuickAssist_RegisterEvents(self)
 end
 
@@ -565,37 +569,37 @@ local function QuickAssist_OnLeave(self)
 end
 
 local function QuickAssist_OnTick(self)
-    -- print(GetTime(), "OnTick", self._updateRequired, self:GetAttribute("refreshOnUpdate"), self:GetName())
-    local e = (self.__tickCount or 0) + 1
+    -- print(GetTime(), "OnTick", BD(self)._updateRequired, self:GetAttribute("refreshOnUpdate"), self:GetName())
+    local e = (BD(self).__tickCount or 0) + 1
     if e >= 2 then -- every 0.5 second
         e = 0
 
         if self.unit then
             local guid = UnitGUID(self.unit)
-            if guid ~= self.__guid then
-                self.__guid = guid
-                self._updateRequired = 1
+            if guid ~= BD(self).__guid then
+                BD(self).__guid = guid
+                BD(self)._updateRequired = 1
             end
         end
     end
 
-    self.__tickCount = e
+    BD(self).__tickCount = e
 
     QuickAssist_UpdateInRange_OnTick(self)
 
-    if self._updateRequired then
-        self._updateRequired = nil
+    if BD(self)._updateRequired then
+        BD(self)._updateRequired = nil
         QuickAssist_UpdateAll(self)
     end
 end
 
 local function QuickAssist_OnUpdate(self, elapsed)
-    local e = (self.__updateElapsed or 0) + elapsed
+    local e = (BD(self).__updateElapsed or 0) + elapsed
     if e > 0.25 then
         QuickAssist_OnTick(self)
         e = 0
     end
-    self.__updateElapsed = e
+    BD(self).__updateElapsed = e
 end
 
 local function QuickAssist_OnSizeChanged(self)
@@ -628,7 +632,7 @@ function CellQuickAssist_OnLoad(button)
     button:SetAttribute("ping-receiver", true)
 
     function button:GetTargetPingGUID()
-        return button.__unitGuid
+        return F.BD(button).__unitGuid
     end
 
     -- healthBar
@@ -701,7 +705,7 @@ function CellQuickAssist_OnLoad(button)
     indicatorFrame:SetAllPoints(button)
 
     -- script
-    button:SetScript("OnAttributeChanged", QuickAssist_OnAttributeChanged) -- init
+    button:HookScript("OnAttributeChanged", QuickAssist_OnAttributeChanged) -- init
     button:HookScript("OnShow", QuickAssist_OnShow)
     button:HookScript("OnHide", QuickAssist_OnHide) -- click-castings: _onhide
     button:HookScript("OnEnter", QuickAssist_OnEnter) -- click-castings: _onenter
@@ -716,6 +720,7 @@ end
 --                              create header                              --
 -- ----------------------------------------------------------------------- --
 local header = CreateFrame("Frame", "CellQuickAssistHeader", quickAssistFrame, "SecureGroupHeaderTemplate")
+F.ApplyMidnightGroupHeaderAttributes(header)
 
 -- function header:UpdateButtonUnit(bName, unit)
 --     local b = _G[bName]

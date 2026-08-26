@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 ---@type CellFuncs
 local F = Cell.funcs
 ---@class CellIndicatorFuncs
@@ -184,17 +184,17 @@ local function EnsureTsGlowFrame(frame)
     local glowFrame = frame.tsGlowFrame
     if not glowFrame then
         local button = frame:GetParent()
-        while button and not button.widgets do
+        while button and not F.BD(button).widgets do
             button = button:GetParent()
         end
-        if button and button.widgets then
-            if not button.widgets.tsGlowFrame then
+        if button and F.BD(button).widgets then
+            if not F.BD(button).widgets.tsGlowFrame then
                 glowFrame = CreateFrame("Frame", button:GetName().."TSGlowFrame", button)
-                button.widgets.tsGlowFrame = glowFrame
+                F.BD(button).widgets.tsGlowFrame = glowFrame
                 glowFrame:SetFrameLevel(button:GetFrameLevel() + 200)
                 glowFrame:SetAllPoints(button)
             end
-            frame.tsGlowFrame = button.widgets.tsGlowFrame
+            frame.tsGlowFrame = F.BD(button).widgets.tsGlowFrame
             glowFrame = frame.tsGlowFrame
         end
     end
@@ -215,7 +215,7 @@ local function EnsureTsGlowFrame(frame)
 end
 
 local function HideCasts(b)
-    local ts = b.indicators and b.indicators.targetedSpells
+    local ts = F.BD(b).indicators and F.BD(b).indicators.targetedSpells
     if not ts then return end
     ts:UpdateSize(0)
     ts:HideGlow()
@@ -223,7 +223,7 @@ local function HideCasts(b)
 end
 
 local function ShowCasts(b, showGlow, sortedCasts, num)
-    local ts = b.indicators and b.indicators.targetedSpells
+    local ts = F.BD(b).indicators and F.BD(b).indicators.targetedSpells
     if not ts then return end
 
     ts:Show()
@@ -670,11 +670,11 @@ local function HidePreview(frame)
 end
 
 function I.CreateTargetedSpells(parent)
-    local targetedSpells = CreateFrame("Frame", parent:GetName().."TargetedSpellsParent", parent.widgets.indicatorFrame)
-    parent.indicators.targetedSpells = targetedSpells
+    local targetedSpells = CreateFrame("Frame", parent:GetName().."TargetedSpellsParent", F.BD(parent).widgets.indicatorFrame)
+    F.BD(parent).indicators.targetedSpells = targetedSpells
     targetedSpells:Hide()
 
-    targetedSpells.tsGlowFrame = parent.widgets.tsGlowFrame
+    targetedSpells.tsGlowFrame = F.BD(parent).widgets.tsGlowFrame
     targetedSpells._SetSize = targetedSpells.SetSize
     targetedSpells.SetSize = I.Cooldowns_SetSize
     targetedSpells.SetBorder = I.Cooldowns_SetBorder
@@ -736,7 +736,7 @@ function I.EnableTargetedSpells(enable)
         eventFrame:Hide()
         eventFrame:UnregisterAllEvents()
         F.IterateAllUnitButtons(function(b)
-            local ts = b.indicators and b.indicators.targetedSpells
+            local ts = F.BD(b).indicators and F.BD(b).indicators.targetedSpells
             if ts then
                 ts:HideGlow()
                 ts:Hide()
@@ -748,7 +748,7 @@ function I.EnableTargetedSpells(enable)
     RebuildNameIndex()
     RegisterEvents()
     F.IterateAllUnitButtons(function(b)
-        local ts = b.indicators and b.indicators.targetedSpells
+        local ts = F.BD(b).indicators and F.BD(b).indicators.targetedSpells
         if ts then
             ts:Show()
         end

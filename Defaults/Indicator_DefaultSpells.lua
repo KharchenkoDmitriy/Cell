@@ -31,6 +31,7 @@ local debuffBlacklist = {
     352562, -- 起伏机动 - Undulating Maneuvers
     356419, -- 审判灵魂 - Judge Soul
     387847, -- 邪甲术 - Fel Armor
+    386124, -- Fel Armor (passive)
     213213, -- 伪装 - Masquerade
 }
 
@@ -1209,6 +1210,7 @@ local function MakeHealersIndicatorTable(indicatorName)
         ["showStack"] = true,
         ["showDuration"] = false,
         ["showAnimation"] = true,
+        ["animationStyle"] = "clock",
         ["auraType"] = "buff",
         ["castBy"] = "me",
         ["auras"] = F.Copy(spells),

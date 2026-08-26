@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 local F = Cell.funcs
 
@@ -45,7 +45,7 @@ end
 local nic_check, nic_send
 
 local function Update(b)
-    b.indicators.nameText:UpdateName()
+    F.BD(b).indicators.nameText:UpdateName()
 end
 
 local function UpdateName(who)
@@ -92,7 +92,7 @@ local function CheckSelf()
         CellLayoutsPreviewButton.indicators.nameText:UpdateName()
     end
     if CellIndicatorsPreviewButton then
-        CellIndicatorsPreviewButton.indicators.nameText:UpdateName()
+        F.BD(CellIndicatorsPreviewButton).indicators.nameText:UpdateName()
     end
     if CellRaidDebuffsPreviewButton then
         CellRaidDebuffsPreviewButton.indicators.nameText:UpdateName()
@@ -172,7 +172,7 @@ local function UpdateNicknames(which, value1, value2)
 
             -- update all
             F.IterateAllUnitButtons(function(b)
-                b.indicators.nameText:UpdateName()
+                F.BD(b).indicators.nameText:UpdateName()
             end, true)
         end
 
@@ -279,7 +279,7 @@ f:SetScript("OnEvent", function()
         local function UpdateAll()
             -- update all
             F.IterateAllUnitButtons(function(b)
-                b.indicators.nameText:UpdateName()
+                F.BD(b).indicators.nameText:UpdateName()
             end, true)
         end
 

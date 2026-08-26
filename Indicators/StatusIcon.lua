@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 ---@type CellFuncs
 local F = Cell.funcs
 ---@class CellIndicatorFuncs
@@ -17,7 +17,7 @@ eventFrame:SetScript("OnEvent", function(self, event, unit)
 end)
 
 local function DiedWithSoulstone(b)
-    b.states.hasSoulstone = true
+    F.BD(b).states.hasSoulstone = true
     I.UpdateStatusIcon(b)
 end
 
@@ -26,18 +26,11 @@ local soulstones = {}
 local SOULSTONE = F.GetSpellInfo(20707)
 local RESURRECTING = F.GetSpellInfo(160029)
 
--- NOTE: The cleuFrame previously relied on COMBAT_LOG_EVENT_UNFILTERED for:
---   1. SPELL_AURA_REMOVED (soulstone / Resurrecting debuff removal)
---   2. UNIT_DIED sub-event (to detect soulstone deaths)
---   3. SPELL_RESURRECT (to detect incoming resurrections)
---
---   - Incoming resurrection: already handled via INCOMING_RESURRECT_CHANGED
---     in eventFrame + UnitHasIncomingResurrection() in I.UpdateStatusIcon.
---   - Resurrecting debuff removal: handled by UNIT_AURA → UpdateStatusIcon_Resurrection
---     which re-checks F.FindAuraById for the Resurrecting debuff.
---   - Soulstone death detection: tracked via UNIT_AURA (soulstone buff removal)
---     combined with UNIT_HEALTH + UnitIsDeadOrGhost() for the death signal.
-local cleuFrame = CreateFrame("Frame")
+local cleuFrame = CreateFrame("Frame", "CellStatusIconCleuFrame")
+_G.CellStatusIconCleuFrame = cleuFrame
+if Cell.isMidnight then
+    cleuFrame:UnregisterEvent("UNIT_AURA")
+end
 
 if not Cell.isMidnight then
     cleuFrame:SetScript("OnEvent", function()
@@ -66,9 +59,6 @@ if not Cell.isMidnight then
         end
     end)
 else
-    -- UNIT_AURA fires when any aura is added/removed on a tracked unit.
-    -- We watch for soulstone buff removal and immediately note the guid;
-    -- then UNIT_HEALTH (UnitIsDeadOrGhost) confirms the death.
     cleuFrame:SetScript("OnEvent", function(self, event, unit)
         if event == "UNIT_AURA" then
             local guid = UnitGUID(unit)
@@ -111,8 +101,8 @@ end
 -- create
 -------------------------------------------------
 function I.CreateStatusIcon(parent)
-    local statusIcon = CreateFrame("Frame", parent:GetName().."StatusIcon", parent.widgets.indicatorFrame)
-    parent.indicators.statusIcon = statusIcon
+    local statusIcon = CreateFrame("Frame", parent:GetName().."StatusIcon", F.BD(parent).widgets.indicatorFrame)
+    F.BD(parent).indicators.statusIcon = statusIcon
     statusIcon:Hide()
 
     statusIcon:SetIgnoreParentAlpha(true)
@@ -137,8 +127,8 @@ function I.CreateStatusIcon(parent)
     end
 
     -- resurrection icon ----------------------------------
-    local resurrectionIcon = CreateFrame("Frame", parent:GetName().."ResurrectionIcon", parent.widgets.indicatorFrame)
-    parent.indicators.resurrectionIcon = resurrectionIcon
+    local resurrectionIcon = CreateFrame("Frame", parent:GetName().."ResurrectionIcon", F.BD(parent).widgets.indicatorFrame)
+    F.BD(parent).indicators.resurrectionIcon = resurrectionIcon
     resurrectionIcon:SetAllPoints(statusIcon)
     resurrectionIcon:Hide()
 
@@ -199,9 +189,9 @@ end
 -- resurrection
 -------------------------------------------------
 function I.UpdateStatusIcon_Resurrection(button, start, duration)
-    local guid = button.states.guid
-    local unit = button.states.unit
-    local resurrectionIcon = button.indicators.resurrectionIcon
+    local guid = F.BD(button).states.guid
+    local unit = F.BD(button).states.unit
+    local resurrectionIcon = F.BD(button).indicators.resurrectionIcon
 
     if not (guid and unit) then
         resurrectionIcon:Hide()
@@ -247,13 +237,13 @@ end
 -------------------------------------------------
 if Cell.isRetail then
     function I.UpdateStatusIcon(button)
-        local unit = button.states.unit
+        local unit = F.BD(button).states.unit
         if not unit then return end
 
         -- https://wow.gamepedia.com/API_UnitPhaseReason
         local phaseReason = UnitPhaseReason(unit)
 
-        local icon = button.indicators.statusIcon
+        local icon = F.BD(button).indicators.statusIcon
 
         -- Interface\FrameXML\CompactUnitFrame.lua, CompactUnitFrame_UpdateCenterStatusIcon
         if UnitInOtherParty(unit) then
@@ -268,12 +258,12 @@ if Cell.isRetail then
             icon:SetTexture("Interface\\RaidFrame\\Raid-Icon-Rez")
             icon:SetTexCoord(0, 1, 0, 1)
             icon:Show()
-        elseif button.states.hasRezDebuff then
+        elseif F.BD(button).states.hasRezDebuff then
             icon:SetVertexColor(0.6, 1, 0.6, 1)
             icon:SetTexture("Interface\\RaidFrame\\Raid-Icon-Rez")
             icon:SetTexCoord(0, 1, 0, 1)
             icon:Show()
-        elseif button.states.hasSoulstone then
+        elseif F.BD(button).states.hasSoulstone then
             icon:SetVertexColor(1, 0.4, 1, 1)
             icon:SetTexture("Interface\\RaidFrame\\Raid-Icon-Rez")
             icon:SetTexCoord(0, 1, 0, 1)
@@ -293,7 +283,7 @@ if Cell.isRetail then
                 C_Timer.After(6, function() I.UpdateStatusIcon(button) end)
             end
             icon:Show()
-        elseif UnitIsPlayer(unit) and phaseReason and not button.states.inVehicle then
+        elseif UnitIsPlayer(unit) and phaseReason and not F.BD(button).states.inVehicle then
             if phaseReason == 3 then -- chromie, yellow
                 icon:SetVertexColor(1, 1, 0)
             elseif phaseReason == 2 then -- warmode, red
@@ -310,14 +300,14 @@ if Cell.isRetail then
         --     icon:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-Skull")
         --     icon:SetTexCoord(0, 1, 0, 1)
         --     icon:Show()
-        elseif button.states.BGFlag then
+        elseif F.BD(button).states.BGFlag then
             icon:SetVertexColor(1, 1, 1, 1)
-            icon:SetAtlas("nameplates-icon-flag-"..button.states.BGFlag)
+            icon:SetAtlas("nameplates-icon-flag-"..F.BD(button).states.BGFlag)
             icon:SetTexCoord(0, 1, 0, 1)
             icon:Show()
-        elseif button.states.BGOrb then
+        elseif F.BD(button).states.BGOrb then
             icon:SetVertexColor(1, 1, 1, 1)
-            icon:SetAtlas("nameplates-icon-orb-"..button.states.BGOrb)
+            icon:SetAtlas("nameplates-icon-orb-"..F.BD(button).states.BGOrb)
             icon:SetTexCoord(0, 1, 0, 1)
             icon:Show()
         else
@@ -326,10 +316,10 @@ if Cell.isRetail then
     end
 else
     function I.UpdateStatusIcon(button)
-        local unit = button.states.unit
+        local unit = F.BD(button).states.unit
         if not unit then return end
 
-        local icon = button.indicators.statusIcon
+        local icon = F.BD(button).indicators.statusIcon
 
         -- Interface\FrameXML\CompactUnitFrame.lua, CompactUnitFrame_UpdateCenterStatusIcon
         if UnitInOtherParty(unit) then
@@ -342,12 +332,12 @@ else
             icon:SetTexture("Interface\\RaidFrame\\Raid-Icon-Rez")
             icon:SetTexCoord(0, 1, 0, 1)
             icon:Show()
-        elseif button.states.hasRezDebuff or button.states.hasSoulstone then
+        elseif F.BD(button).states.hasRezDebuff or F.BD(button).states.hasSoulstone then
             icon:SetVertexColor(0.6, 1, 0.6, 1)
             icon:SetTexture("Interface\\RaidFrame\\Raid-Icon-Rez")
             icon:SetTexCoord(0, 1, 0, 1)
             icon:Show()
-        elseif UnitIsPlayer(unit) and UnitIsConnected(unit) and not UnitInPhase(unit) and not button.states.inVehicle then
+        elseif UnitIsPlayer(unit) and UnitIsConnected(unit) and not UnitInPhase(unit) and not F.BD(button).states.inVehicle then
             icon:SetTexture("Interface\\TargetingFrame\\UI-PhasingIcon")
             icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
             icon:Show()
@@ -355,9 +345,9 @@ else
         --     icon:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-Skull")
         --     icon:SetTexCoord(0, 1, 0, 1)
         --     icon:Show()
-        elseif button.states.BGFlag then
+        elseif F.BD(button).states.BGFlag then
             icon:SetVertexColor(1, 1, 1, 1)
-            icon:SetAtlas(button.states.BGFlag.."_icon_and_flag-dynamicIcon")
+            icon:SetAtlas(F.BD(button).states.BGFlag.."_icon_and_flag-dynamicIcon")
             icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
             icon:Show()
         else
@@ -382,22 +372,15 @@ function I.EnableStatusIcon(enabled)
         if not Cell.isMidnight then
             cleuFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
         else
-            -- Use UNIT_AURA for soulstone buff tracking and UNIT_HEALTH for
-            -- death detection. INCOMING_RESURRECT_CHANGED (above) handles
-            -- incoming rez detection via UnitHasIncomingResurrection().
-            if not (F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked()) then
-                cleuFrame:RegisterEvent("UNIT_AURA")
-            else
-                cleuFrame:UnregisterEvent("UNIT_AURA")
-            end
+            cleuFrame:UnregisterEvent("UNIT_AURA")
             cleuFrame:RegisterEvent("UNIT_HEALTH")
         end
     else
         eventFrame:UnregisterAllEvents()
         cleuFrame:UnregisterAllEvents()
         F.IterateAllUnitButtons(function(b)
-            b.indicators.statusIcon:Hide()
-            b.indicators.resurrectionIcon:Hide()
+            F.BD(b).indicators.statusIcon:Hide()
+            F.BD(b).indicators.resurrectionIcon:Hide()
         end)
     end
 end

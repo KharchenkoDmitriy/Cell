@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 local F = Cell.funcs
 local B = Cell.bFuncs
@@ -194,8 +194,9 @@ local function CreateAssignmentButton(index)
         if not f then return end -- cursor outside wow window
 
         local unitId
-        if f.states and f.states.displayedUnit then -- Cell
-            unitId = f.states.displayedUnit
+        local bd = F.BD(f)
+        if bd.states and bd.states.displayedUnit then -- Cell
+            unitId = bd.states.displayedUnit
         elseif f.unit then
             unitId = f.unit
         end
@@ -252,7 +253,7 @@ for i = 1, 15 do
     -- b:SetAttribute("unit", "player")
     -- RegisterUnitWatch(b)
     b:SetAllPoints(placeholders[i])
-    b.isSpotlight = true --! NOTE: prevent overwrite Cell.vars.guids and Cell.vars.names
+    F.BD(b).isSpotlight = true --! NOTE: prevent overwrite Cell.vars.guids and Cell.vars.names
 
     --! 天杀的 Secure Codes
     SecureHandlerSetFrameRef(b, "placeholder", placeholders[i])

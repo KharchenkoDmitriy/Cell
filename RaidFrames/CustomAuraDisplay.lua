@@ -1,8 +1,8 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local F = Cell.funcs
 local I = Cell.iFuncs
 
-local INIT_VERSION = 34
+local INIT_VERSION = 35
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -20,7 +20,6 @@ local HARD_EXCLUDE_SPELLS = {
 local stateByButton = setmetatable({}, { __mode = "k" })
 local cachedConfigs
 local featureReady
-local durationFormatter
 local buildQueue = {}
 local buildQueued = setmetatable({}, { __mode = "k" })
 local buildTicker
@@ -200,7 +199,7 @@ local function BuildFilter(castBy, auraType)
 end
 
 local function ResolveUnit(unitButton)
-    local unit = unitButton.states and (unitButton.states.displayedUnit or unitButton.states.unit)
+    local unit = F.BD(unitButton).states and (F.BD(unitButton).states.displayedUnit or F.BD(unitButton).states.unit)
     if type(unit) == "string" and unit ~= "" then
         return unit
     end
@@ -244,23 +243,7 @@ local function StyleFont(fs, fontCfg, defaultSize)
 end
 
 local function GetCellDurationFormatter()
-    if durationFormatter then return durationFormatter end
-    if C_StringUtil and C_StringUtil.CreateNumericRuleFormatter and Enum and Enum.NumericRuleFormatRounding then
-        local Up = Enum.NumericRuleFormatRounding.Up
-        local Down = Enum.NumericRuleFormatRounding.Down
-        local formatter = C_StringUtil.CreateNumericRuleFormatter()
-        local ok = pcall(formatter.SetBreakpoints, formatter, {
-            { threshold = 0,     format = "%d",  step = 1, rounding = Up },
-            { threshold = 60,    format = "%dm", step = 1, rounding = Down, components = { { div = 60 } } },
-            { threshold = 3600,  format = "%dh", step = 1, rounding = Down, components = { { div = 3600 } } },
-            { threshold = 86400, format = "%dd", step = 1, rounding = Down, components = { { div = 86400 } } },
-        })
-        if ok then
-            durationFormatter = formatter
-            return durationFormatter
-        end
-    end
-    return nil
+    return F.GetAuraDurationFormatter and F.GetAuraDurationFormatter() or nil
 end
 
 local function ShouldShowDuration(cfg)
@@ -436,6 +419,12 @@ local function AttachStackAndDuration(button, cfg, host, animFrame, skipDuration
         else
             stack:SetTextColor(1, 1, 1, 1)
         end
+        button._cellStackFS = stack
+        pcall(button.SetApplicationCount, button, stack, {})
+    else
+        local stack = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        stack:Hide()
+        button._cellStackFS = stack
         pcall(button.SetApplicationCount, button, stack, {})
     end
 
@@ -531,7 +520,7 @@ end
 
 local function AnchorColorOverlay(tex, unitButton, cfg)
     local anchor = (cfg and cfg.anchor) or "healthbar-current"
-    local w = unitButton.widgets
+    local w = F.BD(unitButton).widgets
     tex:ClearAllPoints()
     if anchor == "healthbar-current" and w and w.healthBar then
         tex:SetAllPoints(w.healthBar:GetStatusBarTexture())
@@ -571,7 +560,7 @@ local function ApplyColorOverlay(solidTex, gradientTex, cfg, unitButton)
 
     local r, g, b, a = 1, 0, 0.4, 1
     if kind == "class-color" then
-        r, g, b = F.GetClassColor(unitButton.states and unitButton.states.class)
+        r, g, b = F.GetClassColor(F.BD(unitButton).states and F.BD(unitButton).states.class)
         r, g, b, a = r or 1, g or 1, b or 1, 1
     elseif kind == "change-over-time" and type(colors[4]) == "table" then
         r, g, b, a = colors[4][1], colors[4][2], colors[4][3], colors[4][4] or 1
@@ -603,7 +592,7 @@ local function MakeInitColorButton(cfg, unitButton)
 
         ApplyColorOverlay(solidTex, gradientTex, cfg, unitButton)
 
-        local health = unitButton.widgets and unitButton.widgets.healthBar
+        local health = F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar
         local base = (health and health.GetFrameLevel and health:GetFrameLevel())
             or (unitButton.GetFrameLevel and unitButton:GetFrameLevel())
             or 1
@@ -665,7 +654,7 @@ local function MakeInitBorderButton(cfg, unitButton)
         mask2:SetPoint("BOTTOMRIGHT", tex2, "BOTTOMRIGHT", -(thickness + inset), thickness + inset)
         tex2:AddMaskTexture(mask2)
 
-        local host = unitButton.widgets and unitButton.widgets.highLevelFrame or unitButton
+        local host = F.BD(unitButton).widgets and F.BD(unitButton).widgets.highLevelFrame or unitButton
         local base = (host.GetFrameLevel and host:GetFrameLevel())
             or (unitButton.GetFrameLevel and unitButton:GetFrameLevel())
             or 1
@@ -690,13 +679,12 @@ local function MakeInitTextButton(cfg)
         local showStack = not (cfg.stack and cfg.stack[1] == false)
         if showDuration then
             F.BindAuraDurationText(button, text, GetCellDurationFormatter(), cfg.auras)
-            if showStack then
-                local stack = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-                stack:SetPoint("TOPRIGHT", 2, 1)
-                StyleFont(stack, cfg.font, size)
-                stack:SetTextColor(r, g, b, a)
-                pcall(button.SetApplicationCount, button, stack, {})
-            end
+            local stack = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+            stack:SetPoint("TOPRIGHT", 2, 1)
+            StyleFont(stack, cfg.font, size)
+            stack:SetTextColor(r, g, b, a)
+            pcall(button.SetApplicationCount, button, stack, {})
+            stack:SetShown(showStack)
         elseif showStack then
             pcall(button.SetApplicationCount, button, text, {})
         end
@@ -847,7 +835,7 @@ local function MakeInitOverlayButton(cfg, unitButton)
         F.SetupEngineAuraButtonMouse(button, true)
         AttachHiddenIcon(button)
 
-        local health = unitButton.widgets and unitButton.widgets.healthBar
+        local health = F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar
         local r, g, b, a = GetCfgColor(cfg, { 0, 0.61, 1, 0.55 })
 
         local bar = CreateFrame("StatusBar", nil, button)
@@ -897,59 +885,40 @@ local function MakeInitAuraButton(cfg)
             or (button.GetFrameLevel and button:GetFrameLevel())
             or 1
         textHost:SetFrameLevel(baseLevel + 10)
+        button._cellAuraTextHost = textHost
 
-        if cfg.showStack ~= false then
-            local stack = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-            local fontCfg = cfg.font and cfg.font[1]
-            local ox = (type(fontCfg) == "table" and fontCfg[6]) or 2
-            local oy = (type(fontCfg) == "table" and fontCfg[7]) or 1
-            stack:ClearAllPoints()
-            stack:SetPoint("TOPRIGHT", textHost, "TOPRIGHT", ox, oy)
-            stack:SetJustifyH("RIGHT")
-            StyleFont(stack, fontCfg, 11)
-            if type(fontCfg) == "table" and type(fontCfg[8]) == "table" then
-                stack:SetTextColor(fontCfg[8][1] or 1, fontCfg[8][2] or 1, fontCfg[8][3] or 1, fontCfg[8][4] or 1)
-            else
-                stack:SetTextColor(1, 1, 1, 1)
-            end
-            pcall(button.SetApplicationCount, button, stack, {})
-        end
+        local stack = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        stack:SetJustifyH("RIGHT")
+        button._cellStackFS = stack
+        pcall(button.SetApplicationCount, button, stack, {})
+        stack:SetShown(cfg.showStack ~= false)
 
         if ShouldShowDuration(cfg) then
             local duration = textHost:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-            local fontCfg = cfg.font and cfg.font[2]
-            local ox = (type(fontCfg) == "table" and fontCfg[6]) or 2
-            local oy = (type(fontCfg) == "table" and fontCfg[7]) or -1
-            duration:ClearAllPoints()
-            duration:SetPoint("BOTTOMRIGHT", textHost, "BOTTOMRIGHT", ox, oy)
             duration:SetJustifyH("RIGHT")
-            StyleFont(duration, fontCfg, 11)
-            if type(fontCfg) == "table" and type(fontCfg[8]) == "table" then
-                duration:SetTextColor(fontCfg[8][1] or 1, fontCfg[8][2] or 1, fontCfg[8][3] or 1, fontCfg[8][4] or 1)
-            else
-                duration:SetTextColor(1, 1, 1, 1)
-            end
             button._cellDurationFS = duration
             F.BindAuraDurationText(button, duration, GetCellDurationFormatter(), cfg.auras)
         end
+
+        F.RestyleEngineAuraButtonFonts(button, cfg, StyleFont)
     end
 end
 
 local function ResolveContainerParent(unitButton, cfg)
-    if cfg and cfg.type == "border" and unitButton.widgets and unitButton.widgets.highLevelFrame then
-        return unitButton.widgets.highLevelFrame
+    if cfg and cfg.type == "border" and F.BD(unitButton).widgets and F.BD(unitButton).widgets.highLevelFrame then
+        return F.BD(unitButton).widgets.highLevelFrame
     end
-    if cfg and cfg.type == "overlay" and unitButton.widgets and unitButton.widgets.healthBar then
-        return unitButton.widgets.healthBar
+    if cfg and cfg.type == "overlay" and F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar then
+        return F.BD(unitButton).widgets.healthBar
     end
-    if unitButton.widgets and unitButton.widgets.indicatorFrame then
-        return unitButton.widgets.indicatorFrame
+    if F.BD(unitButton).widgets and F.BD(unitButton).widgets.indicatorFrame then
+        return F.BD(unitButton).widgets.indicatorFrame
     end
     return unitButton
 end
 
 local function HideLegacy(unitButton, indicatorName)
-    local ind = unitButton.indicators and indicatorName and unitButton.indicators[indicatorName]
+    local ind = F.BD(unitButton).indicators and indicatorName and F.BD(unitButton).indicators[indicatorName]
     if not ind then return end
     if ind.StopGlow then
         pcall(ind.StopGlow, ind)
@@ -959,7 +928,7 @@ local function HideLegacy(unitButton, indicatorName)
 end
 
 local function ShowLegacy(unitButton, indicatorName)
-    local ind = unitButton.indicators and indicatorName and unitButton.indicators[indicatorName]
+    local ind = F.BD(unitButton).indicators and indicatorName and F.BD(unitButton).indicators[indicatorName]
     if not ind then return end
     if ind.SetAlpha then ind:SetAlpha(1) end
 end
@@ -1035,8 +1004,8 @@ local function AnchorContainer(container, unitButton, cfg)
     local x, y = pos[4] or 0, pos[5] or 0
 
     local relativeTo = unitButton
-    if relative == "healthBar" and unitButton.widgets and unitButton.widgets.healthBar then
-        relativeTo = unitButton.widgets.healthBar
+    if relative == "healthBar" and F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar then
+        relativeTo = F.BD(unitButton).widgets.healthBar
     end
 
     container:ClearAllPoints()
@@ -1112,6 +1081,7 @@ end
 local function ApplyCustomTuning(container, cfg)
     if not (container and cfg) then return end
     F.ApplyAuraGroupTuning(container, cfg.indicatorName, BuildFilter(cfg.castBy, cfg.auraType), CustomTuneOpts(cfg))
+    F.RestyleAuraContainerFonts(container, cfg, StyleFont)
 end
 
 local function CreateCustomContainer(unitButton, cfg, existing)
@@ -1209,7 +1179,7 @@ local function DriveContainer(unitButton, cfg, enable)
     local map = stateByButton[unitButton]
     local st = map and map[cfg.indicatorName]
     if not (st and st.container and cfg) then return end
-    if Cell.vars.editModeOpen then
+    if Cell.funcs.IsEditModeOpen and Cell.funcs.IsEditModeOpen() then
         return
     end
     local unit = ResolveUnit(unitButton)
@@ -1299,7 +1269,7 @@ local function PumpBuildQueue()
     local b = table.remove(buildQueue, 1)
     while b do
         buildQueued[b] = nil
-        if b._indicatorsReady then
+        if F.BD(b)._indicatorsReady then
             break
         end
         b = table.remove(buildQueue, 1)
@@ -1329,8 +1299,10 @@ EnqueueBuild = function(unitButton)
 end
 
 local function SyncButton(unitButton, allowCreate)
-    if not unitButton or not unitButton._indicatorsReady then return end
-    local list = RefreshCachedConfigs()
+    if not unitButton or not F.BD(unitButton)._indicatorsReady then return end
+    -- Cache-aware like PumpBuildQueue above -- this runs once per button on
+    -- every roster reshuffle, and the config only changes when the layout does.
+    local list = cachedConfigs or RefreshCachedConfigs()
     if allowCreate == nil then
         allowCreate = true
     end
@@ -1362,7 +1334,7 @@ local function SyncButton(unitButton, allowCreate)
                     st.container:Hide()
                 end
                 ShowLegacy(unitButton, name)
-                local ind = unitButton.indicators and unitButton.indicators[name]
+                local ind = F.BD(unitButton).indicators and F.BD(unitButton).indicators[name]
                 if ind and (ind.indicatorType == "color" or ind.indicatorType == "border"
                     or ind.indicatorType == "glow" or ind.indicatorType == "overlay"
                     or ind.indicatorType == "texture") then

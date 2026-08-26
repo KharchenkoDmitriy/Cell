@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 ---@type CellFuncs
 local F = Cell.funcs
@@ -14,7 +14,7 @@ local I = Cell.iFuncs
 -- re-enabled if a suitable non-CLEU API becomes available in a future build.
 
 local function Display(b)
-    b.indicators.aoeHealing:Display()
+    F.BD(b).indicators.aoeHealing:Display()
 end
 
 local eventFrame = CreateFrame("Frame")
@@ -46,10 +46,10 @@ if not Cell.isMidnight then
 end
 
 function I.CreateAoEHealing(parent)
-    local aoeHealing = CreateFrame("Frame", parent:GetName().."AoEHealing", parent.widgets.indicatorFrame)
-    parent.indicators.aoeHealing = aoeHealing
-    aoeHealing:SetPoint("TOPLEFT", parent.widgets.healthBar)
-    aoeHealing:SetPoint("TOPRIGHT", parent.widgets.healthBar)
+    local aoeHealing = CreateFrame("Frame", parent:GetName().."AoEHealing", F.BD(parent).widgets.indicatorFrame)
+    F.BD(parent).indicators.aoeHealing = aoeHealing
+    aoeHealing:SetPoint("TOPLEFT", F.BD(parent).widgets.healthBar)
+    aoeHealing:SetPoint("TOPRIGHT", F.BD(parent).widgets.healthBar)
     aoeHealing:Hide()
 
     aoeHealing.tex = aoeHealing:CreateTexture(nil, "ARTWORK")

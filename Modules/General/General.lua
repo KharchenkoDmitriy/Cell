@@ -317,10 +317,10 @@ end
 -------------------------------------------------
 -- misc
 -------------------------------------------------
-local alwaysUpdateAurasCB, translitCB
+local alwaysUpdateAurasCB, translitCB, suppressLuaErrorsCB
 
 local function CreateMiscPane()
-    local miscPane = Cell.CreateTitledPane(generalTab, L["Misc"], 205, 105)
+    local miscPane = Cell.CreateTitledPane(generalTab, L["Misc"], 205, 140)
     miscPane:SetPoint("TOPLEFT", generalTab, 222, -300)
 
     alwaysUpdateAurasCB = Cell.CreateCheckButton(miscPane, L["Always Update Auras"], function(checked, self)
@@ -330,13 +330,19 @@ local function CreateMiscPane()
     alwaysUpdateAurasCB:SetPoint("TOPLEFT", 5, -27)
     alwaysUpdateAurasCB:SetEnabled(Cell.isMists)
 
-    -- NOTE: useCleuHealthUpdater (Faster Health Updates) was removed in r275.
-
     translitCB = Cell.CreateCheckButton(miscPane, L["Translit Cyrillic to Latin"], function(checked, self)
         CellDB["general"]["translit"] = checked
         Cell.Fire("TranslitNames")
     end)
     translitCB:SetPoint("TOPLEFT", alwaysUpdateAurasCB, "BOTTOMLEFT", 0, -9)
+
+    suppressLuaErrorsCB = Cell.CreateCheckButton(miscPane, L["Suppress Lua Errors"], function(checked, self)
+        CellDB["general"]["suppressLuaErrors"] = checked
+        if F.ApplySuppressLuaErrors then
+            F.ApplySuppressLuaErrors()
+        end
+    end)
+    suppressLuaErrorsCB:SetPoint("TOPLEFT", translitCB, "BOTTOMLEFT", 0, -9)
 end
 
 -------------------------------------------------
@@ -537,6 +543,10 @@ local function ShowTab(tab)
         alwaysUpdateAurasCB:SetChecked(CellDB["general"]["alwaysUpdateAuras"])
         framePriorityWidget:Load(CellDB["general"]["framePriority"])
         translitCB:SetChecked(CellDB["general"]["translit"])
+        if CellDB["general"]["suppressLuaErrors"] == nil then
+            CellDB["general"]["suppressLuaErrors"] = true
+        end
+        suppressLuaErrorsCB:SetChecked(CellDB["general"]["suppressLuaErrors"])
 
     else
         generalTab:Hide()

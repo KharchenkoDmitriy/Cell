@@ -813,6 +813,12 @@ function F.Revise()
         if type(CellDB["appearance"]["outOfRangeAlpha"]) ~= "number" then
             CellDB["appearance"]["outOfRangeAlpha"] = 0.45
         end
+        if type(CellDB["appearance"]["healthFadeEnabled"]) ~= "boolean" then
+            CellDB["appearance"]["healthFadeEnabled"] = false
+        end
+        if type(CellDB["appearance"]["healthFadeThreshold"]) ~= "number" then
+            CellDB["appearance"]["healthFadeThreshold"] = 0.9
+        end
     end
 
     -- r48-release
@@ -3719,6 +3725,15 @@ function F.Revise()
                     if t["indicatorName"] == "debuffs" and t["nonPlayerAuras"] == nil then
                         t["nonPlayerAuras"] = false
                     end
+                    if t["indicatorName"] == "debuffs" and t["thickness"] == nil then
+                        t["thickness"] = 3
+                    end
+                    if t["indicatorName"] == "debuffs" and type(t["showDispelBorder"]) ~= "boolean" then
+                        t["showDispelBorder"] = true
+                    end
+                    if t["indicatorName"] == "raidDebuffs" and type(t["showStack"]) ~= "boolean" then
+                        t["showStack"] = true
+                    end
                     if t["animationStyle"] == nil then
                         if t["showAnimation"] == false then
                             t["animationStyle"] = "none"
@@ -3726,6 +3741,16 @@ function F.Revise()
                             local cs = CellDB["appearance"] and CellDB["appearance"]["cooldownStyle"]
                             t["animationStyle"] = (cs == "VERTICAL" or cs == "vertical") and "vertical" or "clock"
                         end
+                    end
+                end
+                if t and t["indicatorName"] == "dispels" and t["thickness"] == nil then
+                    t["thickness"] = 3
+                end
+                if t and t["name"] == "Healers" and t["animationStyle"] == nil then
+                    if t["showAnimation"] == false then
+                        t["animationStyle"] = "none"
+                    else
+                        t["animationStyle"] = "clock"
                     end
                 end
                 if t and (t["indicatorName"] == "externalCooldowns" or t["indicatorName"] == "defensiveCooldowns" or t["indicatorName"] == "offensiveCooldowns" or t["indicatorName"] == "allCooldowns") then
@@ -3873,6 +3898,26 @@ function F.Revise()
                 for _, i in pairs(layout["indicators"]) do
                     if i["indicatorName"] == "aoeHealing" or i["indicatorName"] == "tankActiveMitigation" then
                         i["enabled"] = false
+                    end
+                end
+            end
+        end
+    end
+
+    if Cell.isRetail then
+        for _, layout in pairs(CellDB["layouts"]) do
+            if type(layout["indicators"]) == "table" then
+                for _, i in pairs(layout["indicators"]) do
+                    if i["indicatorName"] == "raidDebuffs" then
+                        if i["name"] == "Boss Debuffs" then
+                            i["name"] = "Highlight Debuffs"
+                        end
+                        if type(i["filterClasses"]) ~= "table" then
+                            i["filterClasses"] = {["bossaura"] = true}
+                        end
+                        if Cell.isMidnight then
+                            i["border"] = nil
+                        end
                     end
                 end
             end

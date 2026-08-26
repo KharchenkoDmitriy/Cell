@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 ---@type CellFuncs
 local F = Cell.funcs
@@ -40,12 +40,12 @@ local function CreatePreviewButton()
     previewButton:SetScript("OnUpdate", nil)
     previewButton:Show()
 
-    previewButton.states.class = Cell.vars.playerClass
+    F.BD(previewButton).states.class = Cell.vars.playerClass
 
-    previewButton.widgets.healthBar:SetMinMaxValues(0, 1)
-    previewButton.widgets.healthBar:SetValue(1)
-    previewButton.widgets.powerBar:SetMinMaxValues(0, 1)
-    previewButton.widgets.powerBar:SetValue(1)
+    F.BD(previewButton).widgets.healthBar:SetMinMaxValues(0, 1)
+    F.BD(previewButton).widgets.healthBar:SetValue(1)
+    F.BD(previewButton).widgets.powerBar:SetMinMaxValues(0, 1)
+    F.BD(previewButton).widgets.powerBar:SetValue(1)
 
     previewButtonBG = Cell.CreateFrame("CellIndicatorsPreviewButtonBG", indicatorsTab)
     previewButtonBG:SetPoint("TOPLEFT", indicatorsTab, "TOPRIGHT", 5, -1)
@@ -106,19 +106,19 @@ local function UpdatePreviewButton()
 
     previewButtonBG:UpdateSize()
 
-    previewButton.widgets.healthBar:SetStatusBarTexture(Cell.vars.texture)
-    previewButton.widgets.healthBar:GetStatusBarTexture():SetDrawLayer("ARTWORK", -7) --! VERY IMPORTANT
-    previewButton.widgets.powerBar:SetStatusBarTexture(Cell.vars.texture)
-    previewButton.widgets.powerBar:GetStatusBarTexture():SetDrawLayer("ARTWORK", -7) --! VERY IMPORTANT
+    F.BD(previewButton).widgets.healthBar:SetStatusBarTexture(Cell.vars.texture)
+    F.BD(previewButton).widgets.healthBar:GetStatusBarTexture():SetDrawLayer("ARTWORK", -7) --! VERY IMPORTANT
+    F.BD(previewButton).widgets.powerBar:SetStatusBarTexture(Cell.vars.texture)
+    F.BD(previewButton).widgets.powerBar:GetStatusBarTexture():SetDrawLayer("ARTWORK", -7) --! VERY IMPORTANT
 
     -- health color
     local r, g, b, lossR, lossG, lossB = F.GetHealthBarColor(1, false, F.GetClassColor(Cell.vars.playerClass))
-    previewButton.widgets.healthBar:SetStatusBarColor(r, g, b, CellDB["appearance"]["barAlpha"])
-    previewButton.widgets.healthBarLoss:SetVertexColor(lossR, lossG, lossB, CellDB["appearance"]["lossAlpha"])
+    F.BD(previewButton).widgets.healthBar:SetStatusBarColor(r, g, b, CellDB["appearance"]["barAlpha"])
+    F.BD(previewButton).widgets.healthBarLoss:SetVertexColor(lossR, lossG, lossB, CellDB["appearance"]["lossAlpha"])
 
     -- power color
     r, g, b = F.GetPowerBarColor("player", Cell.vars.playerClass)
-    previewButton.widgets.powerBar:SetStatusBarColor(r, g, b)
+    F.BD(previewButton).widgets.powerBar:SetStatusBarColor(r, g, b)
 
     -- bg alpha
     previewButton:SetBackdropColor(0, 0, 0, CellDB["appearance"]["bgAlpha"])
@@ -157,12 +157,10 @@ end
 
 local function SetOnUpdate(indicator, type, icon, stack, extra)
     indicator.preview = indicator.preview or CreateFrame("Frame", nil, indicator)
-    -- is visible as base and black fills in (matches in-game SetCooldownFromAura).
     local isMidnightBorderIcon = Cell.isMidnight and indicator.cooldown
         and indicator.cooldown._SetCooldown and not indicator.cooldown.SetMinMaxValues
     local function doPreview()
         if isMidnightBorderIcon and not type then
-            -- Buff cooldowns (no debuff type): green = player cast, yellow = others
             indicator.icon:SetTexture(icon)
             indicator.stack:SetText(stack and stack > 1 and stack or "")
             if indicator.cooldown then
@@ -233,12 +231,12 @@ end
 
 -- init preview button indicator animation
 local function InitIndicator(indicatorName)
-    local indicator = previewButton.indicators[indicatorName]
+    local indicator = F.BD(previewButton).indicators[indicatorName]
     if indicator.init then return end
 
     if indicatorName == "nameText" then
-        previewButton.states.name = UnitName("player")
-        previewButton.states.isPlayer = true
+        F.BD(previewButton).states.name = UnitName("player")
+        F.BD(previewButton).states.isPlayer = true
         indicator.isPreview = true
         indicator:UpdateName()
         indicator:UpdateVehicleName()
@@ -466,8 +464,15 @@ local function InitIndicator(indicatorName)
         indicator.SetDispels = function(self, dispelTypes)
             local r, g, b = 0, 0, 0
             local found
+            local foundBorder
 
             self.highlight:Hide()
+            if self._frameBorderEnabled and self.frameBorderTop then
+                self.frameBorderTop:Hide()
+                self.frameBorderBottom:Hide()
+                self.frameBorderLeft:Hide()
+                self.frameBorderRight:Hide()
+            end
 
             for dispelType, showHighlight in pairs(dispelTypes) do
                 -- highlight
@@ -488,6 +493,21 @@ local function InitIndicator(indicatorName)
                         self.highlight:SetVertexColor(r, g, b, 0.5)
                     end
                     if indicator.isVisible then self.highlight:Show() end
+                end
+                -- frame border (independent of highlightType, uses its own toggle)
+                if not foundBorder and self._frameBorderEnabled and self.frameBorderTop and dispelType and showHighlight then
+                    foundBorder = true
+                    local br, bg, bb = I.GetDebuffTypeColor(dispelType)
+                    self.frameBorderTop:SetVertexColor(br, bg, bb, 1)
+                    self.frameBorderBottom:SetVertexColor(br, bg, bb, 1)
+                    self.frameBorderLeft:SetVertexColor(br, bg, bb, 1)
+                    self.frameBorderRight:SetVertexColor(br, bg, bb, 1)
+                    if indicator.isVisible then
+                        self.frameBorderTop:Show()
+                        self.frameBorderBottom:Show()
+                        self.frameBorderLeft:Show()
+                        self.frameBorderRight:Show()
+                    end
                 end
                 -- icons
                 if self.showIcons then
@@ -527,19 +547,21 @@ local function InitIndicator(indicatorName)
     elseif indicatorName == "raidDebuffs" then
         indicator.isRaidDebuffs = true
         local types = {"", "Curse", "Magic"}
-        local isMidnightBorderIcon = Cell.isMidnight and indicator[1] and indicator[1].cooldown
-            and indicator[1].cooldown._SetCooldown and not indicator[1].cooldown.SetMinMaxValues
+        local function HideBorder(i)
+            if indicator[i].border then
+                indicator[i].border:Hide()
+            end
+        end
         for i = 1, 3 do
             indicator[i]:HookScript("OnShow", function()
-                indicator[i]:SetCooldown(GetTime(), 13, types[i], "Interface\\Icons\\INV_Misc_QuestionMark", 7)
-                if isMidnightBorderIcon then
-                    ApplyMidnightBorderIconPreview(indicator[i], types[i])
+                if indicator[i].SetCooldownStyle and indicator[i].style ~= "CLOCK" then
+                    indicator[i]:SetCooldownStyle("CLOCK")
                 end
+                indicator[i]:SetCooldown(GetTime(), 13, types[i], "Interface\\Icons\\INV_Misc_QuestionMark", 7)
+                HideBorder(i)
                 indicator[i].cooldown:SetScript("OnCooldownDone", function()
                     indicator[i]:SetCooldown(GetTime(), 13, types[i], "Interface\\Icons\\INV_Misc_QuestionMark", 7)
-                    if isMidnightBorderIcon then
-                        ApplyMidnightBorderIconPreview(indicator[i], types[i])
-                    end
+                    HideBorder(i)
                 end)
             end)
             indicator[i]:HookScript("OnHide", function()
@@ -736,7 +758,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             I.RemoveAllCustomIndicators(previewButton)
 
             for i, t in pairs(currentLayoutTable["indicators"]) do
-                local indicator = previewButton.indicators[t["indicatorName"]] or I.CreateIndicator(previewButton, t)
+                local indicator = F.BD(previewButton).indicators[t["indicatorName"]] or I.CreateIndicator(previewButton, t)
                 indicator.configs = t
 
                 InitIndicator(t["indicatorName"])
@@ -746,7 +768,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                         indicator:SetPosition(t["position"][1], t["position"][2], t["position"][3])
                     else
                         P.ClearPoints(indicator)
-                        local relativeTo = t["position"][2] == "healthBar" and previewButton.widgets.healthBar or previewButton
+                        local relativeTo = t["position"][2] == "healthBar" and F.BD(previewButton).widgets.healthBar or previewButton
                         P.Point(indicator, t["position"][1], relativeTo, t["position"][3], t["position"][4], t["position"][5])
                     end
                 end
@@ -767,9 +789,21 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                         P.Size(indicator, t["size"][1], t["size"][2])
                     end
                 end
-                -- update thickness
+                -- update thickness (+ dispel border on/off for debuffs, "off" = 0 thickness)
                 if t["thickness"] then
-                    indicator:SetThickness(t["thickness"])
+                    if t["indicatorName"] == "debuffs" then
+                        if indicator.SetBorder then
+                            local on = t["showDispelBorder"] ~= false
+                            indicator:SetBorder(on and t["thickness"] or 0)
+                        end
+                    elseif t["indicatorName"] == "dispels" then
+                        if indicator.SetFrameBorderThickness then
+                            indicator:SetFrameBorderThickness(t["thickness"])
+                            indicator:SetFrameBorderEnabled(t["showDispelFrameBorder"] == true)
+                        end
+                    else
+                        indicator:SetThickness(t["thickness"])
+                    end
                     if t["indicatorName"] == "healthThresholds" then
                         indicator:UpdateThresholdsPreview()
                     end
@@ -779,7 +813,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     indicator:UpdateTextWidth(t["textWidth"])
                 end
                 -- update border
-                if t["border"] then
+                if t["border"] and indicator.SetBorder then
                     indicator:SetBorder(t["border"])
                 end
                 -- update height
@@ -938,7 +972,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             B.UpdatePixelPerfect(previewButton, true)
         end
     else
-        local indicator = previewButton.indicators[indicatorName]
+        local indicator = F.BD(previewButton).indicators[indicatorName]
         -- changed in IndicatorsTab
         if setting == "enabled" then
             indicator.enabled = value
@@ -963,7 +997,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 indicator:SetPosition(value[1], value[2], value[3])
             else
                 P.ClearPoints(indicator)
-                local relativeTo = value[2] == "healthBar" and previewButton.widgets.healthBar or previewButton
+                local relativeTo = value[2] == "healthBar" and F.BD(previewButton).widgets.healthBar or previewButton
                 P.Point(indicator, value[1], relativeTo, value[3], value[4], value[5])
             end
             -- update arrangement
@@ -985,7 +1019,20 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             P.Size(indicator, value[1], value[2])
             indicator:SetBorder(value[3])
         elseif setting == "thickness" then
-            indicator:SetThickness(value)
+            if indicatorName == "debuffs" then
+                if indicator.configs then indicator.configs.thickness = value end
+                if indicator.SetBorder then
+                    local on = not (indicator.configs and indicator.configs.showDispelBorder == false)
+                    indicator:SetBorder(on and value or 0)
+                end
+            elseif indicatorName == "dispels" then
+                if indicator.configs then indicator.configs.thickness = value end
+                if indicator.SetFrameBorderThickness then
+                    indicator:SetFrameBorderThickness(value)
+                end
+            else
+                indicator:SetThickness(value)
+            end
             if indicatorName == "healthThresholds" then
                 indicator:UpdateThresholdsPreview()
             end
@@ -1113,6 +1160,17 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end
             elseif value == "showStack" then
                 indicator:ShowStack(value2)
+            elseif value == "showDispelBorder" then
+                if indicator.configs then indicator.configs.showDispelBorder = value2 end
+                if indicator.SetBorder then
+                    local thickness = (indicator.configs and indicator.configs.thickness) or 3
+                    indicator:SetBorder(value2 and thickness or 0)
+                end
+            elseif value == "showDispelFrameBorder" then
+                if indicator.configs then indicator.configs.showDispelFrameBorder = value2 end
+                if indicator.SetFrameBorderEnabled then
+                    indicator:SetFrameBorderEnabled(value2)
+                end
             elseif value == "fadeOut" then
                 indicator:SetFadeOut(value2)
                 -- indicator:SetCooldown(GetTime(), 13)
@@ -1128,7 +1186,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             -- update position
             if value["position"] then
                 P.ClearPoints(indicator)
-                local relativeTo = value["position"][2] == "healthBar" and previewButton.widgets.healthBar or previewButton
+                local relativeTo = value["position"][2] == "healthBar" and F.BD(previewButton).widgets.healthBar or previewButton
                 P.Point(indicator, value["position"][1], relativeTo, value["position"][3], value["position"][4], value["position"][5])
             end
             -- update anchor
@@ -1139,9 +1197,21 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             if value["size"] then
                 P.Size(indicator, value["size"][1], value["size"][2])
             end
-            -- update thickness
+            -- update thickness (+ dispel border on/off for debuffs, "off" = 0 thickness)
             if value["thickness"] then
-                indicator:SetThickness(value["thickness"])
+                if indicatorName == "debuffs" then
+                    if indicator.SetBorder then
+                        local on = value["showDispelBorder"] ~= false
+                        indicator:SetBorder(on and value["thickness"] or 0)
+                    end
+                elseif indicatorName == "dispels" then
+                    if indicator.SetFrameBorderThickness then
+                        indicator:SetFrameBorderThickness(value["thickness"])
+                        indicator:SetFrameBorderEnabled(value["showDispelFrameBorder"] == true)
+                    end
+                else
+                    indicator:SetThickness(value["thickness"])
+                end
             end
             -- update frameLevel
             if value["frameLevel"] then
@@ -1546,6 +1616,12 @@ local typeItems = {
         ["value"] = "texture",
     },
 }
+if Cell.isRetail then
+    tinsert(typeItems, 2, {
+        ["text"] = L["Boss Debuffs"],
+        ["value"] = "highlightDebuffs",
+    })
+end
 
 local auraTypeItems = {
     {
@@ -1756,9 +1832,11 @@ end
 local indicatorSettings
 local DEBUFFS_TOOLTIP1 = L["This will make these icons not click-through-able"].."|"..L["Tooltips need to be enabled in General tab"]
 local DEBUFFS_TOOLTIP2 = L["This will make these icons not click-through-able"]
+local DEBUFFS_TOOLTIP3 = "Shows a colored border around debuffs indicating their dispel type (Magic/Curse/Disease/Poison/Bleed)."
+local DISPELS_FRAME_BORDER_TOOLTIP = "Shows a colored border around the whole unit frame indicating the dispel type, instead of only highlighting the health bar."
 local TARGETED_SPELLS_PARTY_NOTE = "|cffb7b7b7Works in party only (not in raid). Enemy nameplates must be enabled.|r"
 local TARGETED_SPELLS_PTR_WARNING = "warning:On current Midnight Patch, many dungeon casts hide the cast target from addons, so icons/glow may not appear even when the spell is listed."
-local midnightDurationFont = Cell.isMidnight and "font-noOffset:durationFont" or "font2:durationFont"
+local midnightDurationFont = "font2:durationFont"
 local midnightDurationVisibility = Cell.isMidnight and "durationVisibilitySimple" or "durationVisibility"
 if Cell.isRetail or Cell.isMists then
     indicatorSettings = {
@@ -1805,11 +1883,13 @@ if Cell.isRetail or Cell.isMists then
         ["tankActiveMitigation"] = Cell.isMidnight
             and {"warning:"..(L["tankActiveMitigationDisabledApiWarning"] or ""), "|cffb7b7b7"..I.GetTankActiveMitigationString(), "enabled", "color-class", "size", "position", "frameLevel"}
             or {"|cffb7b7b7"..I.GetTankActiveMitigationString(), "enabled", "color-class", "size", "position", "frameLevel"},
-        ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
+        ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "checkbutton-thickness:showDispelFrameBorder:"..DISPELS_FRAME_BORDER_TOOLTIP, "size-square", "position", "frameLevel"},
         ["debuffs"] = Cell.isRetail
-            and {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "size-square", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
-            or {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "size-border", "num:3", "privateAuraOrientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+            and {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "size-square", "num:10", "orientation", "checkbutton-thickness:showDispelBorder:"..DEBUFFS_TOOLTIP3, "position", "frameLevel", "font1:stackFont", midnightDurationFont}
+            or {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "bigDebuffs", midnightDurationVisibility, "checkbutton2:showAnimation", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "checkbutton-thickness:showDispelBorder:"..DEBUFFS_TOOLTIP3, "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["raidDebuffs"] = Cell.isRetail
+            and {"warning:"..(L["bossDebuffsApiWarning"] or ""), "enabled", "highlightDebuffFilters", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "size-square", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
+            or {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["privateAuras"] = {"|cffb7b7b7"..L["Due to restrictions of the private aura system, this indicator can only use Blizzard style."], "warning:"..L["Private auras are controlled by Blizzard. Positioning and style are limited, and changes may be delayed until combat ends."], "enabled", "privateAuraOptions", "size-square", "numPerLine:5", "spacing", "privateAuraOrientation", "position", "frameLevel"},
         ["targetedSpells"] = {TARGETED_SPELLS_PTR_WARNING, TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "warning:"..L["Target Counter depends on visible enemy nameplates and can be inaccurate when nameplates are hidden or restricted."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
@@ -1853,9 +1933,9 @@ elseif Cell.isCata or Cell.isWrath then
         ["externalCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInExternals", "customExternals", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["defensiveCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInDefensives", "customDefensives", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["allCooldowns"] = {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
-        ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "animationStyle", "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "checkbutton-thickness:showDispelFrameBorder:"..DISPELS_FRAME_BORDER_TOOLTIP, "size-square", "position", "frameLevel"},
+        ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "checkbutton-thickness:showDispelBorder:"..DEBUFFS_TOOLTIP3, "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["targetedSpells"] = {TARGETED_SPELLS_PTR_WARNING, TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
         ["actions"] = {"|cffb7b7b7"..L["Play animation when the unit uses a specific spell/item. The list is global shared, not layout-specific."], "enabled", "actionsPreview", "actionsList"},
@@ -1889,9 +1969,9 @@ elseif Cell.isVanilla or Cell.isTBC then
         ["externalCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInExternals", "customExternals", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["defensiveCooldowns"] = {L["Even if disabled, the settings below affect \"Externals + Defensives\" indicator"], "enabled", "builtInDefensives", "customDefensives", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["allCooldowns"] = {"enabled", midnightDurationVisibility, "checkbutton:showAnimation", "size", "num:5", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "size-square", "position", "frameLevel"},
-        ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
-        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "animationStyle", "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["dispels"] = {"enabled", "dispelFilters", "highlightType", "dispelBlacklist", "iconStyle", "orientation", "checkbutton-thickness:showDispelFrameBorder:"..DISPELS_FRAME_BORDER_TOOLTIP, "size-square", "position", "frameLevel"},
+        ["debuffs"] = {"enabled", "checkbutton:dispellableByMe", "checkbutton6:nonPlayerAuras:"..(L["nonPlayerAurasTip"] or ""), "debuffBlacklist", "bigDebuffs", midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "checkbutton3:showTooltip:"..DEBUFFS_TOOLTIP1, "checkbutton4:enableBlacklistShortcut:"..DEBUFFS_TOOLTIP2, "size-normal-big", "num:10", "orientation", "checkbutton-thickness:showDispelBorder:"..DEBUFFS_TOOLTIP3, "position", "frameLevel", "font1:stackFont", midnightDurationFont},
+        ["raidDebuffs"] = {"|cffb7b7b7"..L["You can config debuffs in %s"]:format(Cell.GetAccentColorString()..L["Raid Debuffs"].."|r"), "enabled", "checkbutton2:showTooltip:"..DEBUFFS_TOOLTIP1, midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", "size-border", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont},
         ["targetedSpells"] = {TARGETED_SPELLS_PTR_WARNING, TARGETED_SPELLS_PARTY_NOTE, "enabled", "checkbutton:showAllSpells", "targetedSpellsList", "targetedSpellsDisplayMode", "size-border", "num:3", "orientation", "position", "frameLevel", "font"},
         ["targetCounter"] = {"|cffff2727"..L["HIGH CPU USAGE"].."!|r |cffb7b7b7"..L["Check all visible enemy nameplates."], "enabled", "targetCounterFilters", "color", "position", "frameLevel", "font-noOffset"},
         ["actions"] = {"|cffb7b7b7"..L["Play animation when the unit uses a specific spell/item. The list is global shared, not layout-specific."], "enabled", "actionsPreview", "actionsList"},
@@ -1924,9 +2004,9 @@ local function ShowIndicatorSettings(id)
     -- texplore(indicatorTable)
 
     if indicatorType == "color" then
-        previewButton.widgets.healthBar:SetValue(0.5)
+        F.BD(previewButton).widgets.healthBar:SetValue(0.5)
     else
-        previewButton.widgets.healthBar:SetValue(1)
+        F.BD(previewButton).widgets.healthBar:SetValue(1)
     end
 
     local settingsTable
@@ -1962,6 +2042,8 @@ local function ShowIndicatorSettings(id)
             settingsTable = {"enabled", "auras-picker", "checkbutton3:showStack", "durationVisibility", "animationStyle", "size", "num:10", "numPerLine:10", "spacing", "orientation", "position", "frameLevel", "font1:stackFont", "font2:durationFont"}
         elseif indicatorType == "border" then
             settingsTable = {"enabled", "checkbutton3:fadeOut", "auras-picker", "thickness", "frameLevel:50"}
+        elseif indicatorType == "highlightDebuffs" then
+            settingsTable = {"warning:"..(L["bossDebuffsApiWarning"] or ""), "enabled", "highlightDebuffFilters", midnightDurationVisibility, "animationStyle", "checkbutton5:showStack", CELL_RECTANGULAR_CUSTOM_INDICATOR_ICONS and "size" or "size-square", "num:3", "orientation", "position", "frameLevel", "font1:stackFont", midnightDurationFont}
         end
 
         local durationCheckboxTypes = {
@@ -1984,9 +2066,51 @@ local function ShowIndicatorSettings(id)
                     settingsTable[i] = "animationStyle"
                 end
             end
+        elseif indicatorTable["name"] == "Healers" then
+            for i = #settingsTable, 1, -1 do
+                if settingsTable[i] == "checkbutton4:showAnimation" then
+                    settingsTable[i] = "animationStyle"
+                end
+            end
+            if indicatorTable["animationStyle"] == nil then
+                if indicatorTable["showAnimation"] == false then
+                    indicatorTable["animationStyle"] = "none"
+                else
+                    indicatorTable["animationStyle"] = "clock"
+                end
+            end
+        elseif indicatorName == "raidDebuffs" then
+            if type(indicatorTable["showStack"]) ~= "boolean" then
+                indicatorTable["showStack"] = true
+            end
+            if indicatorTable["animationStyle"] == nil then
+                if indicatorTable["showAnimation"] == false then
+                    indicatorTable["animationStyle"] = "none"
+                else
+                    local cs = CellDB["appearance"] and CellDB["appearance"]["cooldownStyle"]
+                    indicatorTable["animationStyle"] = (cs == "VERTICAL" or cs == "vertical") and "vertical" or "clock"
+                end
+            end
+        elseif indicatorName == "debuffs" then
+            -- Bring the animation dropdown in line with Healers/Raid Debuffs.
+            for i = #settingsTable, 1, -1 do
+                if settingsTable[i] == "checkbutton2:showAnimation" then
+                    settingsTable[i] = "animationStyle"
+                end
+            end
+            if indicatorTable["animationStyle"] == nil then
+                if indicatorTable["showAnimation"] == false then
+                    indicatorTable["animationStyle"] = "none"
+                else
+                    local cs = CellDB["appearance"] and CellDB["appearance"]["cooldownStyle"]
+                    indicatorTable["animationStyle"] = (cs == "VERTICAL" or cs == "vertical") and "vertical" or "clock"
+                end
+            end
         end
 
-        tinsert(settingsTable, 2, "castBy")
+        if indicatorName ~= "raidDebuffs" and indicatorType ~= "highlightDebuffs" then
+            tinsert(settingsTable, 2, "castBy")
+        end
 
         if indicatorTable["auraType"] == "buff" and indicatorTable["name"] ~= "Healers" then
             tinsert(settingsTable, 3, "checkbutton2:trackByName")
@@ -2049,10 +2173,25 @@ local function ShowIndicatorSettings(id)
                 UpdateIndicatorButtonVisual(id)
             end)
 
+        -- checkbutton + thickness slider combined in one box
+        elseif string.find(currentSetting, "^checkbutton%-thickness") then
+            local _, setting, tooltip = string.split(":", currentSetting)
+            w:SetDBValue(setting, indicatorTable[setting], tooltip, indicatorTable["thickness"])
+            w:SetFunc(function(value)
+                indicatorTable[setting] = value
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "checkbutton", setting, value)
+            end, function(value)
+                indicatorTable["thickness"] = value
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, "thickness", value)
+            end)
+
         -- checkbutton
         elseif string.find(currentSetting, "^checkbutton") then
             local _, setting, tooltip = string.split(":", currentSetting)
             if indicatorName == "debuffs" and setting == "showStack" and indicatorTable[setting] == nil then
+                indicatorTable[setting] = true
+            end
+            if indicatorName == "raidDebuffs" and setting == "showStack" and indicatorTable[setting] == nil then
                 indicatorTable[setting] = true
             end
             if indicatorName == "debuffs" and setting == "nonPlayerAuras" and indicatorTable[setting] == nil then
@@ -2266,7 +2405,7 @@ local function ShowIndicatorSettings(id)
             w:SetFunc(function(value)
                 indicatorTable["displayMode"] = value
                 I.UpdateTargetedSpellsDisplayMode(value)
-                local ts = CellIndicatorsPreviewButton.indicators.targetedSpells
+                local ts = F.BD(CellIndicatorsPreviewButton).indicators.targetedSpells
                 if ts then
                     ts:Show()
                     ts:ShowGlowPreview()
@@ -2279,7 +2418,7 @@ local function ShowIndicatorSettings(id)
             w:SetFunc(function(value)
                 CellDB["targetedSpellsGlow"] = value
                 Cell.vars.targetedSpellsGlow = CellDB["targetedSpellsGlow"]
-                CellIndicatorsPreviewButton.indicators.targetedSpells:ShowGlowPreview()
+                F.BD(CellIndicatorsPreviewButton).indicators.targetedSpells:ShowGlowPreview()
             end)
 
         -- glowOptions
@@ -2355,6 +2494,17 @@ local function ShowIndicatorSettings(id)
         elseif currentSetting == "targetCounterFilters" or currentSetting == "dispelFilters"
         or currentSetting == "powerTextFilters" then
             w:SetDBValue(indicatorTable["filters"])
+            w:SetFunc(function()
+                -- NOTE: already changed in widget
+                Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, currentSetting)
+            end)
+
+        -- highlightDebuffFilters
+        elseif currentSetting == "highlightDebuffFilters" then
+            if type(indicatorTable["filterClasses"]) ~= "table" then
+                indicatorTable["filterClasses"] = {}
+            end
+            w:SetDBValue(indicatorTable["filterClasses"])
             w:SetFunc(function()
                 -- NOTE: already changed in widget
                 Cell.Fire("UpdateIndicators", notifiedLayout, indicatorName, currentSetting)
@@ -2436,6 +2586,10 @@ local function ShowIndicatorSettings(id)
     end
 
     Cell.UpdateIndicatorSettingsHeight()
+    C_Timer.After(0, function()
+        Cell.UpdateIndicatorSettingsHeight()
+        settingsFrame.scrollFrame:UpdateSize()
+    end)
 
     if string.find(indicatorName, "indicator") then
         -- Block rename for Healers so the internal name stays stable for /cell healers update detection
@@ -2643,7 +2797,7 @@ LoadIndicatorList = function()
         -- Stale guard: after delete/tremove, indices shift and listButtons may have stale entries
         if not currentLayoutTable["indicators"][id] then return end
 
-        local i = previewButton.indicators[currentLayoutTable["indicators"][id]["indicatorName"]]
+        local i = F.BD(previewButton).indicators[currentLayoutTable["indicators"][id]["indicatorName"]]
 
         -- always show selected indicator
         i:Show()
@@ -2688,7 +2842,7 @@ LoadIndicatorList = function()
     end, function(id)
         if not currentLayoutTable["indicators"][id] then return end  -- blacklist or unknown
 
-        local i = previewButton.indicators[currentLayoutTable["indicators"][id]["indicatorName"]]
+        local i = F.BD(previewButton).indicators[currentLayoutTable["indicators"][id]["indicatorName"]]
 
         if CellDB["indicatorPreview"]["showAll"] and i.enabled then
             -- show all enabled if showAll
@@ -2794,9 +2948,9 @@ end
 Cell.RegisterCallback("UpdateLayout", "IndicatorsTab_UpdateLayout", UpdateLayout)
 
 local function UpdatePreviewCooldownStyle(style)
-    if not previewButton or not previewButton.indicators then return end
+    if not previewButton or not F.BD(previewButton).indicators then return end
 
-    for _, indicator in pairs(previewButton.indicators) do
+    for _, indicator in pairs(F.BD(previewButton).indicators) do
         if indicator and indicator.SetCooldownStyle then
             if indicator.configs and (indicator.configs.name == "Healers" or indicator.configs.animationStyle
                 or indicator.configs.type == "rect" or indicator.configs.type == "block" or indicator.configs.type == "blocks") then

@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 local F = Cell.funcs
 local B = Cell.bFuncs
@@ -160,11 +160,11 @@ for i = 1, 8 do
     --     RegisterUnitWatch(button)
 
     --     local bar = Cell.CreateStatusBar(nil, button, 10, 5, 1, false, nil, nil, Cell.vars.whiteTexture, {1, 1, 1, 1})
-    --     bar:SetFrameLevel(button.widgets.healthBar:GetFrameLevel() + 1)
+    --     bar:SetFrameLevel(F.BD(button).widgets.healthBar:GetFrameLevel() + 1)
     --     bar.border:Hide()
 
-    --     bar:SetPoint("BOTTOMLEFT", button.widgets.healthBar)
-    --     bar:SetPoint("BOTTOMRIGHT", button.widgets.healthBar)
+    --     bar:SetPoint("BOTTOMLEFT", F.BD(button).widgets.healthBar)
+    --     bar:SetPoint("BOTTOMRIGHT", F.BD(button).widgets.healthBar)
     --     bar:SetScript("OnUpdate", function()
     --         local health = UnitHealth("boss"..i)
     --         local healthMax = UnitHealthMax("boss"..i)
@@ -214,10 +214,13 @@ if not Cell.isMidnight then
     end)
 else
     cleu:SetScript("OnEvent", function(self, event, unit)
+        if event == "UNIT_AURA" then
+            return
+        end
         local button = unit and F.HandleUnitButton and nil
         for idx = 6, 8 do
             local b = Cell.unitButtons.npc[idx]
-            if b and b.states and b.states.unit == unit then
+            if b and F.BD(b).states and F.BD(b).states.unit == unit then
                 if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
                     B.UpdateHealth(b)
                 elseif event == "UNIT_AURA" then
@@ -232,7 +235,7 @@ end
 for i = 6, 8 do
     local button = Cell.unitButtons.npc[i]
     button.helper:HookScript("OnShow", function()
-        local guid = UnitGUID(button.states.unit)
+        local guid = UnitGUID(F.BD(button).states.unit)
         if not guid then return end
 
         boss678_buttonToGuid[i] = guid
@@ -242,7 +245,7 @@ for i = 6, 8 do
         B.UpdateAll(button)
 
         if Cell.isMidnight then
-            local unit = button.states.unit
+            local unit = F.BD(button).states.unit
             if unit then
                 cleu:RegisterUnitEvent("UNIT_HEALTH", unit)
                 cleu:RegisterUnitEvent("UNIT_MAXHEALTH", unit)
@@ -274,7 +277,7 @@ for i = 6, 8 do
         button.helper.elapsed3 = (button.helper.elapsed3 or 0) + elapsed
 
         if button.helper.elapsed >= 0.25 then
-            local guid = UnitGUID(button.states.unit)
+            local guid = UnitGUID(F.BD(button).states.unit)
             -- check old guid
             if guid and boss678_buttonToGuid[i] ~= guid then --! unit changed
                 -- remove old

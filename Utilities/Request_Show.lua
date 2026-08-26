@@ -1,4 +1,4 @@
--- /script SetAllowDangerousScripts(true)
+﻿-- /script SetAllowDangerousScripts(true)
 local _, Cell = ...
 local L = Cell.L
 local F = Cell.funcs
@@ -182,17 +182,17 @@ end
 
 local function ShowSpellRequest(button, spellId)
     if button then
-        local unit = button.states.unit
+        local unit = F.BD(button).states.unit
 
         --! save requesterUnit and buffId
         srUnits[unit] = srSpells[spellId][2]
 
         if srSpells[spellId][1] == "icon" then
-            ShowIcon(button.widgets.srIcon, srSpells[spellId][4], srSpells[spellId][5], srTimeout, function()
+            ShowIcon(F.BD(button).widgets.srIcon, srSpells[spellId][4], srSpells[spellId][5], srTimeout, function()
                 srUnits[unit] = nil
             end)
         else
-            ShowGlow(button.widgets.srGlowFrame, srSpells[spellId][4][1], srSpells[spellId][4][2], srTimeout, function()
+            ShowGlow(F.BD(button).widgets.srGlowFrame, srSpells[spellId][4][1], srSpells[spellId][4][2], srTimeout, function()
                 srUnits[unit] = nil
             end)
         end
@@ -200,8 +200,8 @@ local function ShowSpellRequest(button, spellId)
 end
 
 local function HideSpellRequest(button)
-    HideGlow(button.widgets.srGlowFrame)
-    HideIcon(button.widgets.srIcon)
+    HideGlow(F.BD(button).widgets.srGlowFrame)
+    HideIcon(F.BD(button).widgets.srIcon)
 end
 
 --! glow on addon message
@@ -307,10 +307,10 @@ local function SR_UpdateRequests(which)
     if not which or which == "spellRequest_icon" then
         F.IterateAllUnitButtons(function(b)
             local setting = CellDB["spellRequest"]["sharedIconOptions"]
-            b.widgets.srIcon:SetAnimationType(setting[1])
-            P.Size(b.widgets.srIcon, setting[2], setting[2])
-            P.ClearPoints(b.widgets.srIcon)
-            P.Point(b.widgets.srIcon, setting[3], b.widgets.srGlowFrame, setting[4], setting[5], setting[6])
+            F.BD(b).widgets.srIcon:SetAnimationType(setting[1])
+            P.Size(F.BD(b).widgets.srIcon, setting[2], setting[2])
+            P.ClearPoints(F.BD(b).widgets.srIcon)
+            P.Point(F.BD(b).widgets.srIcon, setting[3], F.BD(b).widgets.srGlowFrame, setting[4], setting[5], setting[6])
         end)
     end
 
@@ -341,8 +341,8 @@ local function HideAllDRGlows()
     -- NOTE: hide all
     for unit in pairs(drUnits) do
         F.HandleUnitButton("guid", destGUID, function(b)
-            HideGlow(b.widgets.drGlowFrame)
-            HideText(b.widgets.drText)
+            HideGlow(F.BD(b).widgets.drGlowFrame)
+            HideText(F.BD(b).widgets.drText)
         end)
     end
     wipe(drUnits)
@@ -358,8 +358,8 @@ DR:SetScript("OnEvent", function(self, event)
                 -- NOTE: one of debuffs removed, hide glow
                 drUnits[unit] = nil
                 F.HandleUnitButton("guid", destGUID, function(b)
-                    HideGlow(b.widgets.drGlowFrame)
-                    HideText(b.widgets.drText)
+                    HideGlow(F.BD(b).widgets.drGlowFrame)
+                    HideText(F.BD(b).widgets.drText)
                 end)
             end
         end
@@ -394,11 +394,11 @@ Comm:RegisterComm("CELL_REQ_D", function(prefix, message, channel, sender)
         if F.Getn(drUnits[unit]) ~= 0 then -- found
             F.HandleUnitButton("name", sender, function(b)
                 if drDisplayType == "text" then
-                    ShowText(b.widgets.drText, drTimeout, function()
+                    ShowText(F.BD(b).widgets.drText, drTimeout, function()
                         drUnits[unit] = nil
                     end)
                 else
-                    ShowGlow(b.widgets.drGlowFrame, CellDB["dispelRequest"]["glowOptions"][1], CellDB["dispelRequest"]["glowOptions"][2], drTimeout, function()
+                    ShowGlow(F.BD(b).widgets.drGlowFrame, CellDB["dispelRequest"]["glowOptions"][1], CellDB["dispelRequest"]["glowOptions"][2], drTimeout, function()
                         drUnits[unit] = nil
                     end)
                 end
@@ -436,11 +436,11 @@ local function DR_UpdateRequests(which)
     if not which or which == "dispelRequest_text" then
         F.IterateAllUnitButtons(function(b)
             local setting = CellDB["dispelRequest"]["textOptions"]
-            b.widgets.drText:SetType(setting[1])
-            b.widgets.drText:SetColor(setting[2])
-            P.Size(b.widgets.drText, setting[3] * 2, setting[3])
-            P.ClearPoints(b.widgets.drText)
-            P.Point(b.widgets.drText, setting[4], b.widgets.srGlowFrame, setting[5], setting[6], setting[7])
+            F.BD(b).widgets.drText:SetType(setting[1])
+            F.BD(b).widgets.drText:SetColor(setting[2])
+            P.Size(F.BD(b).widgets.drText, setting[3] * 2, setting[3])
+            P.ClearPoints(F.BD(b).widgets.drText)
+            P.Point(F.BD(b).widgets.drText, setting[4], F.BD(b).widgets.srGlowFrame, setting[5], setting[6], setting[7])
         end)
     end
 end

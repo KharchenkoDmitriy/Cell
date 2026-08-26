@@ -1,4 +1,4 @@
-﻿---@class Cell
+---@class Cell
 local Cell = select(2, ...)
 _G.Cell = Cell
 
@@ -160,7 +160,7 @@ function F.UpdateLayout(layoutGroupType)
 
         if prevLayout ~= Cell.vars.currentLayout or prevHidden ~= Cell.vars.isHidden then
             F.IterateAllUnitButtons(function(b)
-                b._indicatorsReady = nil
+                F.BD(b)._indicatorsReady = nil
             end, true)
         end
 
@@ -392,6 +392,14 @@ function eventFrame:ADDON_LOADED(arg1)
         -- appearance -----------------------------------------------------------------------------
         if type(CellDB["appearance"]) ~= "table" then
             CellDB["appearance"] = F.Copy(Cell.defaults.appearance)
+        end
+        -- Backfill keys added to Appearance_Defaults.lua after this profile
+        -- was created (the old dbRevision migrations for this are dead code).
+        if type(CellDB["appearance"]["healthFadeEnabled"]) ~= "boolean" then
+            CellDB["appearance"]["healthFadeEnabled"] = Cell.defaults.appearance["healthFadeEnabled"]
+        end
+        if type(CellDB["appearance"]["healthFadeThreshold"]) ~= "number" then
+            CellDB["appearance"]["healthFadeThreshold"] = Cell.defaults.appearance["healthFadeThreshold"]
         end
 
         -- color ---------------------------------------------------------------------------------

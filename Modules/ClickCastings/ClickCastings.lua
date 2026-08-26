@@ -100,18 +100,265 @@ local function ClearProxyRoutes(frame)
     end
 end
 
+-------------------------------------------------
+-- fix: raid/party unit menu misclassified as PET (Blizzard engine bug)
+-------------------------------------------------
+-- Blizzard's togglemenu action can misclassify a raid/party member as a pet
+-- when their unit data hasn't fully streamed in, opening the wrong menu (this
+-- happens on Blizzard's own frames too). Watch UnitPopup_OpenMenu and reopen
+-- the correct menu when that signature is detected. The reopen runs from this
+-- hook, so protected entries in that one menu instance are unusable -- see
+-- the fix below.
+local reopenedMenuUnit
+
+local menuMisfireFixInstalled = false
+local reopeningMisfiredMenu = false
+local function InstallMenuMisfireFix()
+    if menuMisfireFixInstalled or type(UnitPopup_OpenMenu) ~= "function" then return end
+    menuMisfireFixInstalled = true
+    hooksecurefunc("UnitPopup_OpenMenu", function(which, contextData)
+        if reopeningMisfiredMenu then return end
+        if which ~= "PET" and which ~= "OTHERPET" and which ~= "OTHERBATTLEPET" then return end
+        local unit = contextData and contextData.unit
+        if type(unit) ~= "string" then return end
+        local lowerUnit = unit:lower()
+        local isRaidToken = strfind(lowerUnit, "^raid%d+$") ~= nil
+        local isPartyToken = strfind(lowerUnit, "^party%d+$") ~= nil
+        if not isRaidToken and not isPartyToken then return end
+        local guid = UnitGUID(unit)
+        if issecretvalue and issecretvalue(guid) then return end
+        if type(guid) ~= "string" or not strfind(guid, "^Player%-") then return end
+        -- A fresh context table (re-passing the inbound one throws); keep our
+        -- own reference since the enrichment it gets can add bnetIDAccount/
+        -- isGuildMember, which the house list needs for some members.
+        reopeningMisfiredMenu = true
+        reopenedMenuUnit = unit
+        local ctx = {unit = unit}
+        UnitPopup_OpenMenu(isRaidToken and "RAID_PLAYER" or "PARTY", ctx)
+        reopenedMenuUnit = nil
+        reopeningMisfiredMenu = false
+        if F.ShowHouseVisitDock then F.ShowHouseVisitDock(unit, ctx) end
+    end)
+end
+if Cell.isRetail then
+    InstallMenuMisfireFix()
+end
+
+-------------------------------------------------
+-- fix: protected menu entries on the reopened (tainted) menu above
+-------------------------------------------------
+-- Everything in that one reopened menu is tainted. "View Houses" is worse
+-- than the rest (Set Focus/Follow just throw once) -- it poisons Blizzard's
+-- house list for the whole session, breaking Visit House everywhere after.
+-- Disable it there and offer our own "View Houses" via a small dock button
+-- backed by our own SecureActionButton, which never touches that list.
+if Cell.isRetail and Menu and Menu.ModifyMenu and MenuUtil and MenuUtil.GetElementText then
+    local housingOk = C_Housing and C_Housing.GetOthersOwnedHouses and C_Housing.VisitHouse
+
+    local function DisableProtectedEntries(owner, rootDescription, contextData)
+        if not housingOk or not reopenedMenuUnit then return end
+        if not contextData or contextData.unit ~= reopenedMenuUnit then return end
+        local viewHouses = UNIT_VIEW_HOUSES or "View Houses"
+        for _, d in rootDescription:EnumerateElementDescriptions() do
+            local text = MenuUtil.GetElementText(d)
+            if d.SetEnabled and text == viewHouses then
+                d:SetEnabled(false)
+            end
+        end
+    end
+    Menu.ModifyMenu("MENU_UNIT_RAID_PLAYER", DisableProtectedEntries)
+    Menu.ModifyMenu("MENU_UNIT_PARTY", DisableProtectedEntries)
+
+    if housingOk then
+        local dock, houseList
+        local pendingHouses
+        local houseListEvents = CreateFrame("Frame")
+
+        local function BuildDock()
+            local d = Cell.CreateFrame("CellHouseVisitDock", UIParent, 110, 24)
+            d:SetFrameStrata("FULLSCREEN_DIALOG")
+            d.btn = Cell.CreateButton(d, L["View Houses"] or UNIT_VIEW_HOUSES or "View Houses", "accent", {106, 20})
+            d.btn:SetPoint("CENTER")
+            -- Opt out of Menu.lua's "close on any outside click" so our click
+            -- lands before the menu tears itself (and this dock) down.
+            d.btn.HandlesGlobalMouseEvent = function() return true end
+            return d
+        end
+
+        local function BuildHouseList()
+            local f = Cell.CreateFrame("CellHouseVisitList", UIParent, 360, 220)
+            f:SetFrameStrata("DIALOG")
+            f:SetPoint("CENTER")
+            f:SetMovable(true)
+            f:EnableMouse(true)
+            f:RegisterForDrag("LeftButton")
+            f:SetScript("OnDragStart", f.StartMoving)
+            f:SetScript("OnDragStop", f.StopMovingOrSizing)
+
+            f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            f.title:SetPoint("TOPLEFT", 10, -8)
+            f.title:SetPoint("TOPRIGHT", -10, -8)
+            f.title:SetJustifyH("LEFT")
+
+            f.close = Cell.CreateButton(f, "×", "red", {20, 20})
+            f.close:SetPoint("TOPRIGHT", -4, -4)
+            f.close:SetScript("OnClick", function() f:Hide() end)
+
+            f.status = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            f.status:SetPoint("TOPLEFT", 10, -30)
+            f.status:SetPoint("TOPRIGHT", -10, -30)
+            f.status:SetJustifyH("LEFT")
+
+            f.rows = {}
+            local rowH, maxRows = 28, 6
+            for i = 1, maxRows do
+                local row = CreateFrame("Frame", nil, f, "BackdropTemplate")
+                row:SetPoint("TOPLEFT", 8, -30 - (i - 1) * (rowH + 3))
+                row:SetPoint("TOPRIGHT", -8, -30 - (i - 1) * (rowH + 3))
+                P.Height(row, rowH)
+                Cell.StylizeFrame(row, {0.15, 0.15, 0.15, 0.6})
+
+                row.info = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                row.info:SetPoint("LEFT", 6, 0)
+                row.info:SetPoint("RIGHT", row, "RIGHT", -84, 0)
+                row.info:SetJustifyH("LEFT")
+
+                -- The teleport itself: a plain SecureActionButton running
+                -- Blizzard's stock "visithouse" secure action from string
+                -- attributes we set while out of combat. It never runs any of
+                -- our Lua at click time, so it can never be tainted.
+                row.visit = Cell.CreateButton(row, L["Visit"] or "Visit", "accent", {76, 20}, nil, nil, nil, nil, "SecureActionButtonTemplate")
+                row.visit:SetPoint("RIGHT", -4, 0)
+                row.visit:SetAttribute("useOnKeyDown", false)
+                row.visit:SetAttribute("type", "visithouse")
+
+                row:Hide()
+                f.rows[i] = row
+            end
+
+            f:SetScript("OnHide", function()
+                houseListEvents:UnregisterAllEvents()
+                pendingHouses = nil
+            end)
+            return f
+        end
+
+        local function ClearHouseRows()
+            for _, row in ipairs(houseList.rows) do row:Hide() end
+        end
+
+        local function ApplyHouses(houses)
+            ClearHouseRows()
+            if InCombatLockdown() then
+                houseList.status:SetText(L["Leave combat to enable visiting."] or "Leave combat to enable visiting.")
+                houseList.status:Show()
+                return
+            end
+            if not houses or #houses == 0 then
+                houseList.status:SetText(L["No houses found."] or "No houses found.")
+                houseList.status:Show()
+                return
+            end
+            houseList.status:Hide()
+            for i = 1, math.min(#houses, #houseList.rows) do
+                local h = houses[i]
+                local row = houseList.rows[i]
+                local info = h.houseName or L["House"] or "House"
+                if h.neighborhoodName then info = info.." - "..h.neighborhoodName end
+                row.info:SetText(info)
+                local canVisit = h.neighborhoodGUID and h.houseGUID and h.plotID
+                row.visit:SetAttribute("house-neighborhood-guid", h.neighborhoodGUID)
+                row.visit:SetAttribute("house-guid", h.houseGUID)
+                row.visit:SetAttribute("house-plot-id", h.plotID and tostring(h.plotID) or nil)
+                row.visit:SetEnabled(canVisit and true or false)
+                row:Show()
+            end
+        end
+
+        local requestToken = 0
+        houseListEvents:SetScript("OnEvent", function(_, event, arg1)
+            if event == "VIEW_HOUSES_LIST_RECIEVED" then
+                pendingHouses = arg1
+                ApplyHouses(arg1)
+            elseif event == "PLAYER_REGEN_ENABLED" then
+                if pendingHouses then ApplyHouses(pendingHouses) end
+            elseif event == "PLAYER_ENTERING_WORLD" then
+                houseList:Hide()
+            end
+        end)
+
+        local function OpenHouseListFor(unit, ctx)
+            if not houseList then houseList = BuildHouseList() end
+            local name = (unit and UnitName(unit)) or UNKNOWN
+            local guid = unit and UnitGUID(unit)
+            if issecretvalue and (issecretvalue(guid) or issecretvalue(name)) then return end
+            if not guid then return end
+            pendingHouses = nil
+            ClearHouseRows()
+            houseList.title:SetText((VIEW_HOUSES_TITLE and string.format(VIEW_HOUSES_TITLE, name)) or name)
+            houseList.status:SetText(L["Loading houses..."] or "Loading houses...")
+            houseList.status:Show()
+            houseListEvents:RegisterEvent("VIEW_HOUSES_LIST_RECIEVED")
+            houseListEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
+            houseListEvents:RegisterEvent("PLAYER_ENTERING_WORLD")
+            houseList:Show()
+            C_Housing.GetOthersOwnedHouses(guid, ctx and ctx.bnetIDAccount, ctx and not not ctx.isGuildMember)
+
+            -- The server can simply never answer, leaving "Loading..." up forever.
+            requestToken = requestToken + 1
+            local myToken = requestToken
+            if C_Timer then
+                C_Timer.After(8, function()
+                    if myToken == requestToken and not pendingHouses and houseList:IsShown() then
+                        houseList.status:SetText(L["No response received. This player may not allow their houses to be viewed this way."]
+                            or "No response received. This player may not allow their houses to be viewed this way.")
+                        houseList.status:Show()
+                    end
+                end)
+            end
+        end
+
+        function F.ShowHouseVisitDock(unit, ctx)
+            if not dock then dock = BuildDock() end
+            local mgr = Menu.GetManager and Menu.GetManager()
+            local menu = mgr and mgr.GetOpenMenu and mgr:GetOpenMenu()
+            if not menu then dock:Hide() return end
+            dock:ClearAllPoints()
+            dock:SetPoint("TOPLEFT", menu, "TOPRIGHT", 2, 0)
+            dock.btn:SetScript("OnClick", function()
+                local mgr2 = Menu.GetManager and Menu.GetManager()
+                if mgr2 and mgr2.CloseMenu then mgr2:CloseMenu(menu) end
+                dock:Hide()
+                OpenHouseListFor(unit, ctx)
+            end)
+            dock:Show()
+            if not menu.cellHouseDockHooked then
+                menu.cellHouseDockHooked = true
+                menu:HookScript("OnHide", function() dock:Hide() end)
+            end
+        end
+    end
+end
+
 local function IsGatedAction(bindKey, actionType)
     if actionType ~= "target" and actionType ~= "togglemenu" and actionType ~= "menu" then
         return false
     end
     local modifier, dash, key = strmatch(bindKey, "^(.*)type(-*)(.+)$")
     if not modifier then return false end
-    local hasModifier = modifier and modifier ~= ""
-    local buttonNum = tonumber(key)
     if actionType == "target" then
+        -- Blizzard leaves plain unmodified left-click ("type1", no modifier)
+        -- exempt from the click-binding gate; every other target binding needs
+        -- the proxy.
+        local hasModifier = modifier and modifier ~= ""
+        local buttonNum = tonumber(key)
         return hasModifier or (buttonNum and buttonNum ~= 1)
     else
-        return hasModifier or (buttonNum and buttonNum ~= 2)
+        -- togglemenu/menu has no such exemption: Blizzard's secure click-binding
+        -- gate applies to it on EVERY button/modifier, including plain
+        -- unmodified right-click. Reopening the menu from insecure Lua taints
+        -- its protected entries, so this must always go through the proxy.
+        return true
     end
 end
 
@@ -706,6 +953,24 @@ local function ApplyClickCastings(b)
             local attr = string.gsub(bindKey, "type", t[2])
             b:SetAttribute(attr, t[3])
         end
+    end
+
+    -- Plain RightButton has no click-casting entry at all for most users, so
+    -- "type2" is never touched above and just falls back to the template's
+    -- built-in "*type2=togglemenu" wildcard. That wildcard is gated exactly
+    -- like an explicit one (see IsGatedAction above), so without routing it
+    -- through the proxy too, right-click silently fails to open the unit
+    -- menu (or opens it insecurely, breaking protected entries) for anyone
+    -- whose Click Bindings don't happen to satisfy Blizzard's check.
+    local hasType2Binding = false
+    for _, t in pairs(clickCastingTable) do
+        if t[1] == "type2" then
+            hasType2Binding = true
+            break
+        end
+    end
+    if not hasType2Binding then
+        RouteProxyAction(b, "type2", "clickbutton2", "togglemenu")
     end
 end
 

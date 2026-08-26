@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 ---@type CellFuncs
 local F = Cell.funcs
@@ -68,43 +68,43 @@ function I.CreateIndicator(parent, indicatorTable)
     local indicatorName = indicatorTable["indicatorName"]
     local indicator
     if indicatorTable["type"] == "icon" then
-        indicator = I.CreateAura_BarIcon(nil, parent.widgets.indicatorFrame)
+        indicator = I.CreateAura_BarIcon(nil, F.BD(parent).widgets.indicatorFrame)
     elseif indicatorTable["type"] == "text" then
-        indicator = I.CreateAura_Text(nil, parent.widgets.indicatorFrame)
+        indicator = I.CreateAura_Text(nil, F.BD(parent).widgets.indicatorFrame)
     elseif indicatorTable["type"] == "bar" then
-        indicator = I.CreateAura_Bar(nil, parent.widgets.indicatorFrame)
+        indicator = I.CreateAura_Bar(nil, F.BD(parent).widgets.indicatorFrame)
     elseif indicatorTable["type"] == "bars" then
-        indicator = I.CreateAura_Bars(nil, parent.widgets.indicatorFrame, 10)
+        indicator = I.CreateAura_Bars(nil, F.BD(parent).widgets.indicatorFrame, 10)
     elseif indicatorTable["type"] == "rect" then
-        indicator = I.CreateAura_Rect(nil, parent.widgets.indicatorFrame)
+        indicator = I.CreateAura_Rect(nil, F.BD(parent).widgets.indicatorFrame)
     elseif indicatorTable["type"] == "icons" then
-        indicator = I.CreateAura_Icons(nil, parent.widgets.indicatorFrame, 10)
+        indicator = I.CreateAura_Icons(nil, F.BD(parent).widgets.indicatorFrame, 10)
     elseif indicatorTable["type"] == "color" then
         indicator = I.CreateAura_Color(nil, parent)
     elseif indicatorTable["type"] == "texture" then
-        indicator = I.CreateAura_Texture(nil, parent.widgets.indicatorFrame)
+        indicator = I.CreateAura_Texture(nil, F.BD(parent).widgets.indicatorFrame)
     elseif indicatorTable["type"] == "glow" then
-        indicator = I.CreateAura_Glow(nil, parent.widgets.highLevelFrame)
+        indicator = I.CreateAura_Glow(nil, F.BD(parent).widgets.highLevelFrame)
     elseif indicatorTable["type"] == "overlay" then
         indicator = I.CreateAura_Overlay(nil, parent)
     elseif indicatorTable["type"] == "block" then
-        indicator = I.CreateAura_Block(nil, parent.widgets.indicatorFrame)
+        indicator = I.CreateAura_Block(nil, F.BD(parent).widgets.indicatorFrame)
     elseif indicatorTable["type"] == "blocks" then
-        indicator = I.CreateAura_Blocks(nil, parent.widgets.indicatorFrame, 10)
+        indicator = I.CreateAura_Blocks(nil, F.BD(parent).widgets.indicatorFrame, 10)
     elseif indicatorTable["type"] == "border" then
-        indicator = I.CreateAura_Border(nil, parent.widgets.highLevelFrame)
+        indicator = I.CreateAura_Border(nil, F.BD(parent).widgets.highLevelFrame)
     end
-    parent.indicators[indicatorName] = indicator
+    F.BD(parent).indicators[indicatorName] = indicator
 
     return indicator
 end
 
 function I.RemoveIndicator(parent, indicatorName, auraType)
-    local indicator = parent.indicators[indicatorName]
+    local indicator = F.BD(parent).indicators[indicatorName]
     indicator:ClearAllPoints()
     indicator:Hide()
     indicator:SetParent(nil)
-    parent.indicators[indicatorName] = nil
+    F.BD(parent).indicators[indicatorName] = nil
     enabledIndicators[indicatorName] = nil
     customIndicators[auraType][indicatorName] = nil
 end
@@ -117,12 +117,12 @@ function I.RemoveAllCustomIndicators(parent)
     --     wipe(customIndicators["debuff"])
     -- end
 
-    for indicatorName, indicator in pairs(parent.indicators) do
+    for indicatorName, indicator in pairs(F.BD(parent).indicators) do
         if string.find(indicatorName, "^indicator") then
             indicator:ClearAllPoints()
             indicator:Hide()
             indicator:SetParent(nil)
-            parent.indicators[indicatorName] = nil
+            F.BD(parent).indicators[indicatorName] = nil
         end
     end
 end
@@ -184,11 +184,11 @@ Cell.RegisterCallback("UpdateIndicators", "UpdateCustomIndicators", UpdateCustom
 -- reset
 -------------------------------------------------
 function I.ResetCustomIndicators(unitButton, auraType)
-    local unit = unitButton.states.displayedUnit
+    local unit = F.BD(unitButton).states.displayedUnit
 
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
-        if enabledIndicators[indicatorName] and unitButton.indicators[indicatorName] then
-            unitButton.indicators[indicatorName]:Hide(true)
+        if enabledIndicators[indicatorName] and F.BD(unitButton).indicators[indicatorName] then
+            F.BD(unitButton).indicators[indicatorName]:Hide(true)
             if indicatorTable["num"] then
                 if not indicatorTable["found"][unit] then
                     indicatorTable["found"][unit] = {}
@@ -244,10 +244,10 @@ local function Update(indicator, indicatorTable, unit, spell, start, duration, d
 end
 
 function I.UpdateCustomIndicators(unitButton, auraType, spellId, spellName, start, duration, debuffType, icon, count, refreshing, castByMe)
-    local unit = unitButton.states.displayedUnit
+    local unit = F.BD(unitButton).states.displayedUnit
 
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
-        if indicatorName and enabledIndicators[indicatorName] and unitButton.indicators[indicatorName] then
+        if indicatorName and enabledIndicators[indicatorName] and F.BD(unitButton).indicators[indicatorName] then
             local spell  --* trackByName
             if indicatorTable["trackByName"] then
                 spell = spellName
@@ -259,9 +259,9 @@ function I.UpdateCustomIndicators(unitButton, auraType, spellId, spellName, star
                 -- check caster
                 if (indicatorTable["castBy"] == "me" and castByMe) or (indicatorTable["castBy"] == "others" and not castByMe) or (indicatorTable["castBy"] == "anyone") then
                     if auraType == "buff" then
-                        Update(unitButton.indicators[indicatorName], indicatorTable, unit, spell, start, duration, debuffType, icon, count, refreshing)
+                        Update(F.BD(unitButton).indicators[indicatorName], indicatorTable, unit, spell, start, duration, debuffType, icon, count, refreshing)
                     else -- debuff
-                        Update(unitButton.indicators[indicatorName], indicatorTable, unit, spell, start, duration, debuffType, icon, count, refreshing)
+                        Update(F.BD(unitButton).indicators[indicatorName], indicatorTable, unit, spell, start, duration, debuffType, icon, count, refreshing)
                     end
                 end
             end
@@ -278,11 +278,11 @@ local function comparator(a, b)
 end
 
 function I.ShowCustomIndicators(unitButton, auraType)
-    if not unitButton._indicatorsReady then return end
+    if not F.BD(unitButton)._indicatorsReady then return end
 
-    local unit = unitButton.states.displayedUnit
+    local unit = F.BD(unitButton).states.displayedUnit
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
-        local indicator = unitButton.indicators[indicatorName]
+        local indicator = F.BD(unitButton).indicators[indicatorName]
         if indicator and enabledIndicators[indicatorName] then
             if indicatorTable["num"] then
                 local t = indicatorTable["found"][unit]
@@ -331,7 +331,7 @@ end
 
 function I.CheckCustomIndicators(unit, unitButton, auraType, spellId, name, start, duration, debuffType, texture, count, refreshing, castByMe)
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
-        if enabledIndicators[indicatorName] and unitButton.indicators[indicatorName] then
+        if enabledIndicators[indicatorName] and F.BD(unitButton).indicators[indicatorName] then
             if indicatorTable["trackByName"] then spellId = name end --* wrath
             if indicatorTable["auras"][spellId] or indicatorTable["auras"][0] then -- is in indicator spell list
                 if auraType == "buff" then
@@ -339,10 +339,10 @@ function I.CheckCustomIndicators(unit, unitButton, auraType, spellId, name, star
                     if indicatorTable["castByMe"] == castByMe then
                         if indicatorTable["isIcons"] then
                             if indicatorTable["found"][unit] <= indicatorTable["num"] then
-                                unitButton.indicators[indicatorName]:UpdateSize(indicatorTable["found"][unit])
-                                unitButton.indicators[indicatorName][indicatorTable["found"][unit]]:SetCooldown(start, duration, debuffType, texture, count, refreshing)
+                                F.BD(unitButton).indicators[indicatorName]:UpdateSize(indicatorTable["found"][unit])
+                                F.BD(unitButton).indicators[indicatorName][indicatorTable["found"][unit]]:SetCooldown(start, duration, debuffType, texture, count, refreshing)
                                 indicatorTable["found"][unit] = indicatorTable["found"][unit] + 1
-                                unitButton.indicators[indicatorName]:Show()
+                                F.BD(unitButton).indicators[indicatorName]:Show()
                             end
                         else
                             if indicatorTable["auras"][spellId] < indicatorTable["topOrder"][unit] then
@@ -359,10 +359,10 @@ function I.CheckCustomIndicators(unit, unitButton, auraType, spellId, name, star
                 else -- debuff
                     if indicatorTable["isIcons"] then
                         if indicatorTable["found"][unit] <= indicatorTable["num"] then
-                            unitButton.indicators[indicatorName]:UpdateSize(indicatorTable["found"][unit])
-                            unitButton.indicators[indicatorName][indicatorTable["found"][unit]]:SetCooldown(start, duration, debuffType, texture, count, refreshing)
+                            F.BD(unitButton).indicators[indicatorName]:UpdateSize(indicatorTable["found"][unit])
+                            F.BD(unitButton).indicators[indicatorName][indicatorTable["found"][unit]]:SetCooldown(start, duration, debuffType, texture, count, refreshing)
                             indicatorTable["found"][unit] = indicatorTable["found"][unit] + 1
-                            unitButton.indicators[indicatorName]:Show()
+                            F.BD(unitButton).indicators[indicatorName]:Show()
                         end
                     else
                         if  indicatorTable["auras"][spellId] < indicatorTable["topOrder"][unit] then
@@ -383,17 +383,17 @@ end
 
 function I.ShowCustomIndicators(unit, unitButton, auraType)
     for indicatorName, indicatorTable in pairs(customIndicators[auraType]) do
-        if enabledIndicators[indicatorName] and unitButton.indicators[indicatorName] then
+        if enabledIndicators[indicatorName] and F.BD(unitButton).indicators[indicatorName] then
             if indicatorTable["isIcons"] then
                 for i = indicatorTable["found"][unit], 10 do
-                    unitButton.indicators[indicatorName][i]:Hide()
+                    F.BD(unitButton).indicators[indicatorName][i]:Hide()
                 end
                 if indicatorTable["found"][unit] == 1 then
-                    unitButton.indicators[indicatorName]:Hide()
+                    F.BD(unitButton).indicators[indicatorName]:Hide()
                 end
             else
                 if indicatorTable["top"][unit]["start"] then
-                    unitButton.indicators[indicatorName]:SetCooldown(
+                    F.BD(unitButton).indicators[indicatorName]:SetCooldown(
                         indicatorTable["top"][unit]["start"],
                         indicatorTable["top"][unit]["duration"],
                         indicatorTable["top"][unit]["debuffType"],
@@ -401,7 +401,7 @@ function I.ShowCustomIndicators(unit, unitButton, auraType)
                         indicatorTable["top"][unit]["count"],
                         indicatorTable["top"][unit]["refreshing"])
                 else
-                    unitButton.indicators[indicatorName]:Hide()
+                    F.BD(unitButton).indicators[indicatorName]:Hide()
                 end
             end
         end

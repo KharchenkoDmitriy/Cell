@@ -23,6 +23,25 @@ Cell.bFuncs = {}
 Cell.uFuncs = {}
 Cell.animations = {}
 
+-- unit button data (SecureGroupHeader child frames; must exist before UnitButton)
+Cell.buttonData = Cell.buttonData or setmetatable({}, { __mode = "k" })
+
+function Cell.funcs.GetButtonData(button)
+    if not button then
+        return {}
+    end
+    local d = Cell.buttonData[button]
+    if not d then
+        d = {}
+        Cell.buttonData[button] = d
+    end
+    return d
+end
+
+function Cell.funcs.BD(button)
+    return Cell.funcs.GetButtonData(button)
+end
+
 -- Provide safe accent-color fallbacks before Widgets.lua initializes its
 -- richer helpers. This keeps later files from exploding if a mixed install
 -- loads newer callers before the real widget helpers are available.
@@ -166,7 +185,7 @@ function F.UpdateLayout(layoutGroupType)
         end
 
         F.IterateAllUnitButtons(function(b)
-            b._indicatorsReady = nil
+            F.BD(b)._indicatorsReady = nil
         end, true)
 
         Cell.Fire("UpdateLayout", layout)
@@ -311,6 +330,7 @@ function eventFrame:ADDON_LOADED(arg1)
                 ["hideBlizzardParty"] = true,
                 ["hideBlizzardRaid"] = true,
                 ["hideBlizzardRaidManager"] = true,
+                ["suppressLuaErrors"] = true,
                 ["locked"] = false,
                 ["fadeOut"] = false,
                 ["menuPosition"] = "top_bottom",
@@ -326,6 +346,7 @@ function eventFrame:ADDON_LOADED(arg1)
             }
         end
         if CellDB["general"]["localeOverride"] == nil then CellDB["general"]["localeOverride"] = "auto" end
+        if CellDB["general"]["suppressLuaErrors"] == nil then CellDB["general"]["suppressLuaErrors"] = true end
         Cell.vars.alwaysUpdateAuras = CellDB["general"]["alwaysUpdateAuras"]
 
         -- nicknames ------------------------------------------------------------------------------
@@ -710,7 +731,7 @@ Cell.vars.raidSetup = {
     ["DAMAGER"]={["ALL"]=0},
 }
 
-function eventFrame:GROUP_ROSTER_UPDATE(skipFallbackUpdate)
+local function DoGroupRosterUpdate(skipFallbackUpdate)
     if IsInRaid() then
         if Cell.vars.groupType ~= "raid" then
             Cell.vars.groupType = "raid"
@@ -811,6 +832,35 @@ function eventFrame:GROUP_ROSTER_UPDATE(skipFallbackUpdate)
 
     if not skipFallbackUpdate then
         CellDB.fallbackGroupType = Cell.vars.groupType
+    end
+
+    if Cell.isMidnight and F.StripCellUnitAura then
+        C_Timer.After(0, F.StripCellUnitAura)
+    end
+end
+
+-- Coalesce bursts of GROUP_ROSTER_UPDATE (WoW commonly fires it multiple times
+-- for one actual roster change, e.g. several people joining/leaving close
+-- together) into a single processing pass, instead of running the full update
+-- once per event. A hidden frame's OnUpdate only fires once on the next
+-- rendered frame no matter how many times :Show() was called in between
+-- (:Show() on an already-shown frame is a no-op), so every GROUP_ROSTER_UPDATE
+-- in that window collapses into one run.
+local groupRosterUpdateThrottle = CreateFrame("Frame")
+groupRosterUpdateThrottle:Hide()
+groupRosterUpdateThrottle:SetScript("OnUpdate", function(self)
+    self:Hide()
+    DoGroupRosterUpdate()
+end)
+
+function eventFrame:GROUP_ROSTER_UPDATE(skipFallbackUpdate)
+    if skipFallbackUpdate then
+        -- Direct/internal call (e.g. initial setup on login) -- run immediately,
+        -- callers rely on the result being ready synchronously.
+        DoGroupRosterUpdate(skipFallbackUpdate)
+    else
+        -- Real GROUP_ROSTER_UPDATE event -- queue, coalescing bursts.
+        groupRosterUpdateThrottle:Show()
     end
 end
 
@@ -971,6 +1021,11 @@ function eventFrame:PLAYER_LOGIN()
     -- Cell.Fire("UpdateQuickAssist") -- NOTE: update in GroupTypeChanged/SpecChanged
     -- update quick cast
     Cell.Fire("UpdateQuickCast")
+    if Cell.isMidnight and F.StripCellUnitAura then
+        F.StripCellUnitAura()
+        C_Timer.After(0, F.StripCellUnitAura)
+        C_Timer.After(1, F.StripCellUnitAura)
+    end
     -- update raid debuff list
     Cell.Fire("UpdateRaidDebuffs")
     -- hide blizzard

@@ -635,10 +635,55 @@ local function CreateSetting_Thickness(parent)
 
         -- show db value
         function widget:SetDBValue(n)
-            widget.size:SetValue(n)
+            widget.size:SetValue(n or 1)
         end
     else
         widget = settingWidgets["thickness"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+-- Checkbox + thickness slider in one box, so it's visually obvious the slider
+-- belongs to the checkbox above it (used by the debuff/dispel border toggles).
+local function CreateSetting_CheckButtonThickness(parent)
+    local widget
+
+    if not settingWidgets["checkbutton-thickness"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_CheckButtonThickness", parent, 240, 78)
+        settingWidgets["checkbutton-thickness"] = widget
+
+        widget.cb = Cell.CreateCheckButton(widget, "checkbutton-thickness")
+        widget.cb:SetPoint("TOPLEFT", 5, -8)
+
+        widget.size = Cell.CreateSlider(L["Size"], widget, 1, 15, 110, 0.5)
+        widget.size:SetPoint("TOPLEFT", widget, 5, -48)
+        widget.size.afterValueChangedFn = function(value)
+            widget.thicknessFunc(value)
+        end
+
+        -- callback
+        function widget:SetFunc(cbFunc, thicknessFunc)
+            widget.cb.onClick = function(checked)
+                cbFunc(checked)
+            end
+            widget.thicknessFunc = thicknessFunc
+        end
+
+        -- show db value
+        function widget:SetDBValue(settingName, checked, tooltip, thickness)
+            widget.cb:SetChecked(checked)
+            widget.cb:SetText(L[settingName])
+            if tooltip then
+                Cell.SetTooltips(widget.cb, "ANCHOR_TOPLEFT", 0, 2, L[settingName], string.split("|", tooltip))
+            else
+                Cell.ClearTooltips(widget.cb)
+            end
+            widget.size:SetValue(thickness or 1)
+        end
+    else
+        widget = settingWidgets["checkbutton-thickness"]
     end
 
     widget:Show()
@@ -1037,23 +1082,49 @@ local function CreateSetting_HealthFormat(parent)
     local widget
 
     if not settingWidgets["healthFormat"] then
-        widget = Cell.CreateFrame("CellIndicatorSettings_HealthFormat", parent, 240, 380)
+        -- colorByHealth/hideIfEmptyOrFull/2-decimal formats need to read a live
+        -- health percent, which Blizzard's secret-value system on current Retail
+        -- makes unreliable (often entirely unavailable) for real unit frames --
+        -- confirmed via live testing, not just theory. Classic/Cata/Wrath/Mists/TBC
+        -- have no such restriction, so these controls are Classic-only for now.
+        local isRetail = Cell.isRetail
+        widget = Cell.CreateFrame("CellIndicatorSettings_HealthFormat", parent, 240, isRetail and 380 or 560)
         settingWidgets["healthFormat"] = widget
 
         local health, healthMax = 213777, 300000
         local shield = 65535
         local healAbsorb = 88127
 
+        local function Decimals2Item(text, value)
+            if isRetail then return nil end
+            return {text, value}
+        end
+
+        -- NOTE: varargs, not a table literal -- a table constructor with a nil hole
+        -- in the middle breaks ipairs early, but select() over varargs doesn't.
+        local function BuildList(...)
+            local list = {}
+            for i = 1, select("#", ...) do
+                local item = select(i, ...)
+                if item then list[#list + 1] = item end
+            end
+            return list
+        end
+
         local function UpdateWidgets()
             local health1Enabled = widget.format.health1.format ~= "none"
             widget.health1ColorDropdown:SetEnabled(health1Enabled)
             widget.health1ColorPicker:SetEnabled(health1Enabled)
+            widget.health1GradientCB:SetEnabled(health1Enabled)
+            widget.health1HideZeroCB:SetEnabled(health1Enabled and widget.format.health1.format:find("^deficit") and true or false)
 
             local health2Enabled = widget.format.health2.format ~= "none"
             widget.health2DelimiterEB:SetEnabled(health2Enabled)
             widget.health2DelimiterEB.confirmBtn:Hide()
             widget.health2ColorDropdown:SetEnabled(health2Enabled)
             widget.health2ColorPicker:SetEnabled(health2Enabled)
+            widget.health2GradientCB:SetEnabled(health2Enabled)
+            widget.health2HideZeroCB:SetEnabled(health2Enabled and widget.format.health2.format:find("^deficit") and true or false)
             if health2Enabled then
                 widget.health2DelimiterText:SetTextColor(1, 1, 1)
             else
@@ -1065,6 +1136,7 @@ local function CreateSetting_HealthFormat(parent)
             widget.shieldDelimiterEB.confirmBtn:Hide()
             widget.shieldColorDropdown:SetEnabled(shieldEnabled)
             widget.shieldColorPicker:SetEnabled(shieldEnabled)
+            widget.shieldGradientCB:SetEnabled(shieldEnabled)
             if shieldEnabled then
                 widget.shieldDelimiterText:SetTextColor(1, 1, 1)
             else
@@ -1076,6 +1148,7 @@ local function CreateSetting_HealthFormat(parent)
             widget.healAbsorbDelimiterEB.confirmBtn:Hide()
             widget.healAbsorbColorDropdown:SetEnabled(healAbsorbEnabled)
             widget.healAbsorbColorPicker:SetEnabled(healAbsorbEnabled)
+            widget.healAbsorbGradientCB:SetEnabled(healAbsorbEnabled)
             if healAbsorbEnabled then
                 widget.healAbsorbDelimiterText:SetTextColor(1, 1, 1)
             else
@@ -1100,21 +1173,25 @@ local function CreateSetting_HealthFormat(parent)
         end
 
         local effective = " |cff7b7b7b" .. L["Effective"] .. "|r"
-        local healthList = {
+        local decimals2 = " |cff7b7b7b" .. L["2 Decimals"] .. "|r"
+        local healthList = BuildList(
             {L["None"], "none"},
             {(health + shield - healAbsorb) .. effective, "effective"},
             {F.FormatNumber(health + shield - healAbsorb) .. effective, "effective_short"},
+            Decimals2Item(F.FormatNumber(health + shield - healAbsorb, 2) .. effective .. decimals2, "effective_short2"),
             {F.Round((health + shield - healAbsorb) / healthMax * 100) .. "%" .. effective, "effective_percent"},
             {F.Round((health + shield - healAbsorb) / healthMax * 100) .. effective, "effective_percent_no_sign"},
             {health, "health"},
             {F.FormatNumber(health), "health_short"},
+            Decimals2Item(F.FormatNumber(health, 2) .. decimals2, "health_short2"),
             {F.Round(health / healthMax * 100) .. "%", "health_percent"},
             {F.Round(health / healthMax * 100), "health_percent_no_sign"},
             {health - healthMax, "deficit"},
             {F.FormatNumber(health - healthMax), "deficit_short"},
+            Decimals2Item(F.FormatNumber(health - healthMax, 2) .. decimals2, "deficit_short2"),
             {F.Round((health - healthMax) / healthMax * 100) .. "%", "deficit_percent"},
-            {F.Round((health - healthMax) / healthMax * 100), "deficit_percent_no_sign"},
-        }
+            {F.Round((health - healthMax) / healthMax * 100), "deficit_percent_no_sign"}
+        )
 
         -- health1 ------------------------------
         widget.health1FormatDropdown = Cell.CreateDropdown(widget, 127)
@@ -1156,9 +1233,28 @@ local function CreateSetting_HealthFormat(parent)
         end)
         widget.health1ColorPicker:SetPoint("LEFT", widget.health1ColorDropdown, "RIGHT", 5, 0)
 
+        widget.health1GradientCB = Cell.CreateCheckButton(widget, L["Color by Health"], function(checked)
+            widget.format.health1.colorByHealth = checked
+            widget.func()
+        end, L["Color by Health"], L["colorByHealthTip"])
+        widget.health1GradientCB:SetPoint("TOPLEFT", widget.health1ColorDropdown, "BOTTOMLEFT", 0, -8)
+
+        widget.health1HideZeroCB = Cell.CreateCheckButton(widget, L["Hide if 0"], function(checked)
+            widget.format.health1.hideIfEmptyOrFull = checked
+            widget.func()
+        end, L["Hide if 0"], L["Hide the deficit text once a unit is topped off"])
+        widget.health1HideZeroCB:SetPoint("TOPLEFT", widget.health1GradientCB, "BOTTOMLEFT", 0, -8)
+
+        local health1NextAnchor, health1NextGap = widget.health1HideZeroCB, -20
+        if isRetail then
+            widget.health1GradientCB:Hide()
+            widget.health1HideZeroCB:Hide()
+            health1NextAnchor, health1NextGap = widget.health1ColorDropdown, -35
+        end
+
         -- health2 ------------------------------
         widget.health2FormatDropdown = Cell.CreateDropdown(widget, 127)
-        widget.health2FormatDropdown:SetPoint("TOPLEFT", widget.health1ColorDropdown, "BOTTOMLEFT", 0, -35)
+        widget.health2FormatDropdown:SetPoint("TOPLEFT", health1NextAnchor, "BOTTOMLEFT", 0, health1NextGap)
         widget.health2FormatDropdown:SetItems(GetItems("health2", healthList))
 
         local health2Text = widget:CreateFontString(nil, "OVERLAY", font_name)
@@ -1208,17 +1304,37 @@ local function CreateSetting_HealthFormat(parent)
         end)
         widget.health2ColorPicker:SetPoint("LEFT", widget.health2ColorDropdown, "RIGHT", 5, 0)
 
+        widget.health2GradientCB = Cell.CreateCheckButton(widget, L["Color by Health"], function(checked)
+            widget.format.health2.colorByHealth = checked
+            widget.func()
+        end, L["Color by Health"], L["colorByHealthTip"])
+        widget.health2GradientCB:SetPoint("TOPLEFT", widget.health2ColorDropdown, "BOTTOMLEFT", 0, -8)
+
+        widget.health2HideZeroCB = Cell.CreateCheckButton(widget, L["Hide if 0"], function(checked)
+            widget.format.health2.hideIfEmptyOrFull = checked
+            widget.func()
+        end, L["Hide if 0"], L["Hide the deficit text once a unit is topped off"])
+        widget.health2HideZeroCB:SetPoint("TOPLEFT", widget.health2GradientCB, "BOTTOMLEFT", 0, -8)
+
+        local health2NextAnchor, health2NextGap = widget.health2HideZeroCB, -20
+        if isRetail then
+            widget.health2GradientCB:Hide()
+            widget.health2HideZeroCB:Hide()
+            health2NextAnchor, health2NextGap = widget.health2ColorDropdown, -35
+        end
+
         -- shield -------------------------------
-        local shieldList = {
+        local shieldList = BuildList(
             {L["None"], "none"},
             {shield, "shields"},
             {F.FormatNumber(shield), "shields_short"},
+            Decimals2Item(F.FormatNumber(shield, 2) .. decimals2, "shields_short2"),
             {F.Round(shield / healthMax * 100) .. "%", "shields_percent"},
-            {F.Round(shield / healthMax * 100), "shields_percent_no_sign"},
-        }
+            {F.Round(shield / healthMax * 100), "shields_percent_no_sign"}
+        )
 
         widget.shieldFormatDropdown = Cell.CreateDropdown(widget, 127)
-        widget.shieldFormatDropdown:SetPoint("TOPLEFT", widget.health2ColorDropdown, "BOTTOMLEFT", 0, -35)
+        widget.shieldFormatDropdown:SetPoint("TOPLEFT", health2NextAnchor, "BOTTOMLEFT", 0, health2NextGap)
         widget.shieldFormatDropdown:SetItems(GetItems("shields", shieldList))
 
         local shieldText = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
@@ -1270,17 +1386,30 @@ local function CreateSetting_HealthFormat(parent)
         end)
         widget.shieldColorPicker:SetPoint("LEFT", widget.shieldColorDropdown, "RIGHT", 5, 0)
 
+        widget.shieldGradientCB = Cell.CreateCheckButton(widget, L["Color by Health"], function(checked)
+            widget.format.shields.colorByHealth = checked
+            widget.func()
+        end, L["Color by Health"], L["colorByHealthTip"])
+        widget.shieldGradientCB:SetPoint("TOPLEFT", widget.shieldColorDropdown, "BOTTOMLEFT", 0, -8)
+
+        local shieldNextAnchor, shieldNextGap = widget.shieldGradientCB, -20
+        if isRetail then
+            widget.shieldGradientCB:Hide()
+            shieldNextAnchor, shieldNextGap = widget.shieldColorDropdown, -35
+        end
+
         -- heal absorb --------------------------
-        local healAbsorbList = {
+        local healAbsorbList = BuildList(
             {L["None"], "none"},
             {healAbsorb, "healabsorbs"},
             {F.FormatNumber(healAbsorb), "healabsorbs_short"},
+            Decimals2Item(F.FormatNumber(healAbsorb, 2) .. decimals2, "healabsorbs_short2"),
             {F.Round(healAbsorb / healthMax * 100) .. "%", "healabsorbs_percent"},
-            {F.Round(healAbsorb / healthMax * 100), "healabsorbs_percent_no_sign"},
-        }
+            {F.Round(healAbsorb / healthMax * 100), "healabsorbs_percent_no_sign"}
+        )
 
         widget.healAbsorbFormatDropdown = Cell.CreateDropdown(widget, 127)
-        widget.healAbsorbFormatDropdown:SetPoint("TOPLEFT", widget.shieldColorDropdown, "BOTTOMLEFT", 0, -35)
+        widget.healAbsorbFormatDropdown:SetPoint("TOPLEFT", shieldNextAnchor, "BOTTOMLEFT", 0, shieldNextGap)
         widget.healAbsorbFormatDropdown:SetItems(GetItems("healAbsorbs", healAbsorbList))
 
         local healAbsorbText = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
@@ -1332,6 +1461,16 @@ local function CreateSetting_HealthFormat(parent)
         end)
         widget.healAbsorbColorPicker:SetPoint("LEFT", widget.healAbsorbColorDropdown, "RIGHT", 5, 0)
 
+        widget.healAbsorbGradientCB = Cell.CreateCheckButton(widget, L["Color by Health"], function(checked)
+            widget.format.healAbsorbs.colorByHealth = checked
+            widget.func()
+        end, L["Color by Health"], L["colorByHealthTip"])
+        widget.healAbsorbGradientCB:SetPoint("TOPLEFT", widget.healAbsorbColorDropdown, "BOTTOMLEFT", 0, -8)
+
+        if isRetail then
+            widget.healAbsorbGradientCB:Hide()
+        end
+
         -- callback
         function widget:SetFunc(func)
             widget.func = func
@@ -1346,24 +1485,30 @@ local function CreateSetting_HealthFormat(parent)
             widget.health1FormatDropdown:SetSelectedValue(format.health1.format)
             widget.health1ColorDropdown:SetSelectedValue(format.health1.color[1])
             widget.health1ColorPicker:SetColor(unpack(format.health1.color[2]))
+            widget.health1GradientCB:SetChecked(format.health1.colorByHealth and true or false)
+            widget.health1HideZeroCB:SetChecked(format.health1.hideIfEmptyOrFull and true or false)
 
             -- health2
             widget.health2FormatDropdown:SetSelectedValue(format.health2.format)
             widget.health2DelimiterEB:SetText(format.health2.delimiter)
             widget.health2ColorDropdown:SetSelectedValue(format.health2.color[1])
             widget.health2ColorPicker:SetColor(unpack(format.health2.color[2]))
+            widget.health2GradientCB:SetChecked(format.health2.colorByHealth and true or false)
+            widget.health2HideZeroCB:SetChecked(format.health2.hideIfEmptyOrFull and true or false)
 
             -- shields
             widget.shieldFormatDropdown:SetSelectedValue(format.shields.format)
             widget.shieldDelimiterEB:SetText(format.shields.delimiter)
             widget.shieldColorDropdown:SetSelectedValue(format.shields.color[1])
             widget.shieldColorPicker:SetColor(unpack(format.shields.color[2]))
+            widget.shieldGradientCB:SetChecked(format.shields.colorByHealth and true or false)
 
             -- heal absorbs
             widget.healAbsorbFormatDropdown:SetSelectedValue(format.healAbsorbs.format)
             widget.healAbsorbDelimiterEB:SetText(format.healAbsorbs.delimiter)
             widget.healAbsorbColorDropdown:SetSelectedValue(format.healAbsorbs.color[1])
             widget.healAbsorbColorPicker:SetColor(unpack(format.healAbsorbs.color[2]))
+            widget.healAbsorbGradientCB:SetChecked(format.healAbsorbs.colorByHealth and true or false)
         end
     else
         widget = settingWidgets["healthFormat"]
@@ -2135,13 +2280,12 @@ local function CreateSetting_Font(parent, index)
             widget.xOffset:SetValue(fontTable[6])
             widget.yOffset:SetValue(fontTable[7])
 
-            local height = 200
+            local height = title and 295 or 275
 
             -- title
             if title then
                 widget.title:SetText(L[title])
                 widget.font:SetPoint("TOPLEFT", 5, -40)
-                height = height + 20
             else
                 widget.font:SetPoint("TOPLEFT", 5, -20)
             end
@@ -5747,7 +5891,7 @@ local function CreateActionButtons(parent, spellTable, updateHeightFunc)
                 tinsert(items, {
                     ["text"] = style,
                     ["onClick"] = function()
-                        CellIndicatorsPreviewButton.indicators.actions:Display(style, actionButtons[i].animationColor)
+                        F.BD(CellIndicatorsPreviewButton).indicators.actions:Display(style, actionButtons[i].animationColor)
                         actionButtons[i].animationType = style
                         -- update db
                         spellTable[i][2][1] = style
@@ -5764,7 +5908,7 @@ local function CreateActionButtons(parent, spellTable, updateHeightFunc)
                 spellTable[i][2][2][3] = b
                 parent.func(spellTable)
                 actionButtons[i].animationColor = {r, g, b}
-                CellIndicatorsPreviewButton.indicators.actions:Display(actionButtons[i].animationType, actionButtons[i].animationColor)
+                F.BD(CellIndicatorsPreviewButton).indicators.actions:Display(actionButtons[i].animationType, actionButtons[i].animationColor)
             end)
             actionButtons[i].colorPicker:SetPoint("TOPLEFT", actionButtons[i].styleDropdown, "TOPRIGHT", 2, -1)
             actionButtons[i].colorPicker:HookScript("OnEnter", function()
@@ -5804,7 +5948,7 @@ local function CreateActionButtons(parent, spellTable, updateHeightFunc)
 
             -- preview
             actionButtons[i]:SetScript("OnClick", function(self, button)
-                CellIndicatorsPreviewButton.indicators.actions:Display(actionButtons[i].animationType, actionButtons[i].animationColor)
+                F.BD(CellIndicatorsPreviewButton).indicators.actions:Display(actionButtons[i].animationType, actionButtons[i].animationColor)
             end)
 
             -- spell tooltip
@@ -6154,6 +6298,13 @@ local function CreateSetting_HighlightType(parent)
         widget.highlightType:SetPoint("TOPLEFT", 5, -20)
         widget.highlightType:SetItems({
             {
+                ["text"] = L["None"],
+                ["value"] = "none",
+                ["onClick"] = function()
+                    widget.func("none")
+                end,
+            },
+            {
                 ["text"] = L["Solid"].." - "..L["Health Bar"],
                 ["value"] = "entire",
                 ["onClick"] = function()
@@ -6231,7 +6382,7 @@ local function CreateSetting_HighlightType(parent)
         function widget:SetDBValue(highlightType)
             if highlightType == "gradient-sharp" then
                 highlightType = "edge-bottom"
-            elseif highlightType ~= "edge-top" and highlightType ~= "edge-bottom" then
+            elseif highlightType ~= "edge-top" and highlightType ~= "edge-bottom" and highlightType ~= "none" then
                 highlightType = "entire"
             end
             widget.highlightType:SetSelectedValue(highlightType)
@@ -6432,6 +6583,7 @@ local function CreateSetting_Warning(parent)
             C_Timer.After(0, function()
                 if not widget:IsShown() then return end
                 widget:SetHeight(math.max(64, math.ceil(widget.text:GetStringHeight()) + 16))
+                Cell.UpdateIndicatorSettingsHeight()
             end)
         end
         function widget:SetFunc()
@@ -6682,6 +6834,78 @@ local function CreateSetting_DispelFilters(parent)
         end
     else
         widget = settingWidgets["dispelFilters"]
+    end
+
+    widget:Show()
+    return widget
+end
+
+local HIGHLIGHT_DEBUFF_FILTER_KEYS = {
+    "nonplayer", "priority", "cc", "bossaura", "roleaura",
+    "raid", "raidcombat", "dispellable", "dispeltyped",
+}
+
+local function CreateSetting_HighlightDebuffFilters(parent)
+    local widget
+
+    if not settingWidgets["highlightDebuffFilters"] then
+        widget = Cell.CreateFrame("CellIndicatorSettings_HighlightDebuffFilters", parent, 240, 168)
+        settingWidgets["highlightDebuffFilters"] = widget
+
+        widget.checks = {}
+        local prevLeft, prevRight
+        for i, key in ipairs(HIGHLIGHT_DEBUFF_FILTER_KEYS) do
+            local label = L["highlightDebuffFilters_"..key]
+            local cb = Cell.CreateCheckButton(widget, label, nil, label, L["highlightDebuffFiltersTip_"..key])
+            widget.checks[key] = cb
+            local col = (i - 1) % 2 -- 0 = left, 1 = right
+            local row = math.ceil(i / 2)
+            if col == 0 then
+                if row == 1 then
+                    cb:SetPoint("TOPLEFT", 5, -8)
+                else
+                    cb:SetPoint("TOPLEFT", prevLeft, "BOTTOMLEFT", 0, -8)
+                end
+                prevLeft = cb
+            else
+                cb:SetPoint("TOPLEFT", prevLeft, 135, 0)
+                prevRight = cb
+            end
+        end
+
+        widget.tip = widget:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET_SMALL")
+        widget.tip:SetPoint("TOPLEFT", prevLeft, "BOTTOMLEFT", 0, -10)
+        widget.tip:SetWidth(230)
+        widget.tip:SetJustifyH("LEFT")
+        widget.tip:SetJustifyV("TOP")
+        widget.tip:SetWordWrap(true)
+        widget.tip:SetSpacing(1)
+        widget.tip:SetTextColor(0.6, 0.6, 0.6)
+        widget.tip:SetText(L["highlightDebuffFiltersTip"])
+
+        local rowsHeight = 8 + 5 * (14 + 8)
+        local tipHeight = math.ceil(widget.tip:GetStringHeight())
+        widget:SetHeight(rowsHeight + 10 + tipHeight + 10)
+
+        -- callback
+        function widget:SetFunc(func)
+            for _, key in ipairs(HIGHLIGHT_DEBUFF_FILTER_KEYS) do
+                widget.checks[key].onClick = function(checked)
+                    widget.filterClasses[key] = checked
+                    func()
+                end
+            end
+        end
+
+        -- show db value
+        function widget:SetDBValue(filterClasses)
+            widget.filterClasses = filterClasses
+            for _, key in ipairs(HIGHLIGHT_DEBUFF_FILTER_KEYS) do
+                widget.checks[key]:SetChecked(filterClasses[key])
+            end
+        end
+    else
+        widget = settingWidgets["highlightDebuffFilters"]
     end
 
     widget:Show()
@@ -7961,7 +8185,7 @@ function Cell.UpdateIndicatorSettingsHeight()
             height = height + w:GetHeight()
         end
     end
-    settingsParent:SetHeight(height + (count-1)*P.Scale(10))
+    settingsParent:SetHeight(height + (count-1)*P.Scale(10) + P.Scale(24))
 end
 
 -----------------------------------------
@@ -8022,6 +8246,7 @@ local builders = {
     ["shape"] = CreateSetting_Shape,
     ["targetCounterFilters"] = CreateSetting_TargetCounterFilters,
     ["dispelFilters"] = CreateSetting_DispelFilters,
+    ["highlightDebuffFilters"] = CreateSetting_HighlightDebuffFilters,
     ["castBy"] = CreateSetting_CastBy,
     -- ["showOn"] = CreateSetting_ShowOn,
     ["builtInAuraBlacklist"] = CreateSetting_AuraBlacklist,
@@ -8062,6 +8287,8 @@ function Cell.CreateIndicatorSettings(parent, settingsTable)
             tinsert(widgetsTable, CreateSetting_FontNoOffset(parent))
         elseif string.find(setting, "^font") then
             tinsert(widgetsTable, CreateSetting_Font(parent, string.match(setting, "^(font%d?):?.*$")))
+        elseif string.find(setting, "^checkbutton%-thickness") then
+            tinsert(widgetsTable, CreateSetting_CheckButtonThickness(parent))
         elseif string.find(setting, "^checkbutton6") then
             tinsert(widgetsTable, CreateSetting_CheckButton6(parent))
         elseif string.find(setting, "^checkbutton5") then

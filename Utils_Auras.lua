@@ -73,10 +73,37 @@ end
 function F.CopyAuraTable(aura)
     if not aura then return nil end
     if aura._cellOwned then return aura end
-    local copy = {}
-    for k, v in pairs(aura) do
-        copy[k] = v
-    end
-    copy._cellOwned = true
+    local copy = {
+        _cellOwned = true,
+        auraInstanceID = aura.auraInstanceID,
+        spellId = aura.spellId,
+        name = aura.name,
+        icon = aura.icon,
+        applications = aura.applications,
+        dispelName = aura.dispelName,
+        duration = aura.duration,
+        expirationTime = aura.expirationTime,
+        sourceUnit = aura.sourceUnit,
+        source = aura.source,
+        isHarmful = aura.isHarmful,
+        isHelpful = aura.isHelpful,
+        isNameplateOnly = aura.isNameplateOnly,
+        isRaid = aura.isRaid,
+        isBossAura = aura.isBossAura,
+        isFromPlayerOrPlayerPet = aura.isFromPlayerOrPlayerPet,
+        isStealable = aura.isStealable,
+        canApplyAura = aura.canApplyAura,
+        nameplateShowAll = aura.nameplateShowAll,
+        nameplateShowPersonal = aura.nameplateShowPersonal,
+        points = aura.points,
+        timeMod = aura.timeMod,
+        hideOnPartyFrames = aura.hideOnPartyFrames,
+        canActivePlayerDispel = aura.canActivePlayerDispel,
+        isTankRoleAura = aura.isTankRoleAura,
+        isHealerRoleAura = aura.isHealerRoleAura,
+        isDPSRoleAura = aura.isDPSRoleAura,
+        isPriorityAura = aura.isPriorityAura,
+        isRoleAura = aura.isRoleAura,
+    }
     return copy
 end

@@ -25,7 +25,20 @@ select(2, ...).L = setmetatable({
     ["showBackground"] = "Show background",
     ["dispellableByMe"] = "Only show debuffs dispellable by me",
     ["nonPlayerAuras"] = "Only show non-player auras",
-    ["nonPlayerAurasTip"] = "Hides lust aftereffects such as Exhaustion, Sated, Forbearance and Temporal Displacement. Encounter debuffs stay visible.",
+    ["showDispelBorder"] = "Show dispel-type border",
+    ["showDispelFrameBorder"] = "Show frame border",
+    ["raidStyleSwitchChatMsg"] = "Traditional party frames cause known Blizzard errors (taint). Cell has automatically switched to raid-style party frames to avoid this. A UI reload is required for the change to take effect.",
+    ["raidStyleSwitchPopupText"] = "Traditional party frames cause known Blizzard errors.\n\nCell has automatically switched to raid-style party frames to prevent this.\n\nA UI reload is required for the change to take effect.\n ",
+    ["nonPlayerAurasTip"] = "Hides lust aftereffects such as Exhaustion, Sated, Forbearance and Temporal Displacement, and Fel Armor. Encounter debuffs stay visible.",
+    ["Color by Health"] = "Color by Health",
+    ["colorByHealthTip"] = "Blend this segment's color from red (low health) to yellow to its normal color as health rises.",
+    ["2 Decimals"] = "2 Decimals",
+    ["Hide if 0"] = "Hide if 0",
+    ["Hide the deficit text once a unit is topped off"] = "Hide the deficit text once a unit is topped off",
+    ["Fade at Full Health"] = "Fade at Full Health",
+    ["healthFadeTip"] = "Dims a unit's frame (using the Out of Range Alpha value) once their health rises above the threshold below, so healthy units fade into the background and hurt ones stand out.",
+    ["Health Fade Threshold"] = "Health Fade Threshold",
+    ["Color Duration Text Unavailable Tip"] = "This is unfortunately no longer possible since patch 12.0.0 due to Blizzard API restrictions.",
     ["Private Dispel Overlay"] = "Private Dispel Overlay",
     ["Show private dispel overlay"] = "Show private dispel overlay",
     ["Only dispellable by me"] = "Only dispellable by me",
@@ -41,6 +54,30 @@ select(2, ...).L = setmetatable({
     ["sec"] = "sec",
     ["glowDisabledApiWarning"] = "Unfortunately Glow cannot be implemented right now due to API changes. I have disabled this indicator for now, until a solution is found.",
     ["crowdControlsApiWarning"] = "Cell can no longer use a custom CC list. Blizzard decides which debuffs are crowd control, and this indicator shows those automatically.",
+    ["Boss Debuffs"] = "Highlight Debuffs",
+    ["Raid debuffs"] = "Raid debuffs",
+    ["bossDebuffsApiWarning"] = "Highlight Debuffs shows harmful auras matching whichever filters below are checked. Everything not caught by a checked filter stays on the normal Debuffs indicator. Custom spell lists can no longer control this on Retail (12.1+).",
+    ["bossDebuffsTabNotice"] = "Custom Raid Debuff lists no longer work on Retail (12.1+)\n\nBlizzard hides many combat aura spell IDs on party and raid frames, so addons can no longer reliably filter by your own enable/disable checklist.\n\nWhat changed:\n• The old \"Raid Debuffs\" indicator is now \"Highlight Debuffs\".\n• It shows harmful auras matching the checked filter classes below (Blizzard-provided flags, e.g. isBossAura).\n• Everything else stays on the normal Debuffs indicator.\n\nThis tab’s spell list, checkboxes, and ordering have no effect on Retail frames anymore. Classic and MoP are unchanged.",
+    ["highlightDebuffFilters"] = "Filters",
+    ["highlightDebuffFilters_nonplayer"] = "Non-Player Auras",
+    ["highlightDebuffFilters_priority"] = "Important",
+    ["highlightDebuffFilters_cc"] = "Crowd Control",
+    ["highlightDebuffFilters_bossaura"] = "Boss Debuffs",
+    ["highlightDebuffFilters_roleaura"] = "Role Debuffs",
+    ["highlightDebuffFilters_raid"] = "Raid",
+    ["highlightDebuffFilters_raidcombat"] = "Raid In Combat",
+    ["highlightDebuffFilters_dispellable"] = "Dispellable By You",
+    ["highlightDebuffFilters_dispeltyped"] = "Dispellable Effects",
+    ["highlightDebuffFiltersTip"] = "Checked filters combine and exclude each other: a match shows under the first checked filter only (top to bottom), never twice. Nothing checked = nothing shown.",
+    ["highlightDebuffFiltersTip_nonplayer"] = "Shows debuffs that were NOT cast by you or your pet.",
+    ["highlightDebuffFiltersTip_priority"] = "Shows debuffs Blizzard marks as important for raid frames (isPriorityAura).",
+    ["highlightDebuffFiltersTip_cc"] = "Shows debuffs that are crowd control (stun, fear, root, etc.).",
+    ["highlightDebuffFiltersTip_bossaura"] = "Shows debuffs Blizzard marks as boss auras (dungeon/raid bosses).",
+    ["highlightDebuffFiltersTip_roleaura"] = "Shows debuffs Blizzard marks as relevant to your role (e.g. tank debuffs).",
+    ["highlightDebuffFiltersTip_raid"] = "Shows debuffs Blizzard flags as raid-relevant.",
+    ["highlightDebuffFiltersTip_raidcombat"] = "Shows raid-relevant debuffs while you are in combat.",
+    ["highlightDebuffFiltersTip_dispellable"] = "Shows debuffs YOU can dispel/cleanse right now.",
+    ["highlightDebuffFiltersTip_dispeltyped"] = "Shows any debuff with a dispel type (Magic/Curse/Disease/Poison/Bleed), regardless of whether you can remove it.",
     ["aoeHealingDisabledApiWarning"] = "AoE Healing is disabled on Midnight. It required the combat log, which addons can no longer read.",
     ["tankActiveMitigationDisabledApiWarning"] = "Tank Active Mitigation is disabled on Midnight. The spell IDs and durations are hidden in combat, so the bar cannot update reliably.",
     ["Healers indicator is up to date."] = "Healers indicator is up to date.",
@@ -115,9 +152,47 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.8 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Everything from r277.9.7.9-beta and r277.9.7.10-beta below is included in this release.</p>
+        <p>* Translated several important in-game texts (warnings and explanations) into more languages.</p>
+        <p>* New: "Fade at Full Health" (Appearance settings) can dim a unit's frame once they're topped off, so healthy players fade into the background and hurt ones stand out.</p>
+        <p>* Fixed the Health Thresholds indicator not showing its markers at all on current Retail.</p>
+        <p>* Fixed right-clicking a unit frame sometimes not opening the menu at all.</p>
+        <p>* Fixed right-clicking a group member occasionally showing the wrong menu (e.g. a pet's options instead of the player's).</p>
+        <p>* "View Houses" now works from the right-click menu of a group member, including for members currently in a different house/zone.</p>
+        <h2>Classic / TBC</h2>
+        <p>* Debuffs and Dispels can now show a colored border (with adjustable thickness) here too, matching Retail.</p>
+        <p>* "Fade at Full Health" (Appearance settings) is now available here too, matching Retail.</p>
+        <br/>
+
+        <h1>r277.9.7.10-beta - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Fixed "tainted by 'Cell'" errors for players using the traditional (non-compact) Blizzard party frame style: Cell now automatically switches Edit Mode to raid-style party frames when Hide Blizzard Party is enabled, since Blizzard's traditional party frames cannot be safely hidden without taint on current Retail. A one-time popup explains the change and offers a reload button.</p>
+        <p>* Fixed the duration number on some aura/cooldown text indicators showing an extra word after it in certain languages (e.g. Russian "15 с." instead of just "15").</p>
+        <p>* Fixed Cell's memory usage slowly climbing the longer you played.</p>
+        <p>* Debuffs can now show a colored outline around each icon so you can tell its type (Magic, Curse, Disease, Poison, Bleed) at a glance. Can be turned on/off, and you can change how thick it is.</p>
+        <p>* Dispels can now show a colored outline around the whole player/raid frame, not just the health bar. Can be turned on/off, and you can change how thick it is.</p>
+        <p>* Reduced stuttering when players join or leave the group/raid.</p>
+        <p>* Reduced stuttering when entering or leaving combat, especially noticeable after longer fights.</p>
+        <br/>
+
+        <h1>r277.9.7.9-beta - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Raid Debuffs is now Highlight Debuffs: "Highlight Debuffs" now has 9 combinable checkboxes (Boss Debuffs, Role Debuffs, Important, Crowd Control, Raid, Raid In Combat, Dispellable By You, Dispellable Effects, Non-Player Auras) with tooltips explaining each. Checked filters are mutually exclusive in priority order, so a debuff never shows twice.</p>
+        <p>* The Raid Debuffs options tab no longer shows the spell list editor on Retail; it explains why custom lists no longer work. Classic and MoP are unchanged.</p>
+        <p>* Highlight Debuffs can now also be added as a custom indicator (via the "+" button), so multiple independently configured instances can be placed on a layout.</p>
+        <p>* Cell was rebuilt for Midnight so it works with Blizzard’s new combat data rules instead of the old direct aura scanning. The addon now leans on Blizzard’s own display systems for auras and related frame info, which keeps it stable on current Retail.</p>
+        <p>* Several Lua bugs have been fixed.</p>
+        <h2>Classic / TBC</h2>
+        <p>* Debuffs and Raid Debuffs Circular animation works again (None / Top to bottom / Circular).</p>
+        <p>* Healers indicator now has the Animation dropdown (None / Top to bottom / Circular).</p>
+        <br/>
+
         <h1>r277.9.7.8 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Hide Blizzard: hidden Blizzard party/raid frames are fully disabled so they no longer error on roster, health, or Edit Mode updates, and the leftover gold target box on those faded frames is gone. Party/Raid stay hidden; Cooldown Viewer and other Edit Mode elements stay usable; the player breath bar stays visible.</p>
+        <p>* Hidden Blizzard party member frames stay disabled after joining a group, so their health bars no longer error on secret max health.</p>
         <p>* Aura displays no longer rebuild on every loading screen or layout switch, and unused AuraContainers are parked and reused instead of being discarded, which was causing Cell's memory use to climb over time.</p>
         <h2>Classic / TBC</h2>
         <p>* Converting party to raid no longer rebuilds indicators on every precreated raid button, which was hitching the client even in a 2-player raid and could leave a random set of frames without names, HoTs, or PW:S until reload.</p>

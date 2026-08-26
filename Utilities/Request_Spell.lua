@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 local F = Cell.funcs
 local U = Cell.uFuncs
@@ -666,10 +666,10 @@ end
 -- end
 
 function U.CreateSpellRequestIcon(parent)
-    local srIcon = CreateFrame("Frame", parent:GetName().."SpellRequestIcon", parent.widgets.indicatorFrame)
-    parent.widgets.srIcon = srIcon
+    local srIcon = CreateFrame("Frame", parent:GetName().."SpellRequestIcon", F.BD(parent).widgets.indicatorFrame)
+    F.BD(parent).widgets.srIcon = srIcon
     srIcon:SetIgnoreParentAlpha(true)
-    srIcon:SetFrameLevel(parent.widgets.indicatorFrame:GetFrameLevel()+110)
+    srIcon:SetFrameLevel(F.BD(parent).widgets.indicatorFrame:GetFrameLevel()+110)
     srIcon:Hide()
 
     -- srIcon:SetBackdrop({bgFile = Cell.vars.whiteTexture})
@@ -713,7 +713,7 @@ function U.CreateSpellRequestIcon(parent)
                 srIcon.elapsed = (srIcon.elapsed or 0) + elapsed * 2
                 srIcon:SetPoint(
                     CellDB["spellRequest"]["sharedIconOptions"][3],
-                    parent.widgets.srGlowFrame,
+                    F.BD(parent).widgets.srGlowFrame,
                     CellDB["spellRequest"]["sharedIconOptions"][4],
                     CellDB["spellRequest"]["sharedIconOptions"][5],
                     CellDB["spellRequest"]["sharedIconOptions"][6] + GetValue(srIcon.elapsed / 1, 0, 7)

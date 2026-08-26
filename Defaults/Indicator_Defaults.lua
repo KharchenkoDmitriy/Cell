@@ -250,6 +250,29 @@ function I.GetDefaultCustomIndicatorTable(name, indicatorName, type, auraType)
             ["auras"] = {},
             ["fadeOut"] = true,
         }
+    elseif type == "highlightDebuffs" then
+        t = {
+            ["name"] = name,
+            ["indicatorName"] = indicatorName,
+            ["type"] = type,
+            ["enabled"] = true,
+            ["position"] = {"CENTER", "button", "CENTER", 0, 3},
+            ["frameLevel"] = 20,
+            ["size"] = {22, 22},
+            ["num"] = 3,
+            ["showDuration"] = true,
+            ["showStack"] = true,
+            ["animationStyle"] = "clock",
+            ["font"] = {
+                {"Cell " .. _G.DEFAULT, 11, "Outline", false, "TOPRIGHT", 2, 1, {1, 1, 1}},
+                {"Cell " .. _G.DEFAULT, 11, "Outline", false, "BOTTOMRIGHT", 2, -1, {1, 1, 1}},
+            },
+            ["orientation"] = "left-to-right",
+            ["filterClasses"] = {["bossaura"] = true},
+            ["auraType"] = "debuff",
+            ["auras"] = {},
+        }
+        auraType = "debuff"
     end
 
     if auraType == "buff" then

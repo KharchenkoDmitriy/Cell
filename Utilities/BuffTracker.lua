@@ -773,8 +773,6 @@ local function CheckUnit(unit, updateBtn)
     -- print("CheckUnit", unit)
     if not hasBuffProvider then return end
 
-    -- unreliable for "provided by me" checks, causing false missing-buff icons.
-    -- Prefer hiding missing indicators temporarily instead of showing wrong data.
     if Cell.isMidnight and F.IsSecretContextActive and F.IsSecretContextActive() then
         if missingBuffsFromMe[unit] then wipe(missingBuffsFromMe[unit]) end
         hasBuffFromMe[unit] = nil
@@ -946,6 +944,9 @@ function buffTrackerFrame:PLAYER_UNGHOST()
 end
 
 function buffTrackerFrame:UNIT_AURA(unit)
+    if Cell.isMidnight then
+        return
+    end
     if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
         C_Timer.After(0, function()
             buffTrackerFrame:_CheckUnitAura(unit)

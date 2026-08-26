@@ -644,6 +644,7 @@ function F.FirstRun()
             ["showStack"] = true,
             ["showDuration"] = false,
             ["showAnimation"] = true,
+            ["animationStyle"] = "clock",
             ["glowOptions"] = {"None", {0.95, 0.95, 0.32, 1}},
             ["auraType"] = "buff",
             ["castBy"] = "me",

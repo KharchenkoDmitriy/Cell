@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 ---@type CellFuncs
 local F = Cell.funcs
@@ -47,7 +47,7 @@ local function ScanNameplates()
 end
 
 local function SetCount(b, count)
-    b.indicators.targetCounter:SetCount(count)
+    F.BD(b).indicators.targetCounter:SetCount(count)
 end
 
 local ticker
@@ -99,7 +99,7 @@ function eventFrame:PLAYER_ENTERING_WORLD()
     wipe(nameplates)
     wipe(counter)
     F.IterateAllUnitButtons(function(b)
-        b.indicators.targetCounter:SetCount(0)
+        F.BD(b).indicators.targetCounter:SetCount(0)
     end, true)
 
     local isIn, iType = IsInInstance()
@@ -149,7 +149,7 @@ end
 -------------------------------------------------
 function I.CreateTargetCounter(parent)
     local targetCounter = CreateFrame("Frame", parent:GetName().."TargetCounter", parent)
-    parent.indicators.targetCounter = targetCounter
+    F.BD(parent).indicators.targetCounter = targetCounter
     targetCounter:Hide()
 
     local text = targetCounter:CreateFontString(nil, "OVERLAY", "CELL_FONT_STATUS")

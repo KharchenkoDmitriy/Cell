@@ -1,7 +1,8 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 Cell._hb = Cell._hb or {}
 local hb = Cell._hb
 local F = Cell.funcs
+local function BD(b) return F.GetButtonData(b) end
 local I = Cell.iFuncs
 
 local function HandleBuff(self, auraInfo)
@@ -14,7 +15,7 @@ local function HandleBuff(self, auraInfo)
         return
     end
 
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     local auraInstanceID = auraInfo.auraInstanceID
 
     local name = auraInfo.name
@@ -39,7 +40,7 @@ local function HandleBuff(self, auraInfo)
 
     if Cell.isMidnight or (duration ~= nil) then
         hb.UpdateAuraRefreshState(auraInfo)
-        self._buffs_cache[auraInstanceID] = auraInfo
+        BD(self)._buffs_cache[auraInstanceID] = auraInfo
 
         local isDefensive = false
         local isExternal = false
@@ -48,7 +49,7 @@ local function HandleBuff(self, auraInfo)
 
         local inCombat = UnitAffectingCombat("player")
 
-        local classified = self._buffs._classified and self._buffs._classified[auraInstanceID]
+        local classified = BD(self)._buffs._classified and BD(self)._buffs._classified[auraInstanceID]
         if classified and (inCombat or not auraInfo._hasSecrets) then
             isDefensive = classified == "defensive"
             isExternal = classified == "external"
@@ -76,8 +77,8 @@ local function HandleBuff(self, auraInfo)
         end
 
         if not classified and (isDefensive or isExternal or isOffensive) then
-            self._buffs._classified = self._buffs._classified or {}
-            self._buffs._classified[auraInstanceID] = isDefensive and "defensive" or (isExternal and "external" or "offensive")
+            BD(self)._buffs._classified = BD(self)._buffs._classified or {}
+            BD(self)._buffs._classified[auraInstanceID] = isDefensive and "defensive" or (isExternal and "external" or "offensive")
         end
 
         local isPlayerCast = false
@@ -109,9 +110,9 @@ local function HandleBuff(self, auraInfo)
         local skipLegacy = I.ShouldSkipLegacyCombatAura
         if hb.enabledIndicators["defensiveCooldowns"] and isDefensive
             and not (skipLegacy and skipLegacy("defensiveCooldowns", self))
-            and self._buffs.defensiveFound < hb.indicatorNums["defensiveCooldowns"] then
-            self._buffs.defensiveFound = self._buffs.defensiveFound + 1
-            local frame = self.indicators.defensiveCooldowns[self._buffs.defensiveFound]
+            and BD(self)._buffs.defensiveFound < hb.indicatorNums["defensiveCooldowns"] then
+            BD(self)._buffs.defensiveFound = BD(self)._buffs.defensiveFound + 1
+            local frame = BD(self).indicators.defensiveCooldowns[BD(self)._buffs.defensiveFound]
             if Cell.isMidnight then
                 frame:SetCooldownFromAura(unit, auraInstanceID, icon, auraInfo.refreshing)
                 if frame.border then frame.border:SetColorTexture(borderR, borderG, borderB); frame.border:Show() end
@@ -124,9 +125,9 @@ local function HandleBuff(self, auraInfo)
 
         if hb.enabledIndicators["externalCooldowns"] and isExternal
             and not (skipLegacy and skipLegacy("externalCooldowns", self))
-            and self._buffs.externalFound < hb.indicatorNums["externalCooldowns"] then
-            self._buffs.externalFound = self._buffs.externalFound + 1
-            local frame = self.indicators.externalCooldowns[self._buffs.externalFound]
+            and BD(self)._buffs.externalFound < hb.indicatorNums["externalCooldowns"] then
+            BD(self)._buffs.externalFound = BD(self)._buffs.externalFound + 1
+            local frame = BD(self).indicators.externalCooldowns[BD(self)._buffs.externalFound]
             if Cell.isMidnight then
                 frame:SetCooldownFromAura(unit, auraInstanceID, icon, auraInfo.refreshing)
                 if frame.border then frame.border:SetColorTexture(borderR, borderG, borderB); frame.border:Show() end
@@ -139,9 +140,9 @@ local function HandleBuff(self, auraInfo)
 
         if hb.enabledIndicators["offensiveCooldowns"] and isOffensive
             and not (skipLegacy and skipLegacy("offensiveCooldowns", self))
-            and self._buffs.offensiveFound < hb.indicatorNums["offensiveCooldowns"] then
-            self._buffs.offensiveFound = self._buffs.offensiveFound + 1
-            local frame = self.indicators.offensiveCooldowns[self._buffs.offensiveFound]
+            and BD(self)._buffs.offensiveFound < hb.indicatorNums["offensiveCooldowns"] then
+            BD(self)._buffs.offensiveFound = BD(self)._buffs.offensiveFound + 1
+            local frame = BD(self).indicators.offensiveCooldowns[BD(self)._buffs.offensiveFound]
             if Cell.isMidnight then
                 frame:SetCooldownFromAura(unit, auraInstanceID, icon, auraInfo.refreshing)
                 if frame.border then frame.border:SetColorTexture(borderR, borderG, borderB); frame.border:Show() end
@@ -154,9 +155,9 @@ local function HandleBuff(self, auraInfo)
 
         if hb.enabledIndicators["allCooldowns"] and (isDefensive or isExternal)
             and not (skipLegacy and skipLegacy("allCooldowns", self))
-            and self._buffs.allFound < hb.indicatorNums["allCooldowns"] then
-            self._buffs.allFound = self._buffs.allFound + 1
-            local frame = self.indicators.allCooldowns[self._buffs.allFound]
+            and BD(self)._buffs.allFound < hb.indicatorNums["allCooldowns"] then
+            BD(self)._buffs.allFound = BD(self)._buffs.allFound + 1
+            local frame = BD(self).indicators.allCooldowns[BD(self)._buffs.allFound]
             if Cell.isMidnight then
                 frame:SetCooldownFromAura(unit, auraInstanceID, icon, auraInfo.refreshing)
                 if frame.border then frame.border:SetColorTexture(borderR, borderG, borderB); frame.border:Show() end
@@ -168,25 +169,25 @@ local function HandleBuff(self, auraInfo)
         end
 
         if not Cell.isMidnight and hb.enabledIndicators["tankActiveMitigation"] and I.IsTankActiveMitigation(spellId) then
-            self.indicators.tankActiveMitigation:SetCooldown(start, duration)
-            self._buffs.tankActiveMitigationFound = true
+            BD(self).indicators.tankActiveMitigation:SetCooldown(start, duration)
+            BD(self)._buffs.tankActiveMitigationFound = true
         end
 
         if hb.enabledIndicators["statusText"] and I.IsDrinking(name) then
-            if not self.indicators.statusText:GetStatus() then
-                self.indicators.statusText:SetStatus("DRINKING")
-                self.indicators.statusText:Show()
+            if not BD(self).indicators.statusText:GetStatus() then
+                BD(self).indicators.statusText:SetStatus("DRINKING")
+                BD(self).indicators.statusText:Show()
             end
-            self._buffs.drinkingFound = true
+            BD(self)._buffs.drinkingFound = true
         end
 
         I.UpdateCustomIndicators(self, auraInfo, "buff")
 
         if not auraInfo._hasSecrets and spellId then
             if spellId == 156621 then
-                self.states.BGFlag = "alliance"
+                BD(self).states.BGFlag = "alliance"
             elseif spellId == 156618 then
-                self.states.BGFlag = "horde"
+                BD(self).states.BGFlag = "horde"
             end
         end
     end

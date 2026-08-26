@@ -19,7 +19,7 @@
         <Scripts>
             <OnLoad>
                 CellQuickAssist_OnLoad(self)
-                self.isPreview = true
+                Cell.funcs.BD(self).isPreview = true
             </OnLoad>
         </Scripts>
     </Button>

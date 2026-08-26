@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 
 (function(Cell)
     local L = Cell.L
@@ -12,6 +12,10 @@ local _, Cell = ...
     local U = Cell.uFuncs
     ---@type PixelPerfectFuncs
     local P = Cell.pixelPerfectFuncs
+local function BD(b) return F.GetButtonData(b) end
+-- Event-offloading disabled: Midnight health/power must stay on the unit button
+-- (RegisterEvent/OnUpdate). Keep HookScript(OnAttributeChanged) + header auraContainer.
+local useEventHub = false
     ---@type CellAnimations
     local A = Cell.animations
     local LGI = LibStub:GetLibrary("LibGroupInfo")
@@ -66,15 +70,34 @@ local _GetAuraDataBySlot = C_UnitAuras.GetAuraDataBySlot
 local _GetAuraDispelTypeColor = C_UnitAuras.GetAuraDispelTypeColor
 local _IsAuraFilteredOut = C_UnitAuras.IsAuraFilteredOutByInstanceID
 local _GetAuraDuration = C_UnitAuras.GetAuraDuration
--- wrapped versions applied after AnnotateAura is defined (see below)
 local GetAuraDataByAuraInstanceID, GetAuraDataBySlot
 local IsDelveInProgress = C_PartyInfo.IsDelveInProgress
 local UnitGetDetailedHealPrediction = UnitGetDetailedHealPrediction
 local CreateUnitHealPredictionCalculator = CreateUnitHealPredictionCalculator
 local UnitHealthPercent = UnitHealthPercent
+local CurveConstants = CurveConstants
 local AbbreviateNumbers = AbbreviateNumbers
 local SBI_ExponentialEaseOut = Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.ExponentialEaseOut
 local SBI_Immediate = Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate
+
+local function GetUnitHealthPercent100(unit)
+    if not (unit and UnitHealthPercent) then return nil end
+    if CurveConstants and CurveConstants.ScaleTo100 then
+        return UnitHealthPercent(unit, true, CurveConstants.ScaleTo100)
+    end
+    return UnitHealthPercent(unit, true)
+end
+
+local function SetStatusBarHealth(bar, value, maxValue)
+    if not bar then return end
+    bar:SetMinMaxValues(0, maxValue)
+    local smoothEnum = (barAnimationType == "Smooth" and SBI_ExponentialEaseOut) or SBI_Immediate
+    if smoothEnum then
+        bar:SetValue(value, smoothEnum)
+    else
+        bar:SetValue(value)
+    end
+end
 
 --! for AI followers, UnitClassBase is buggy
 local UnitClassBase = function(unit)
@@ -109,20 +132,11 @@ local secretHelpfulCastFallbacks = {
     [6940]   = "external", -- Blessing of Sacrifice / Bendición de Sacrificio (Holy Paladin)
 }
 
--- Known external-cast buffs that should NOT be matched on the caster's own
--- frame (unit == "player"). External casts apply their buff to a TARGET
--- (another player or party member), not to the caster. When the caster's
--- it's almost always a coincidental proc or personal buff, NOT the cast
--- result. Self-cast external buffs (Blessing of Freedom on self, etc.)
--- are NOT in this table — they DO land on the caster's frame.
 local secretHelpfulCastSkipOnPlayer = {
     [325197] = true, -- Invoke Chi-Ji: Life Cocoon lands on party member, not caster
     [360823] = true, -- Verdant Embrace: Lifebind lands on party member, not caster
 }
 
--- Expected buff info per cast spellId for Step 2.5 verification.
--- Maps cast spellId ? { spellId = expected buff spellId, spellIds = aliases, name = expected buff name (or nil) }.
--- match by tight cast timing because the cast-to-buff mapping itself is curated.
 local castExpectedBuff = {
     [116841]  = { spellId = 116841 },                  -- Tiger's Lust / Deseo del Tigre (cast = buff)
     [1044]    = { spellId = 1044 },                    -- Blessing of Freedom = Blessing of Freedom
@@ -147,8 +161,6 @@ local castExpectedBuff = {
 }
 local recentSecretHelpfulCasts = {}
 
--- Store HandleBuff's dependencies in Cell._hb to avoid the 60-upvalue limit.
--- HandleBuff.lua reads from _hb instead of capturing file-scope locals.
 Cell._hb = {}
 Cell._hb.SECRET_HELPFUL_CAST_FALLBACK_WINDOW = SECRET_HELPFUL_CAST_FALLBACK_WINDOW
 Cell._hb.secretHelpfulCastFallbacks = secretHelpfulCastFallbacks
@@ -180,41 +192,46 @@ local function DoesAuraMatchExpectedBuff(auraInfo, buffInfo, fallbackCastAt, max
 
     if not allowFullySecretTimeMatch then return false end
 
-    -- the caller already proved this auraInstanceID was just added. Without that
-    -- guard, a full/cache pass after a cast can falsely classify unrelated
-    -- defensive table, to avoid false positives from unrelated combat procs.
     return fallbackCastAt and maxAge and (GetTime() - fallbackCastAt) <= maxAge
 end
 
 local fadeOutHealthCurve
-local fadeOutHealthCurve_threshold -- track last threshold to know when to rebuild
-local fadeOutHealthCurve_alpha -- track last outOfRangeAlpha to know when to rebuild
+local fadeOutHealthCurve_threshold
+local fadeOutHealthCurve_alpha
 
--- Builds/rebuilds the fade-out health curve when threshold or alpha changes.
--- health% < threshold -> alpha 1.0 (fully visible, needs healing)
--- health% >= threshold -> outOfRangeAlpha (faded out, healthy enough)
+-- Returns the (possibly cached) curve directly, rather than relying only on the
+-- shared fadeOutHealthCurve upvalue: this function is bridged into a later,
+-- separate chunk via Cell_._rebuildFadeOutHealthCurve (see below), and that
+-- chunk only ever imported a one-time snapshot of the plain value locals at
+-- load time (nil, since no curve existed yet) -- a snapshot that never updates
+-- again no matter how many times this function reassigns them here. Callers
+-- everywhere should use the return value, not the bare local.
 local function RebuildFadeOutHealthCurve()
-    if not Cell.isMidnight or not C_CurveUtil then return end
+    if not Cell.isMidnight or not C_CurveUtil or not C_CurveUtil.CreateColorCurve then return nil end
     local threshold = CELL_FADE_OUT_HEALTH_PERCENT
     local alpha = CellDB and CellDB["appearance"] and CellDB["appearance"]["outOfRangeAlpha"] or 0.4
     if not threshold then
         fadeOutHealthCurve = nil
         fadeOutHealthCurve_threshold = nil
         fadeOutHealthCurve_alpha = nil
-        return
+        return nil
     end
     if fadeOutHealthCurve and fadeOutHealthCurve_threshold == threshold and fadeOutHealthCurve_alpha == alpha then
-        return -- no change needed
+        return fadeOutHealthCurve -- no change needed
     end
-    fadeOutHealthCurve = C_CurveUtil.CreateCurve()
-    -- Below threshold: fully visible (unit needs healing)
-    fadeOutHealthCurve:AddPoint(0.0, 1.0)
-    fadeOutHealthCurve:AddPoint(threshold - 0.001, 1.0)
-    -- At/above threshold: faded out (unit is healthy enough)
-    fadeOutHealthCurve:AddPoint(threshold, alpha)
-    fadeOutHealthCurve:AddPoint(1.0, alpha)
+    -- EvaluateCurrentHealthPercent reads a color curve, not a plain numeric one --
+    -- the alpha we actually want comes back through the resolved color's alpha
+    -- channel (see UpdateInRange/UpdateHealth below).
+    fadeOutHealthCurve = C_CurveUtil.CreateColorCurve()
+    local fullColor = CreateColor(1, 1, 1, 1.0)
+    local dimColor = CreateColor(1, 1, 1, alpha)
+    fadeOutHealthCurve:AddPoint(0.0, fullColor)
+    fadeOutHealthCurve:AddPoint(threshold - 0.001, fullColor)
+    fadeOutHealthCurve:AddPoint(threshold, dimColor)
+    fadeOutHealthCurve:AddPoint(1.0, dimColor)
     fadeOutHealthCurve_threshold = threshold
     fadeOutHealthCurve_alpha = alpha
+    return fadeOutHealthCurve
 end
 
 local CheckCLEURequired
@@ -260,7 +277,6 @@ local _dispelTypes = {
     {name = "Bleed",   idx = 11, nextIdx = nil, r = 1.00, g = 0.20, b = 0.60},
 }
 
--- Feature check via API existence (no pcall — check before calling)
 if C_CurveUtil and C_CurveUtil.CreateColorCurve and _GetAuraDispelTypeColor
     and Enum and Enum.LuaCurveType and Enum.LuaCurveType.Step then
     local stepType = Enum.LuaCurveType.Step
@@ -288,13 +304,11 @@ if C_CurveUtil and C_CurveUtil.CreateColorCurve and _GetAuraDispelTypeColor
     _dispelCurvesReady = true
 end
 
--- Returns nil if curve is nil or aura has expired (API returns nil for invalid auras).
 local function _getCurveColor(unit, auraInstanceID, curve)
     if not curve then return nil end
     return _GetAuraDispelTypeColor(unit, auraInstanceID, curve)
 end
 
--- Gradient textures with baked-in vertical alpha (opaque at bottom). Used with
 local GRADIENT_TEXTURE = "Interface\\AddOns\\Cell\\Media\\gradient"
 local GRADIENT_SHARP_TEXTURE = "Interface\\AddOns\\Cell\\Media\\gradient-sharp"
 
@@ -321,7 +335,6 @@ local function _hideSecretGradientOverlays(dispels)
     end
 end
 
--- Debug dispel trace (gated behind Cell.debug)
 local _dispelTraceEnabled = false
 if Cell.debug then
     function F.ToggleDispelTrace()
@@ -361,7 +374,7 @@ local function UpdateIndicatorParentVisibility(b, indicatorName, enabled)
         return
     end
 
-    local indicator = b.indicators[indicatorName]
+    local indicator = BD(b).indicators[indicatorName]
     if indicator then
         if enabled then
             indicator:Show()
@@ -452,10 +465,10 @@ local function ResetIndicators()
 end
 
 local function HandleIndicators(b)
-    b._indicatorsReady = nil
+    BD(b)._indicatorsReady = nil
 
-    if b._waitingForIndicatorCreation then
-        b._waitingForIndicatorCreation = nil
+    if BD(b)._waitingForIndicatorCreation then
+        BD(b)._waitingForIndicatorCreation = nil
         I.CreateDefensiveCooldowns(b)
         I.CreateOffensiveCooldowns(b)
         I.CreateExternalCooldowns(b)
@@ -466,8 +479,8 @@ local function HandleIndicators(b)
     -- NOTE: Remove old
     I.RemoveAllCustomIndicators(b)
 
-    for _, t in next, b._config do
-        local indicator = b.indicators[t["indicatorName"]] or I.CreateIndicator(b, t)
+    for _, t in next, BD(b)._config do
+        local indicator = BD(b).indicators[t["indicatorName"]] or I.CreateIndicator(b, t)
         indicator.configs = t
 
         -- update position
@@ -476,7 +489,7 @@ local function HandleIndicators(b)
                 indicator:SetPosition(t["position"][1], t["position"][2], t["position"][3])
             else
                 P.ClearPoints(indicator)
-                local relativeTo = t["position"][2] == "healthBar" and b.widgets.healthBar or b
+                local relativeTo = t["position"][2] == "healthBar" and BD(b).widgets.healthBar or b
                 P.Point(indicator, t["position"][1], relativeTo, t["position"][3], t["position"][4], t["position"][5])
             end
         end
@@ -497,12 +510,24 @@ local function HandleIndicators(b)
                 P.Size(indicator, t["size"][1], t["size"][2])
             end
         end
-        -- update thickness
+        -- update thickness (+ dispel border on/off for debuffs, "off" = 0 thickness)
         if t["thickness"] then
-            indicator:SetThickness(t["thickness"])
+            if t["indicatorName"] == "debuffs" then
+                if indicator.SetBorder then
+                    local on = t["showDispelBorder"] ~= false
+                    indicator:SetBorder(on and t["thickness"] or 0)
+                end
+            elseif t["indicatorName"] == "dispels" then
+                if indicator.SetFrameBorderThickness then
+                    indicator:SetFrameBorderThickness(t["thickness"])
+                    indicator:SetFrameBorderEnabled(t["showDispelFrameBorder"] == true)
+                end
+            else
+                indicator:SetThickness(t["thickness"])
+            end
         end
         -- update border
-        if t["border"] then
+        if t["border"] and indicator.SetBorder then
             indicator:SetBorder(t["border"])
         end
         -- update height
@@ -540,8 +565,8 @@ local function HandleIndicators(b)
                 B.UpdateHealthText(b)
             elseif t["indicatorName"] == "powerText" then
                 local showFn = Cell._shouldShowPowerText or ShouldShowPowerText
-                b._shouldShowPowerText = showFn and showFn(b)
-                if b._shouldShowPowerText then
+                BD(b)._shouldShowPowerText = showFn and showFn(b)
+                if BD(b)._shouldShowPowerText then
                     B.UpdatePowerText(b)
                 else
                     indicator:Hide()
@@ -591,7 +616,7 @@ local function HandleIndicators(b)
             indicator:ShowDuration(t["showDuration"])
         end
         -- update stack
-        if type(t["showStack"]) == "boolean" then
+        if type(t["showStack"]) == "boolean" and indicator.ShowStack then
             indicator:ShowStack(t["showStack"])
         end
         -- update duration
@@ -625,7 +650,7 @@ local function HandleIndicators(b)
             UnitButton_UpdateRole(b)
         end
         -- tooltip
-        if type(t["showTooltip"]) == "boolean" then
+        if type(t["showTooltip"]) == "boolean" and indicator.ShowTooltip then
             indicator:ShowTooltip(t["showTooltip"])
         end
         -- blacklist shortcut
@@ -671,8 +696,8 @@ local function HandleIndicators(b)
             end
         elseif t["indicatorName"] == "powerText" then
             local showFn = Cell._shouldShowPowerText or ShouldShowPowerText
-            b._shouldShowPowerText = showFn and showFn(b)
-            if b._shouldShowPowerText then
+            BD(b)._shouldShowPowerText = showFn and showFn(b)
+            if BD(b)._shouldShowPowerText then
                 B.UpdatePowerText(b)
             else
                 indicator:Hide()
@@ -698,7 +723,7 @@ local function HandleIndicators(b)
     --! update pixel perfect for widgets
     B.UpdatePixelPerfect(b, true)
 
-    b._indicatorsReady = true
+    BD(b)._indicatorsReady = true
     if I.SyncHealersAuraDisplay then
         I.SyncHealersAuraDisplay(b)
     end
@@ -722,16 +747,16 @@ local WAITING_FOR_UPDATE = "WAITING_FOR_UPDATE"
 
 local function Process(b)
     if b then
-        -- print("Process", GetTime(), b:GetName(), b._status)
-        if b._status == WAITING_FOR_INIT then
+        -- print("Process", GetTime(), b:GetName(), BD(b)._status)
+        if BD(b)._status == WAITING_FOR_INIT then
             -- print("processing_init", GetTime(), b:GetName())
-            b._status = "processing"
+            BD(b)._status = "processing"
             HandleIndicators(b)
             UnitButton_UpdateAuras(b)
-        elseif b._status == WAITING_FOR_UPDATE then
+        elseif BD(b)._status == WAITING_FOR_UPDATE then
             -- print("processing_update", GetTime(), b:GetName())
-            b._indicatorsReady = true
-            b._status = "processing"
+            BD(b)._indicatorsReady = true
+            BD(b)._status = "processing"
             UnitButton_UpdateAuras(b)
             if I.SyncHealersAuraDisplay then
                 I.SyncHealersAuraDisplay(b)
@@ -746,8 +771,8 @@ local function Process(b)
 
         CellLoadingBar.current = (CellLoadingBar.current or 0) + 1
         CellLoadingBar:SetValue(CellLoadingBar.current)
-        b._status = nil
-        b._config = nil
+        BD(b)._status = nil
+        BD(b)._config = nil
         queue[b] = nil
     else
         CellLoadingBar:Hide()
@@ -775,16 +800,16 @@ local function FlushQueue()
 end
 
 local function AddToInitQueue(b)
-    b._indicatorsReady = nil
-    b._status = WAITING_FOR_INIT
-    b._config = Cell.vars.currentLayoutTable["indicators"]
+    BD(b)._indicatorsReady = nil
+    BD(b)._status = WAITING_FOR_INIT
+    BD(b)._config = Cell.vars.currentLayoutTable["indicators"]
     queue[b] = true
 end
 
 local function AddToUpdateQueue(b)
     if queue[b] then return end
-    b._indicatorsReady = nil
-    b._status = WAITING_FOR_UPDATE
+    BD(b)._indicatorsReady = nil
+    BD(b)._status = WAITING_FOR_UPDATE
     queue[b] = true
 end
 
@@ -858,7 +883,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             if indicatorName == "combatIcon" then
                 F.IterateAllUnitButtons(function(b)
                     if not value then
-                        b.indicators[indicatorName]:Hide()
+                        BD(b).indicators[indicatorName]:Hide()
                     end
                 end, true)
             elseif indicatorName == "aoeHealing" then
@@ -892,9 +917,9 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             elseif indicatorName == "nameText" then
                 F.IterateAllUnitButtons(function(b)
                     if value then
-                        b.indicators[indicatorName]:Show()
+                        BD(b).indicators[indicatorName]:Show()
                     else
-                        b.indicators[indicatorName]:Hide()
+                        BD(b).indicators[indicatorName]:Hide()
                     end
                 end, true)
             elseif indicatorName == "statusText" then
@@ -904,10 +929,10 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             elseif indicatorName == "healthText" then
                 F.IterateAllUnitButtons(function(b)
                     if value then
-                        b.indicators[indicatorName]:Show()
+                        BD(b).indicators[indicatorName]:Show()
                         B.UpdateHealthText(b)
                     else
-                        b.indicators[indicatorName]:Hide()
+                        BD(b).indicators[indicatorName]:Hide()
                     end
                 end, true)
             elseif indicatorName == "powerText" then
@@ -924,13 +949,13 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 -- children. Use the .units sub-table which maps unit tokens
                 -- to the actual visible buttons assigned by the secure header.
                 local function UpdatePowerForButton(b)
-                    local indicator = b.indicators[indicatorName]
+                    local indicator = BD(b).indicators[indicatorName]
                     if indicator and fmt then
                         indicator:SetFormat(fmt)
                     end
-                    b._shouldShowPowerText = ShouldShowPowerText(b)
+                    BD(b)._shouldShowPowerText = ShouldShowPowerText(b)
                     CheckPowerEventRegistration(b)
-                    if b._shouldShowPowerText then
+                    if BD(b)._shouldShowPowerText then
                         B.UpdatePowerText(b)
                     else
                         if indicator then indicator:Hide() end
@@ -976,7 +1001,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 F.IterateAllUnitButtons(function(b)
                     UpdateIndicatorParentVisibility(b, indicatorName, value)
                     if not value then
-                        b.indicators[indicatorName]:Hide() -- hide indicators which is shown right now
+                        BD(b).indicators[indicatorName]:Hide() -- hide indicators which is shown right now
                         if I.DisableCombatAuraDisplay then
                             I.DisableCombatAuraDisplay(b, indicatorName)
                         end
@@ -986,12 +1011,12 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             end
         elseif setting == "position" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 if indicatorName == "statusText" then
                     indicator:SetPosition(value[1], value[2], value[3])
                 else
                     P.ClearPoints(indicator)
-                    local relativeTo = value[2] == "healthBar" and b.widgets.healthBar or b
+                    local relativeTo = value[2] == "healthBar" and BD(b).widgets.healthBar or b
                     P.Point(indicator, value[1], relativeTo, value[3], value[4], value[5])
                 end
                 -- update arrangement
@@ -1001,17 +1026,17 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             end, true)
         elseif setting == "anchor" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 indicator:SetAnchor(value)
             end, true)
         elseif setting == "frameLevel" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 indicator:SetFrameLevel(indicator:GetParent():GetFrameLevel()+value)
             end, true)
         elseif setting == "size" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 if indicatorName == "debuffs" then
                     indicator:SetSize(value[1], value[2])
                     -- update debuffs' normal/big icon sizes
@@ -1022,55 +1047,68 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             end, true)
         elseif setting == "size-border" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 P.Size(indicator, value[1], value[2])
                 indicator:SetBorder(value[3])
             end, true)
         elseif setting == "thickness" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
-                indicator:SetThickness(value)
+                local indicator = BD(b).indicators[indicatorName]
+                if indicatorName == "debuffs" then
+                    if indicator.configs then indicator.configs.thickness = value end
+                    if indicator.SetBorder then
+                        local on = not (indicator.configs and indicator.configs.showDispelBorder == false)
+                        indicator:SetBorder(on and value or 0)
+                    end
+                elseif indicatorName == "dispels" then
+                    if indicator.configs then indicator.configs.thickness = value end
+                    if indicator.SetFrameBorderThickness then
+                        indicator:SetFrameBorderThickness(value)
+                    end
+                else
+                    indicator:SetThickness(value)
+                end
             end, true)
         elseif setting == "height" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 P.Height(indicator, value)
             end, true)
         elseif setting == "textWidth" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 indicator:UpdateTextWidth(value)
             end, true)
         elseif setting == "alpha" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 indicator:SetAlpha(value)
             end, true)
         elseif setting == "spacing" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 indicator:SetSpacing(value)
             end, true)
         elseif setting == "orientation" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 indicator:SetOrientation(value)
             end, true)
         elseif setting == "font" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 indicator:SetFont(unpack(value))
             end, true)
         elseif setting == "format" then
             if indicatorName == "healthText" then
                 F.IterateAllUnitButtons(function(b)
-                    local indicator = b.indicators[indicatorName]
+                    local indicator = BD(b).indicators[indicatorName]
                     indicator:SetFormat(value)
                     B.UpdateHealthText(b)
                 end, true)
             elseif indicatorName == "powerText" then
                 F.IterateAllUnitButtons(function(b)
-                    local indicator = b.indicators[indicatorName]
+                    local indicator = BD(b).indicators[indicatorName]
                     indicator:SetFormat(value)
                     B.UpdatePowerText(b)
                 end, true)
@@ -1088,19 +1126,19 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end, true)
             else
                 F.IterateAllUnitButtons(function(b)
-                    local indicator = b.indicators[indicatorName]
+                    local indicator = BD(b).indicators[indicatorName]
                     indicator:SetColor(unpack(value))
                 end, true)
             end
         elseif setting == "colors" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 indicator:SetColors(value) -- update color on next SetCooldown
                 UnitButton_UpdateAuras(b) -- call SetCooldown now
             end, true)
         elseif setting == "vehicleNamePosition" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 indicator:UpdateVehicleNamePosition(value)
             end, true)
         elseif setting == "statusColors" then
@@ -1119,18 +1157,18 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             end
         elseif setting == "numPerLine" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 indicator:SetNumPerLine(value)
             end, true)
         elseif setting == "roleTexture" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 indicator:SetRoleTexture(value)
                 UnitButton_UpdateRole(b)
             end, true)
         elseif setting == "texture" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = b.indicators[indicatorName]
+                local indicator = BD(b).indicators[indicatorName]
                 indicator:SetTexture(value)
             end, true)
         elseif setting == "duration" or setting == "dispelFilters" then
@@ -1139,7 +1177,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             end, true)
         elseif setting == "stack" then
             F.IterateAllUnitButtons(function(b)
-                b.indicators[indicatorName]:SetStack(value)
+                BD(b).indicators[indicatorName]:SetStack(value)
                 UnitButton_UpdateAuras(b)
             end, true)
         elseif setting == "highlightType" then
@@ -1149,7 +1187,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 value = "entire"
             end
             F.IterateAllUnitButtons(function(b)
-                b.indicators[indicatorName]:UpdateHighlight(value)
+                BD(b).indicators[indicatorName]:UpdateHighlight(value)
                 UnitButton_UpdateAuras(b)
             end, true)
             if I.RebuildAllCombatAuraDisplays then
@@ -1162,43 +1200,43 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             end, true)
         elseif setting == "showDuration" then
             F.IterateAllUnitButtons(function(b)
-                b.indicators[indicatorName]:ShowDuration(value)
+                BD(b).indicators[indicatorName]:ShowDuration(value)
                 UnitButton_UpdateAuras(b)
             end, true)
         elseif setting == "privateAuraOptions" then
             F.IterateAllUnitButtons(function(b)
-                b.indicators[indicatorName]:UpdateOptions(value)
+                BD(b).indicators[indicatorName]:UpdateOptions(value)
             end, true)
         elseif setting == "powerTextFilters" then
             F.IterateAllUnitButtons(function(b)
-                b._shouldShowPowerText = ShouldShowPowerText(b)
+                BD(b)._shouldShowPowerText = ShouldShowPowerText(b)
                 CheckPowerEventRegistration(b)
-                if b._shouldShowPowerText then
+                if BD(b)._shouldShowPowerText then
                     B.UpdatePowerText(b)
                 else
-                    b.indicators[indicatorName]:Hide()
+                    BD(b).indicators[indicatorName]:Hide()
                 end
             end, true)
         elseif setting == "targetCounterFilters" then
             I.UpdateTargetCounterFilters()
         elseif setting == "maxValue" then
             F.IterateAllUnitButtons(function(b)
-                b.indicators[indicatorName]:SetMaxValue(value)
+                BD(b).indicators[indicatorName]:SetMaxValue(value)
                 UnitButton_UpdateAuras(b)
             end, true)
         elseif setting == "glowOptions" then
             F.IterateAllUnitButtons(function(b)
-                b.indicators[indicatorName]:SetupGlow(value)
+                BD(b).indicators[indicatorName]:SetupGlow(value)
                 UnitButton_UpdateAuras(b)
             end, true)
         elseif setting == "iconStyle" then
             F.IterateAllUnitButtons(function(b)
-                b.indicators[indicatorName]:SetIconStyle(value)
+                BD(b).indicators[indicatorName]:SetIconStyle(value)
                 UnitButton_UpdateAuras(b)
             end, true)
         elseif setting == "animationStyle" then
             F.IterateAllUnitButtons(function(b)
-                local ind = b.indicators[indicatorName]
+                local ind = BD(b).indicators[indicatorName]
                 if not ind then return end
                 if value == "none" then
                     if ind.ShowAnimation then
@@ -1217,21 +1255,21 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
         elseif setting == "checkbutton" then
             if value == "showGroupNumber" then
                 F.IterateAllUnitButtons(function(b)
-                    b.indicators[indicatorName]:ShowGroupNumber(value2)
+                    BD(b).indicators[indicatorName]:ShowGroupNumber(value2)
                 end, true)
             elseif value == "showTimer" then
                 F.IterateAllUnitButtons(function(b)
-                    b.indicators[indicatorName]:SetShowTimer(value2)
+                    BD(b).indicators[indicatorName]:SetShowTimer(value2)
                     UnitButton_UpdateStatusText(b)
                 end, true)
             elseif value == "showBackground" then
                 F.IterateAllUnitButtons(function(b)
-                    b.indicators[indicatorName]:ShowBackground(value2)
+                    BD(b).indicators[indicatorName]:ShowBackground(value2)
                 end, true)
             elseif value == "hideIfEmptyOrFull" then
                 if indicatorName == "powerText" then
                     F.IterateAllUnitButtons(function(b)
-                        b.indicators[indicatorName]:SetHideIfEmptyOrFull(value2)
+                        BD(b).indicators[indicatorName]:SetHideIfEmptyOrFull(value2)
                         B.UpdatePowerText(b)
                     end, true)
                 end
@@ -1243,7 +1281,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             elseif value == "onlyEnableNotInCombat" then
                 indicatorBooleans[indicatorName] = value2
                 F.IterateAllUnitButtons(function(b)
-                    b.indicators[indicatorName]:Hide()
+                    BD(b).indicators[indicatorName]:Hide()
                 end, true)
             elseif value == "onlyShowOvershields" then
                 indicatorBooleans[indicatorName] = value2
@@ -1252,12 +1290,15 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end, true)
             elseif value == "showStack" then
                 F.IterateAllUnitButtons(function(b)
-                    b.indicators[indicatorName]:ShowStack(value2)
+                    local ind = BD(b).indicators[indicatorName]
+                    if ind and ind.ShowStack then
+                        ind:ShowStack(value2)
+                    end
                     UnitButton_UpdateAuras(b)
                 end, true)
             elseif value == "showAnimation" then
                 F.IterateAllUnitButtons(function(b)
-                    local ind = b.indicators[indicatorName]
+                    local ind = BD(b).indicators[indicatorName]
                     if ind and ind.ShowAnimation then
                         ind:ShowAnimation(value2)
                     end
@@ -1265,7 +1306,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end, true)
             elseif value == "showDuration" then
                 F.IterateAllUnitButtons(function(b)
-                    local ind = b.indicators[indicatorName]
+                    local ind = BD(b).indicators[indicatorName]
                     if ind and ind.ShowDuration then
                         ind:ShowDuration(value2)
                     end
@@ -1287,7 +1328,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end, true)
             elseif value == "showTooltip" then
                 F.IterateAllUnitButtons(function(b)
-                    local ind = b.indicators[indicatorName]
+                    local ind = BD(b).indicators[indicatorName]
                     if ind and ind.ShowTooltip then
                         ind:ShowTooltip(value2)
                     end
@@ -1297,21 +1338,21 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 end
             elseif value == "enableBlacklistShortcut" then
                 F.IterateAllUnitButtons(function(b)
-                    b.indicators[indicatorName]:EnableBlacklistShortcut(value2)
+                    BD(b).indicators[indicatorName]:EnableBlacklistShortcut(value2)
                 end, true)
             elseif value == "hideDamager" then
                 F.IterateAllUnitButtons(function(b)
-                    b.indicators[indicatorName]:HideDamager(value2)
+                    BD(b).indicators[indicatorName]:HideDamager(value2)
                     UnitButton_UpdateRole(b)
                 end, true)
             elseif value == "fadeOut" then
                 F.IterateAllUnitButtons(function(b)
-                    b.indicators[indicatorName]:SetFadeOut(value2)
+                    BD(b).indicators[indicatorName]:SetFadeOut(value2)
                     UnitButton_UpdateAuras(b)
                 end, true)
             elseif value == "smooth" then
                 F.IterateAllUnitButtons(function(b)
-                    b.indicators[indicatorName]:EnableSmooth(value2)
+                    BD(b).indicators[indicatorName]:EnableSmooth(value2)
                 end, true)
             elseif value == "showAllSpells" then
                 I.ShowAllTargetedSpells(value2)
@@ -1327,7 +1368,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                 -- update position
                 if value["position"] then
                     P.ClearPoints(indicator)
-                    local relativeTo = value["position"][2] == "healthBar" and b.widgets.healthBar or b
+                    local relativeTo = value["position"][2] == "healthBar" and BD(b).widgets.healthBar or b
                     P.Point(indicator, value["position"][1], relativeTo, value["position"][3], value["position"][4], value["position"][5])
                 end
                 -- update anchor
@@ -1383,7 +1424,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
                     indicator:ShowDuration(value["showDuration"])
                 end
                 -- update showStack
-                if type(value["showStack"]) ~= "nil" then
+                if type(value["showStack"]) ~= "nil" and indicator.ShowStack then
                     indicator:ShowStack(value["showStack"])
                 end
                 -- update duration
@@ -1414,7 +1455,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
         elseif setting == "auras" then
             -- indicator auras changed, hide them all, then recheck whether to show
             F.IterateAllUnitButtons(function(b)
-                b.indicators[indicatorName]:Hide()
+                BD(b).indicators[indicatorName]:Hide()
                 UnitButton_UpdateAuras(b)
             end, true)
         elseif setting == "dispelBlacklist" or setting == "defensives" or setting == "externals" or setting == "offensives" or setting == "crowdControls" or setting == "bigDebuffs" or setting == "debuffTypeColor" or setting == "castBy" then
@@ -1424,7 +1465,7 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
         elseif setting == "speed" then
             -- only Actions indicator has this option for now
             F.IterateAllUnitButtons(function(b)
-                b.indicators[indicatorName]:SetSpeed(value)
+                BD(b).indicators[indicatorName]:SetSpeed(value)
             end, true)
         end
     end
@@ -1439,7 +1480,7 @@ local function ForEachAuraHelper(button, func, ...)
     for i = 1, n do
         local slot = select(i, ...)
         if slot then
-            local auraInfo = GetAuraDataBySlot(button.states.displayedUnit, slot)
+            local auraInfo = GetAuraDataBySlot(BD(button).states.displayedUnit, slot)
             if auraInfo then
                 func(button, auraInfo)
             end
@@ -1455,7 +1496,7 @@ local function ForEachAura(button, filter, func)
         return
     end
 
-    local unit = button.states.displayedUnit
+    local unit = BD(button).states.displayedUnit
     if not unit then return end
 
     if GetAuraSlots then
@@ -1485,13 +1526,13 @@ end
 -------------------------------------------------
 local function ForEachAuraCache(button, filter, func)
     if filter == "HARMFUL" then
-        for auraInstanceID, aura in next, button._debuffs_cache do
+        for auraInstanceID, aura in next, BD(button)._debuffs_cache do
             if F.IsValueNonSecret(auraInstanceID) then
                 func(button, aura)
             end
         end
     elseif filter == "HELPFUL" then
-        for auraInstanceID, aura in next, button._buffs_cache do
+        for auraInstanceID, aura in next, BD(button)._buffs_cache do
             if F.IsValueNonSecret(auraInstanceID) then
                 func(button, aura)
             end
@@ -1551,12 +1592,12 @@ end
 -- end
 
 local function ResetDebuffVars(self)
-    self._debuffs.resurrectionFound = false
-    self._debuffs.crowdControlsFound = 0
-    self._dispelAuraID = nil
-    self._dispelUnit = nil
+    BD(self)._debuffs.resurrectionFound = false
+    BD(self)._debuffs.crowdControlsFound = 0
+    BD(self)._dispelAuraID = nil
+    BD(self)._dispelUnit = nil
 
-    self.states.BGOrb = nil -- TODO: move to _debuffs
+    BD(self).states.BGOrb = nil -- TODO: move to _debuffs
 end
 
 local function CanPlayerDispelAura(unit, auraInfo, debuffType)
@@ -1564,8 +1605,6 @@ local function CanPlayerDispelAura(unit, auraInfo, debuffType)
         local playerDispellable = not _IsAuraFilteredOut(unit, auraInfo.auraInstanceID, "HARMFUL|RAID_PLAYER_DISPELLABLE")
         if playerDispellable then return true end
 
-        -- Fallback for Blizzard API bugs:
-        -- Shaman Poison Cleansing Totem is not recognized by Blizzard's filter
         if Cell.vars.playerClassID == 7 and debuffType == "Poison" then
             return I.CanDispel("Poison")
         end
@@ -1587,7 +1626,7 @@ local function HandleDebuff(self, auraInfo)
     end
 
     local auraInstanceID = auraInfo.auraInstanceID
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
 
     local name = auraInfo.name
     local icon = auraInfo.icon
@@ -1622,7 +1661,7 @@ local function HandleDebuff(self, auraInfo)
 
     if Cell.isMidnight or (duration ~= nil) then
         UpdateAuraRefreshState(auraInfo)
-        self._debuffs_cache[auraInstanceID] = auraInfo
+        BD(self)._debuffs_cache[auraInstanceID] = auraInfo
 
         -- Classification
         local isBig = auraInfo._hasSecrets and _IsAuraFilteredOut and not _IsAuraFilteredOut(unit, auraInstanceID, "HARMFUL|IMPORTANT") or false
@@ -1660,9 +1699,9 @@ local function HandleDebuff(self, auraInfo)
             end
             if canShowDebuff then
                 if isBig then
-                    self._debuffs_big[auraInstanceID] = true
+                    BD(self)._debuffs_big[auraInstanceID] = true
                 else
-                    self._debuffs_normal[auraInstanceID] = true
+                    BD(self)._debuffs_normal[auraInstanceID] = true
                 end
             end
         end
@@ -1670,18 +1709,19 @@ local function HandleDebuff(self, auraInfo)
         -- user created indicators
         I.UpdateCustomIndicators(self, auraInfo, "debuff")
 
-        local order = I.GetDebuffOrder(name, spellId, count)
+        local isBossDebuff = F.IsKnownTrue(auraInfo.isBossAura)
 
-        if enabledIndicators["raidDebuffs"] and order then
-            auraInfo.raidDebuffOrder = order
-            tinsert(self._debuffs_raid, auraInstanceID)
+        if enabledIndicators["raidDebuffs"] and isBossDebuff
+            and not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("raidDebuffs", self)) then
+            auraInfo.raidDebuffOrder = (not auraInfo._hasSecrets and auraInfo.expirationTime) or 0
+            tinsert(BD(self)._debuffs_raid, auraInstanceID)
 
             if not indicatorBooleans["raidDebuffs"] then
                 local glowType, glowOptions = I.GetDebuffGlow(name, spellId, count)
                 if glowType and glowType ~= "None" then
                     auraInfo.raidDebuffGlowType = glowType
                     auraInfo.raidDebuffGlowOptions = glowOptions
-                    self._debuffs_glow_current[glowType] = glowOptions
+                    BD(self)._debuffs_glow_current[glowType] = glowOptions
                 end
             end
         end
@@ -1695,47 +1735,47 @@ local function HandleDebuff(self, auraInfo)
             if canShowDispel and debuffType and debuffType ~= "" then
                 if indicatorBooleans["dispels"][debuffType] then
                     if isDispelBlacklisted then
-                        self._debuffs_dispel[debuffType] = false
+                        BD(self)._debuffs_dispel[debuffType] = false
                     else
-                        self._debuffs_dispel[debuffType] = true
+                        BD(self)._debuffs_dispel[debuffType] = true
                     end
                 end
             elseif canShowDispel and auraInfo._hasSecrets and isDispellable and unit then
-                self._dispelAuraID = auraInstanceID
-                self._dispelUnit = unit
+                BD(self)._dispelAuraID = auraInstanceID
+                BD(self)._dispelUnit = unit
             end
         end
 
         -- crowdControls
         if enabledIndicators["crowdControls"] and I.IsCrowdControls(name, spellId) then
             if not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("crowdControls", self))
-                and self._debuffs.crowdControlsFound < indicatorNums["crowdControls"] then
-                self._debuffs.crowdControlsFound = self._debuffs.crowdControlsFound + 1
+                and BD(self)._debuffs.crowdControlsFound < indicatorNums["crowdControls"] then
+                BD(self)._debuffs.crowdControlsFound = BD(self)._debuffs.crowdControlsFound + 1
                 if Cell.isMidnight then
-                    self.indicators.crowdControls[self._debuffs.crowdControlsFound]:SetCooldownFromAura(unit, auraInstanceID, icon, auraInfo.refreshing)
+                    BD(self).indicators.crowdControls[BD(self)._debuffs.crowdControlsFound]:SetCooldownFromAura(unit, auraInstanceID, icon, auraInfo.refreshing)
                 else
-                    self.indicators.crowdControls[self._debuffs.crowdControlsFound]:SetCooldown(start, duration, debuffType, icon, count, auraInfo.refreshing)
+                    BD(self).indicators.crowdControls[BD(self)._debuffs.crowdControlsFound]:SetCooldown(start, duration, debuffType, icon, count, auraInfo.refreshing)
                 end
             end
-            self._debuffs_big[auraInstanceID] = nil
-            self._debuffs_normal[auraInstanceID] = nil
+            BD(self)._debuffs_big[auraInstanceID] = nil
+            BD(self)._debuffs_normal[auraInstanceID] = nil
         end
 
         -- specific debuffs
         if not auraInfo._hasSecrets and spellId then
             if spellId == 255234 or spellId == 225080 then
-                self._debuffs.resurrectionFound = true
-                self.states.hasRezDebuff = true
+                BD(self)._debuffs.resurrectionFound = true
+                BD(self).states.hasRezDebuff = true
             end
 
             if spellId == 121164 then
-                self.states.BGOrb = "blue"
+                BD(self).states.BGOrb = "blue"
             elseif spellId == 121175 then
-                self.states.BGOrb = "purple"
+                BD(self).states.BGOrb = "purple"
             elseif spellId == 121176 then
-                self.states.BGOrb = "green"
+                BD(self).states.BGOrb = "green"
             elseif spellId == 121177 then
-                self.states.BGOrb = "orange"
+                BD(self).states.BGOrb = "orange"
             end
         end
     end
@@ -1744,28 +1784,29 @@ end
 local RAID_DEBUFFS_GLOW_TYPES = {"Normal", "Pixel", "Shine", "Proc"}
 
 local function UnitButton_UpdateDebuffs(self, isFullUpdate)
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
 
     ResetDebuffVars(self)
     I.ResetCustomIndicators(self, "debuff")
 
     if isFullUpdate then
-        self._debuffs_cache = {}
+        BD(self)._debuffs_cache = {}
         ForEachAura(self, "HARMFUL", HandleDebuff)
     else
         ForEachAuraCache(self, "HARMFUL", HandleDebuff)
     end
 
-    if not self._debuffs.resurrectionFound then
-        self.states.hasRezDebuff = nil
+    if not BD(self)._debuffs.resurrectionFound then
+        BD(self).states.hasRezDebuff = nil
     end
 
     local startIndex = 1
 
     -- update raid debuffs
-    -- if self._debuffs.raidDebuffsFound or cleuUnits[unit] then
-    if self._debuffs_raid[1] then
-        self.indicators.raidDebuffs:Show()
+    -- if BD(self)._debuffs.raidDebuffsFound or cleuUnits[unit] then
+    if not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("raidDebuffs", self)) then
+    if BD(self)._debuffs_raid[1] then
+        BD(self).indicators.raidDebuffs:Show()
 
         -- cleuAuras
         -- local offset = 0
@@ -1775,8 +1816,8 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
         -- end
 
         -- sort indices
-        sort(self._debuffs_raid, function(a, b)
-            local ca, cb = self._debuffs_cache[a], self._debuffs_cache[b]
+        sort(BD(self)._debuffs_raid, function(a, b)
+            local ca, cb = BD(self)._debuffs_cache[a], BD(self)._debuffs_cache[b]
             if not ca or not cb then return ca ~= nil end
             return ca["raidDebuffOrder"] < cb["raidDebuffOrder"]
         end)
@@ -1784,16 +1825,16 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
         -- show
         local topAuraInstanceID
         for i = 1, indicatorNums["raidDebuffs"] do
-            local auraInstanceID = self._debuffs_raid[i]
+            local auraInstanceID = BD(self)._debuffs_raid[i]
             if auraInstanceID then
-                local auraInfo = self._debuffs_cache[auraInstanceID]
+                local auraInfo = BD(self)._debuffs_cache[auraInstanceID]
                 if auraInfo then
                     if Cell.isMidnight then
-                        self.indicators.raidDebuffs[i]:SetCooldownFromAura(
+                        BD(self).indicators.raidDebuffs[i]:SetCooldownFromAura(
                             unit, auraInstanceID, auraInfo.icon, auraInfo.refreshing)
                         -- Dispel color: border = dispel type color (base), swipe = black
                         -- Same pattern as regular debuffs in showDebuff
-                        local frame = self.indicators.raidDebuffs[i]
+                        local frame = BD(self).indicators.raidDebuffs[i]
                         if frame.cooldown and frame.cooldown.SetSwipeColor then
                             frame.cooldown:SetSwipeColor(0, 0, 0)
                         end
@@ -1813,50 +1854,50 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
                         end
                     else
                         local rdStart = (auraInfo.expirationTime or 0) - auraInfo.duration
-                        self.indicators.raidDebuffs[i]:SetCooldown(
+                        BD(self).indicators.raidDebuffs[i]:SetCooldown(
                             rdStart, auraInfo.duration,
                             auraInfo.dispelName or "",
                             auraInfo.icon, auraInfo.applications,
                             auraInfo.refreshing,
                             I.IsDebuffUseElapsedTime(auraInfo.name, auraInfo.spellId))
                     end
-                    self.indicators.raidDebuffs[i].auraInstanceID = auraInstanceID -- NOTE: for tooltip
+                    BD(self).indicators.raidDebuffs[i].auraInstanceID = auraInstanceID -- NOTE: for tooltip
                     startIndex = startIndex + 1
-                    self._debuffs_big[auraInstanceID] = nil
-                    self._debuffs_normal[auraInstanceID] = nil
+                    BD(self)._debuffs_big[auraInstanceID] = nil
+                    BD(self)._debuffs_normal[auraInstanceID] = nil
 
                     if i == 1 then topAuraInstanceID = auraInstanceID end
                 end
             end
         end
 
-        self.indicators.raidDebuffs:UpdateSize(startIndex - 1)
+        BD(self).indicators.raidDebuffs:UpdateSize(startIndex - 1)
         for i = startIndex, 3 do
-            self.indicators.raidDebuffs[i].auraInstanceID = nil
+            BD(self).indicators.raidDebuffs[i].auraInstanceID = nil
         end
 
         -- update glow
         if not indicatorBooleans["raidDebuffs"] then
             -- to make sure top glow has highest priority
-            local topAura = topAuraInstanceID and self._debuffs_cache[topAuraInstanceID]
+            local topAura = topAuraInstanceID and BD(self)._debuffs_cache[topAuraInstanceID]
             local topGlowType = topAura and topAura["raidDebuffGlowType"]
             local topGlowOptions = topAura and topAura["raidDebuffGlowOptions"]
             if topGlowType and topGlowType ~= "None" then
-                self._debuffs_glow_current[topGlowType] = topGlowOptions
+                BD(self)._debuffs_glow_current[topGlowType] = topGlowOptions
             end
-            for t, o in next, self._debuffs_glow_current do
-                self.indicators.raidDebuffs:ShowGlow(t, o, true)
+            for t, o in next, BD(self)._debuffs_glow_current do
+                BD(self).indicators.raidDebuffs:ShowGlow(t, o, true)
             end
             for _, t in next, RAID_DEBUFFS_GLOW_TYPES do
-                if not self._debuffs_glow_current[t] then
-                    self.indicators.raidDebuffs:HideGlow(t)
+                if not BD(self)._debuffs_glow_current[t] then
+                    BD(self).indicators.raidDebuffs:HideGlow(t)
                 end
             end
-            wipe(self._debuffs_glow_current)
+            wipe(BD(self)._debuffs_glow_current)
         else
-            local topAura = topAuraInstanceID and self._debuffs_cache[topAuraInstanceID]
+            local topAura = topAuraInstanceID and BD(self)._debuffs_cache[topAuraInstanceID]
             if topAura then
-                self.indicators.raidDebuffs:ShowGlow(
+                BD(self).indicators.raidDebuffs:ShowGlow(
                     I.GetDebuffGlow(
                         topAura["name"],
                         topAura["spellId"],
@@ -1866,7 +1907,8 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
             end
         end
     else
-        self.indicators.raidDebuffs:Hide()
+        BD(self).indicators.raidDebuffs:Hide()
+    end
     end
 
     -- update debuffs
@@ -1875,11 +1917,9 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
         -- helper to display a debuff indicator
         local function showDebuff(auraInstanceID, auraInfo, isBig)
             if Cell.isMidnight then
-                local frame = self.indicators.debuffs[startIndex]
+                local frame = BD(self).indicators.debuffs[startIndex]
                 frame:SetCooldownFromAura(
                     unit, auraInstanceID, auraInfo.icon, auraInfo.refreshing)
-                -- Border = dispel type color (base), swipe = black (fills over as time expires).
-                -- SetReverse(true) in SetCooldownFromAura makes the swipe fill IN.
                 if frame.cooldown and frame.cooldown.SetSwipeColor then
                     frame.cooldown:SetSwipeColor(0, 0, 0)
                 end
@@ -1900,7 +1940,7 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
                     frame.border:SetColorTexture(br, bg, bb)
                     frame.border:Show()
                 end
-                local debuffs = self.indicators.debuffs
+                local debuffs = BD(self).indicators.debuffs
                 if isBig then
                     P.Size(frame, debuffs.bigSize[1], debuffs.bigSize[2])
                 else
@@ -1908,19 +1948,19 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
                 end
             else
                 local dStart = (auraInfo.expirationTime or 0) - auraInfo.duration
-                self.indicators.debuffs[startIndex]:SetCooldown(
+                BD(self).indicators.debuffs[startIndex]:SetCooldown(
                     dStart, auraInfo.duration,
                     auraInfo.dispelName or "", auraInfo.icon,
                     auraInfo.applications, auraInfo.refreshing, isBig)
             end
-            self.indicators.debuffs[startIndex].auraInstanceID = auraInstanceID
-            self.indicators.debuffs[startIndex].spellId = auraInfo.spellId
+            BD(self).indicators.debuffs[startIndex].auraInstanceID = auraInstanceID
+            BD(self).indicators.debuffs[startIndex].spellId = auraInfo.spellId
             startIndex = startIndex + 1
         end
 
         -- bigDebuffs first
-        for auraInstanceID in next, self._debuffs_big do
-            local auraInfo = self._debuffs_cache[auraInstanceID]
+        for auraInstanceID in next, BD(self)._debuffs_big do
+            local auraInfo = BD(self)._debuffs_cache[auraInstanceID]
             if auraInfo and startIndex <= indicatorNums["debuffs"] then
                 showDebuff(auraInstanceID, auraInfo, true)
             elseif startIndex > indicatorNums["debuffs"] then
@@ -1928,8 +1968,8 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
             end
         end
         -- then normal debuffs
-        for auraInstanceID in next, self._debuffs_normal do
-            local auraInfo = self._debuffs_cache[auraInstanceID]
+        for auraInstanceID in next, BD(self)._debuffs_normal do
+            local auraInfo = BD(self)._debuffs_cache[auraInstanceID]
             if auraInfo and startIndex <= indicatorNums["debuffs"] then
                 showDebuff(auraInstanceID, auraInfo)
             elseif startIndex > indicatorNums["debuffs"] then
@@ -1939,17 +1979,17 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
     end
 
     if not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("debuffs", self)) then
-        self.indicators.debuffs:UpdateSize(startIndex - 1)
+        BD(self).indicators.debuffs:UpdateSize(startIndex - 1)
         for i = startIndex, 10 do
-            self.indicators.debuffs[i].auraInstanceID = nil
-            self.indicators.debuffs[i].spellId = nil
+            BD(self).indicators.debuffs[i].auraInstanceID = nil
+            BD(self).indicators.debuffs[i].spellId = nil
         end
     end
 
     -- update dispels
     if (F.UnitInGroup(unit) or UnitIsFriend("player", unit))
         and not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("dispels", self)) then
-        local dispels = self.indicators.dispels
+        local dispels = BD(self).indicators.dispels
         if dispels._secretIconsStacked then
             dispels:SetOrientation(dispels._orientation)
             dispels._secretIconsStacked = nil
@@ -1962,15 +2002,15 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
             dispels._secretGradientShown = nil
             _hideSecretGradientOverlays(dispels)
         end
-        dispels:SetDispels(self._debuffs_dispel)
+        dispels:SetDispels(BD(self)._debuffs_dispel)
 
-        if self._dispelAuraID and _dispelCurvesReady
+        if BD(self)._dispelAuraID and _dispelCurvesReady
             and not dispels.highlight:IsShown()
             and not dispels._secretGradientShown
             and enabledIndicators["dispels"] then
 
-            local sUnit = self._dispelUnit
-            local sAuraID = self._dispelAuraID
+            local sUnit = BD(self)._dispelUnit
+            local sAuraID = BD(self)._dispelAuraID
             local hlColor = _getCurveColor(sUnit, sAuraID, _dispelHighlightCurve)
             if hlColor then
                 local cr, cg, cb = hlColor:GetRGBA()
@@ -2021,20 +2061,20 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
 
     -- update crowdControls
     if not (I.ShouldSkipLegacyCombatAura and I.ShouldSkipLegacyCombatAura("crowdControls", self)) then
-        self.indicators.crowdControls:UpdateSize(self._debuffs.crowdControlsFound)
+        BD(self).indicators.crowdControls:UpdateSize(BD(self)._debuffs.crowdControlsFound)
     end
 
     -- user created indicators
     I.ShowCustomIndicators(self, "debuff")
 
-    if self.indicators.privateAuras and self.indicators.privateAuras.UpdateDispelOverlayVisibility then
-        self.indicators.privateAuras:UpdateDispelOverlayVisibility()
+    if BD(self).indicators.privateAuras and BD(self).indicators.privateAuras.UpdateDispelOverlayVisibility then
+        BD(self).indicators.privateAuras:UpdateDispelOverlayVisibility()
     end
 
-    wipe(self._debuffs_normal)
-    wipe(self._debuffs_big)
-    wipe(self._debuffs_dispel)
-    wipe(self._debuffs_raid)
+    wipe(BD(self)._debuffs_normal)
+    wipe(BD(self)._debuffs_big)
+    wipe(BD(self)._debuffs_dispel)
+    wipe(BD(self)._debuffs_raid)
 end
 
 Cell._debuffs = UnitButton_UpdateDebuffs
@@ -2044,9 +2084,6 @@ Cell._indicatorBooleans = indicatorBooleans
 Cell._indicatorColors = indicatorColors
 Cell._indicatorCustoms = indicatorCustoms
 Cell._isAuraFilteredOut = _IsAuraFilteredOut
-Cell._fadeOutHealthCurve = fadeOutHealthCurve
-Cell._fadeOutHealthCurve_threshold = fadeOutHealthCurve_threshold
-Cell._fadeOutHealthCurve_alpha = fadeOutHealthCurve_alpha
 Cell._rebuildFadeOutHealthCurve = RebuildFadeOutHealthCurve
 Cell._forEachAura = ForEachAura
 Cell._forEachAuraCache = ForEachAuraCache
@@ -2062,6 +2099,7 @@ end)(Cell)
 local Cell_ = Cell
 
 local F = Cell_.funcs
+local function BD(b) return F.GetButtonData(b) end
 local I = Cell_.iFuncs
 local B = Cell_.bFuncs
 local A = Cell_.animations
@@ -2080,9 +2118,10 @@ local AnnotateAura = Cell_._annotateAura
 local ForEachAura = Cell_._forEachAura
 local ForEachAuraCache = Cell_._forEachAuraCache
 local wipe = table.wipe
-local fadeOutHealthCurve = Cell_._fadeOutHealthCurve
-local fadeOutHealthCurve_threshold = Cell_._fadeOutHealthCurve_threshold
-local fadeOutHealthCurve_alpha = Cell_._fadeOutHealthCurve_alpha
+-- NOTE: only the function is imported here, not the plain curve/threshold/alpha
+-- values -- those would just be a one-time nil snapshot from load time (see the
+-- comment on RebuildFadeOutHealthCurve's definition). Always use this function's
+-- return value instead.
 local RebuildFadeOutHealthCurve = Cell_._rebuildFadeOutHealthCurve
 local secretHelpfulCastFallbacks = Cell_._hb.secretHelpfulCastFallbacks
 local recentSecretHelpfulCasts = Cell_._hb.recentSecretHelpfulCasts
@@ -2090,7 +2129,29 @@ local SECRET_HELPFUL_CAST_FALLBACK_WINDOW = Cell_._hb.SECRET_HELPFUL_CAST_FALLBA
 
 local SBI_ExponentialEaseOut = Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.ExponentialEaseOut
 local SBI_Immediate = Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.Immediate
+local UnitHealthPercent = UnitHealthPercent
+local CurveConstants = CurveConstants
 local LGI = LibStub:GetLibrary("LibGroupInfo")
+
+
+local function GetUnitHealthPercent100(unit)
+    if not (unit and UnitHealthPercent) then return nil end
+    if CurveConstants and CurveConstants.ScaleTo100 then
+        return UnitHealthPercent(unit, true, CurveConstants.ScaleTo100)
+    end
+    return UnitHealthPercent(unit, true)
+end
+
+local function SetStatusBarHealth(bar, value, maxValue)
+    if not bar then return end
+    bar:SetMinMaxValues(0, maxValue)
+    local smoothEnum = (barAnimationType == "Smooth" and SBI_ExponentialEaseOut) or SBI_Immediate
+    if smoothEnum then
+        bar:SetValue(value, smoothEnum)
+    else
+        bar:SetValue(value)
+    end
+end
 
 local UnitButton_UpdateHealthColor, UnitButton_UpdateHealthTextColor
 local UnitButton_UpdatePowerMax, UnitButton_UpdatePower, UnitButton_UpdatePowerType, UnitButton_UpdatePowerText
@@ -2100,14 +2161,14 @@ local ShouldShowPowerBar
 -- buffs
 -------------------------------------------------
 local function ResetBuffVars(self)
-    self._buffs.defensiveFound = 0
-    self._buffs.offensiveFound = 0
-    self._buffs.externalFound = 0
-    self._buffs.allFound = 0
-    self._buffs.tankActiveMitigationFound = false
-    self._buffs.drinkingFound = false
+    BD(self)._buffs.defensiveFound = 0
+    BD(self)._buffs.offensiveFound = 0
+    BD(self)._buffs.externalFound = 0
+    BD(self)._buffs.allFound = 0
+    BD(self)._buffs.tankActiveMitigationFound = false
+    BD(self)._buffs.drinkingFound = false
 
-    self.states.BGFlag = nil -- TODO: move to _buffs
+    BD(self).states.BGFlag = nil -- TODO: move to _buffs
 end
 
 local function RememberSecretHelpfulCast(self, spellId)
@@ -2126,12 +2187,12 @@ local function RememberSecretHelpfulCast(self, spellId)
     end
     if not kind then return end
 
-    self._recentSecretHelpfulCastKind = kind
-    self._recentSecretHelpfulCastAt = GetTime()
-    self._recentSecretHelpfulCastSpellId = spellId
+    BD(self)._recentSecretHelpfulCastKind = kind
+    BD(self)._recentSecretHelpfulCastAt = GetTime()
+    BD(self)._recentSecretHelpfulCastSpellId = spellId
 
     -- Clean expired entries before adding the new one, keeping the list bounded
-    local expireCutoff = self._recentSecretHelpfulCastAt - SECRET_HELPFUL_CAST_FALLBACK_WINDOW
+    local expireCutoff = BD(self)._recentSecretHelpfulCastAt - SECRET_HELPFUL_CAST_FALLBACK_WINDOW
     for i = #recentSecretHelpfulCasts, 1, -1 do
         if recentSecretHelpfulCasts[i].castAt < expireCutoff then
             tremove(recentSecretHelpfulCasts, i)
@@ -2141,12 +2202,12 @@ local function RememberSecretHelpfulCast(self, spellId)
     recentSecretHelpfulCasts[#recentSecretHelpfulCasts + 1] = {
         kind = kind,
         spellId = spellId,
-        castAt = self._recentSecretHelpfulCastAt,
+        castAt = BD(self)._recentSecretHelpfulCastAt,
     }
 end
 
 local function GetRecentSecretHelpfulCastKind(self)
-    local castAt = self._recentSecretHelpfulCastAt
+    local castAt = BD(self)._recentSecretHelpfulCastAt
     if not castAt or GetTime() - castAt > SECRET_HELPFUL_CAST_FALLBACK_WINDOW then
         local now = GetTime()
         for i = #recentSecretHelpfulCasts, 1, -1 do
@@ -2160,19 +2221,19 @@ local function GetRecentSecretHelpfulCastKind(self)
         return nil, nil
     end
 
-    return self._recentSecretHelpfulCastKind, self._recentSecretHelpfulCastSpellId, self._recentSecretHelpfulCastAt
+    return BD(self)._recentSecretHelpfulCastKind, BD(self)._recentSecretHelpfulCastSpellId, BD(self)._recentSecretHelpfulCastAt
 end
 
 -- HandleBuff movida a HandleBuff.lua — el cuerpo vive allá, no acá.
 
 local function UnitButton_UpdateBuffs(self, isFullUpdate)
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
 
     ResetBuffVars(self)
     I.ResetCustomIndicators(self, "buff")
 
     if isFullUpdate then
-        self._buffs_cache = {}
+        BD(self)._buffs_cache = {}
         -- (like Blessing of Freedom, Divine Protection) by tracking newly-added auras
         -- and verifying the cast spell against Cell's tables. Wiping _classified here
         -- causes those auras to lose their classification on subsequent updates since
@@ -2188,63 +2249,63 @@ local function UnitButton_UpdateBuffs(self, isFullUpdate)
     local skipLegacy = I.ShouldSkipLegacyCombatAura
 
     -- check Mirror Image
-    if self._mirror_image and I.IsDefensiveCooldown(55342) then -- exists and enabled
+    if BD(self)._mirror_image and I.IsDefensiveCooldown(55342) then -- exists and enabled
         if not (skipLegacy and skipLegacy("defensiveCooldowns", self))
-            and self._buffs.defensiveFound < indicatorNums["defensiveCooldowns"] then
-            self._buffs.defensiveFound = self._buffs.defensiveFound + 1
-            self.indicators.defensiveCooldowns[self._buffs.defensiveFound]:SetCooldown(self._mirror_image, 40, nil, 135994, 0)
+            and BD(self)._buffs.defensiveFound < indicatorNums["defensiveCooldowns"] then
+            BD(self)._buffs.defensiveFound = BD(self)._buffs.defensiveFound + 1
+            BD(self).indicators.defensiveCooldowns[BD(self)._buffs.defensiveFound]:SetCooldown(BD(self)._mirror_image, 40, nil, 135994, 0)
         end
         if not (skipLegacy and skipLegacy("allCooldowns", self))
-            and self._buffs.allFound < indicatorNums["allCooldowns"] then
-            self._buffs.allFound = self._buffs.allFound + 1
-            self.indicators.allCooldowns[self._buffs.allFound]:SetCooldown(self._mirror_image, 40, nil, 135994, 0)
+            and BD(self)._buffs.allFound < indicatorNums["allCooldowns"] then
+            BD(self)._buffs.allFound = BD(self)._buffs.allFound + 1
+            BD(self).indicators.allCooldowns[BD(self)._buffs.allFound]:SetCooldown(BD(self)._mirror_image, 40, nil, 135994, 0)
         end
     end
 
     -- check Mass Barrier (self)
-    if self._mass_barrier and I.IsExternalCooldown(414660) then -- exists and enabled
+    if BD(self)._mass_barrier and I.IsExternalCooldown(414660) then -- exists and enabled
         if not (skipLegacy and skipLegacy("externalCooldowns", self))
-            and self._buffs.externalFound < indicatorNums["externalCooldowns"] then
-            self._buffs.externalFound = self._buffs.externalFound + 1
-            self.indicators.externalCooldowns[self._buffs.externalFound]:SetCooldown(self._mass_barrier, 60, nil, self._mass_barrier_icon, 0)
+            and BD(self)._buffs.externalFound < indicatorNums["externalCooldowns"] then
+            BD(self)._buffs.externalFound = BD(self)._buffs.externalFound + 1
+            BD(self).indicators.externalCooldowns[BD(self)._buffs.externalFound]:SetCooldown(BD(self)._mass_barrier, 60, nil, BD(self)._mass_barrier_icon, 0)
         end
         if not (skipLegacy and skipLegacy("allCooldowns", self))
-            and self._buffs.allFound < indicatorNums["allCooldowns"] then
-            self._buffs.allFound = self._buffs.allFound + 1
-            self.indicators.allCooldowns[self._buffs.allFound]:SetCooldown(self._mass_barrier, 60, nil, self._mass_barrier_icon, 0)
+            and BD(self)._buffs.allFound < indicatorNums["allCooldowns"] then
+            BD(self)._buffs.allFound = BD(self)._buffs.allFound + 1
+            BD(self).indicators.allCooldowns[BD(self)._buffs.allFound]:SetCooldown(BD(self)._mass_barrier, 60, nil, BD(self)._mass_barrier_icon, 0)
         end
     end
 
     -- update defensiveCooldowns
     if not (skipLegacy and skipLegacy("defensiveCooldowns", self)) then
-        self.indicators.defensiveCooldowns:UpdateSize(self._buffs.defensiveFound)
+        BD(self).indicators.defensiveCooldowns:UpdateSize(BD(self)._buffs.defensiveFound)
     end
 
     if not (skipLegacy and skipLegacy("offensiveCooldowns", self)) then
-        if self.indicators.offensiveCooldowns then
-            self.indicators.offensiveCooldowns:UpdateSize(self._buffs.offensiveFound or 0)
+        if BD(self).indicators.offensiveCooldowns then
+            BD(self).indicators.offensiveCooldowns:UpdateSize(BD(self)._buffs.offensiveFound or 0)
         end
     end
 
     -- update externalCooldowns
     if not (skipLegacy and skipLegacy("externalCooldowns", self)) then
-        self.indicators.externalCooldowns:UpdateSize(self._buffs.externalFound)
+        BD(self).indicators.externalCooldowns:UpdateSize(BD(self)._buffs.externalFound)
     end
 
     -- update allCooldowns
     if not (skipLegacy and skipLegacy("allCooldowns", self)) then
-        self.indicators.allCooldowns:UpdateSize(self._buffs.allFound)
+        BD(self).indicators.allCooldowns:UpdateSize(BD(self)._buffs.allFound)
     end
 
     -- hide tankActiveMitigation
-    if Cell.isMidnight or not self._buffs.tankActiveMitigationFound then
-        self.indicators.tankActiveMitigation:Hide()
+    if Cell.isMidnight or not BD(self)._buffs.tankActiveMitigationFound then
+        BD(self).indicators.tankActiveMitigation:Hide()
     end
 
     -- hide drinking
-    if not self._buffs.drinkingFound and self.indicators.statusText:GetStatus() == "DRINKING" then
-        -- self.indicators.statusText:Hide()
-        self.indicators.statusText:SetStatus()
+    if not BD(self)._buffs.drinkingFound and BD(self).indicators.statusText:GetStatus() == "DRINKING" then
+        -- BD(self).indicators.statusText:Hide()
+        BD(self).indicators.statusText:SetStatus()
     end
 
     -- user created indicators
@@ -2255,46 +2316,48 @@ end
 -- aura tables
 -------------------------------------------------
 local function InitAuraTables(self)
+    local d = F.GetButtonData(self)
     -- vars
-    self._buffs = {}
-    self._debuffs = {}
+    d._buffs = {}
+    d._debuffs = {}
 
     -- for icon animation only
-    self._buffs_cache = {}
-    self._debuffs_cache = {}
-    self._missing_auras = {}
+    d._buffs_cache = {}
+    d._debuffs_cache = {}
+    d._missing_auras = {}
 
     -- debuffs
-    self._debuffs_normal = {} -- [auraInstanceID] = refreshing
-    self._debuffs_big = {} -- [auraInstanceID] = refreshing
-    self._debuffs_dispel = {} -- [debuffType] = true/false
-    self._debuffs_raid = {} -- {id1, id2, ...}
-    self._debuffs_glow_current = {}
+    d._debuffs_normal = {} -- [auraInstanceID] = refreshing
+    d._debuffs_big = {} -- [auraInstanceID] = refreshing
+    d._debuffs_dispel = {} -- [debuffType] = true/false
+    d._debuffs_raid = {} -- {id1, id2, ...}
+    d._debuffs_glow_current = {}
 end
 
 local function ResetAuraTables(self)
-    wipe(self._buffs_cache)
-    wipe(self._debuffs_cache)
-    wipe(self._missing_auras)
+    local d = F.GetButtonData(self)
+    wipe(d._buffs_cache)
+    wipe(d._debuffs_cache)
+    wipe(d._missing_auras)
 
     -- debuffs
-    wipe(self._debuffs_normal)
-    wipe(self._debuffs_big)
-    wipe(self._debuffs_dispel)
-    wipe(self._debuffs_raid)
+    wipe(d._debuffs_normal)
+    wipe(d._debuffs_big)
+    wipe(d._debuffs_dispel)
+    wipe(d._debuffs_raid)
 
     -- raid debuffs glow
-    wipe(self._debuffs_glow_current)
-    if self.indicators.raidDebuffs then
-        self.indicators.raidDebuffs:HideGlow()
+    wipe(d._debuffs_glow_current)
+    if d.indicators and d.indicators.raidDebuffs then
+        d.indicators.raidDebuffs:HideGlow()
     end
 
-    self._mirror_image = nil
-    self._mass_barrier = nil
-    self._mass_barrier_icon = nil
-    self._recentSecretHelpfulCastKind = nil
-    self._recentSecretHelpfulCastAt = nil
-    self._recentSecretHelpfulCastSpellId = nil
+    d._mirror_image = nil
+    d._mass_barrier = nil
+    d._mass_barrier_icon = nil
+    d._recentSecretHelpfulCastKind = nil
+    d._recentSecretHelpfulCastAt = nil
+    d._recentSecretHelpfulCastSpellId = nil
 end
 
 -------------------------------------------------
@@ -2317,11 +2380,11 @@ end
 
 local function UpdateMirrorImage(b, event)
     if event == "SPELL_AURA_APPLIED" then
-        b._mirror_image = GetTime()
+        BD(b)._mirror_image = GetTime()
     elseif event == "SPELL_AURA_REMOVED" then
-        b._mirror_image = nil
+        BD(b)._mirror_image = nil
     end
-    if b._indicatorsReady then
+    if BD(b)._indicatorsReady then
         UnitButton_UpdateBuffs(b, false) -- should be no full update needed, indicator update is done
     end
 end
@@ -2334,24 +2397,24 @@ local SelfBarriers = {
 
 local function UpdateMassBarrier(b, event)
     if event == "SPELL_CAST_SUCCESS" then
-        b._mass_barrier = GetTime()
-        local info = LGI:GetCachedInfo(b.states.guid)
+        BD(b)._mass_barrier = GetTime()
+        local info = LGI:GetCachedInfo(BD(b).states.guid)
         if info then
             if info.specId == 62 then -- Arcane
-                b._mass_barrier_icon = 135991
+                BD(b)._mass_barrier_icon = 135991
             elseif info.specId == 63 then -- Fire
-                b._mass_barrier_icon = 132221
+                BD(b)._mass_barrier_icon = 132221
             elseif info.specId == 64 then -- Frost
-                b._mass_barrier_icon = 135988
+                BD(b)._mass_barrier_icon = 135988
             else
-                b._mass_barrier_icon = 1723997
+                BD(b)._mass_barrier_icon = 1723997
             end
         end
     elseif event == "SPELL_AURA_REMOVED" then
-        b._mass_barrier = nil
-        b._mass_barrier_icon = nil
+        BD(b)._mass_barrier = nil
+        BD(b)._mass_barrier_icon = nil
     end
-    if b._indicatorsReady then
+    if BD(b)._indicatorsReady then
         UnitButton_UpdateBuffs(b, false) -- should be no full update needed, indicator update is done
     end
 end
@@ -2443,10 +2506,14 @@ local function GetTrackedSpells()
     return spells
 end
 
-UnitButton_UpdateAuras = function(self, updateInfo)
-    if not self._indicatorsReady then return end
+local function ShouldDeferUnitAura(unit)
+    return unit and (UnitIsUnit(unit, "player") or UnitIsUnit(unit, "target"))
+end
 
-    local unit = self.states.displayedUnit
+UnitButton_UpdateAuras = function(self, updateInfo)
+    if not BD(self)._indicatorsReady then return end
+
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
     if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then
@@ -2479,15 +2546,14 @@ UnitButton_UpdateAuras = function(self, updateInfo)
         UnitButton_UpdateBuffs(self, true)
         UnitButton_UpdateDebuffs(self, true)
     else
-        -- HandleBuff/HandleDebuff handle this. We no longer force full update for ALL
-        -- isHelpful/isHarmful fields in addedAuras that prevent classification.
         local buffsChanged, debuffsChanged
         local needsFullUpdate
-        wipe(self._missing_auras)
+        wipe(BD(self)._missing_auras)
 
         if updateInfo.addedAuras then
             for _, rawAura in next, updateInfo.addedAuras do
-                local aura = AnnotateAura(rawAura)
+                local auraInstanceID = rawAura and rawAura.auraInstanceID
+                local aura = auraInstanceID and AnnotateAura(_GetAuraDataByAuraInstanceID(unit, auraInstanceID))
                 if aura then
                     local isHelpful, isHarmful
                     if aura._hasSecrets then
@@ -2508,17 +2574,17 @@ UnitButton_UpdateAuras = function(self, updateInfo)
                         end
                     end
                     if aura._hasSecrets then
-                        if not self._recentlyAddedAuraIDs then self._recentlyAddedAuraIDs = {} end
-                        self._recentlyAddedAuraIDs[aura.auraInstanceID] = true
+                        if not BD(self)._recentlyAddedAuraIDs then BD(self)._recentlyAddedAuraIDs = {} end
+                        BD(self)._recentlyAddedAuraIDs[aura.auraInstanceID] = true
                     end
                     if not isHelpful and not isHarmful then
                         needsFullUpdate = true
                     elseif isHelpful then
                         buffsChanged = true
-                        self._buffs_cache[aura.auraInstanceID] = aura
+                        BD(self)._buffs_cache[aura.auraInstanceID] = aura
                     else
                         debuffsChanged = true
-                        self._debuffs_cache[aura.auraInstanceID] = aura
+                        BD(self)._debuffs_cache[aura.auraInstanceID] = aura
                     end
                 end
             end
@@ -2527,34 +2593,34 @@ UnitButton_UpdateAuras = function(self, updateInfo)
         if not needsFullUpdate and updateInfo.updatedAuraInstanceIDs then
             local aura
             for _, auraInstanceID in next, updateInfo.updatedAuraInstanceIDs do
-                if self._buffs_cache[auraInstanceID] then
+                if BD(self)._buffs_cache[auraInstanceID] then
                     buffsChanged = true
                     aura = GetAuraDataByAuraInstanceID(unit, auraInstanceID)
                     if aura then
                         if not aura._hasSecrets then
-                            local cachedExp = self._buffs_cache[auraInstanceID].expirationTime
-                            local cachedApp = self._buffs_cache[auraInstanceID].applications
+                            local cachedExp = BD(self)._buffs_cache[auraInstanceID].expirationTime
+                            local cachedApp = BD(self)._buffs_cache[auraInstanceID].applications
                             aura.oldExpirationTime = (cachedExp and F.IsValueNonSecret(cachedExp)) and cachedExp or 0
                             aura.oldApplications = (cachedApp and F.IsValueNonSecret(cachedApp)) and cachedApp or nil
                         end
-                        self._buffs_cache[auraInstanceID] = aura
+                        BD(self)._buffs_cache[auraInstanceID] = aura
                     end
-                elseif self._debuffs_cache[auraInstanceID] then
+                elseif BD(self)._debuffs_cache[auraInstanceID] then
                     debuffsChanged = true
                     aura = GetAuraDataByAuraInstanceID(unit, auraInstanceID)
                     if aura then
                         if not aura._hasSecrets then
-                            local cachedExp = self._debuffs_cache[auraInstanceID].expirationTime
-                            local cachedApp = self._debuffs_cache[auraInstanceID].applications
+                            local cachedExp = BD(self)._debuffs_cache[auraInstanceID].expirationTime
+                            local cachedApp = BD(self)._debuffs_cache[auraInstanceID].applications
                             aura.oldExpirationTime = (cachedExp and F.IsValueNonSecret(cachedExp)) and cachedExp or 0
                             aura.oldApplications = (cachedApp and F.IsValueNonSecret(cachedApp)) and cachedApp or nil
                         end
-                        self._debuffs_cache[auraInstanceID] = aura
+                        BD(self)._debuffs_cache[auraInstanceID] = aura
                     end
                 else
                     aura = GetAuraDataByAuraInstanceID(unit, auraInstanceID)
                     if aura then
-                        self._missing_auras[auraInstanceID] = aura
+                        BD(self)._missing_auras[auraInstanceID] = aura
                     end
                 end
             end
@@ -2562,21 +2628,21 @@ UnitButton_UpdateAuras = function(self, updateInfo)
 
         if not needsFullUpdate and updateInfo.removedAuraInstanceIDs then
             for _, auraInstanceID in next, updateInfo.removedAuraInstanceIDs do
-                if self._buffs_cache[auraInstanceID] then
-                    self._buffs_cache[auraInstanceID] = nil
-                    if self._buffs._classified then self._buffs._classified[auraInstanceID] = nil end
+                if BD(self)._buffs_cache[auraInstanceID] then
+                    BD(self)._buffs_cache[auraInstanceID] = nil
+                    if BD(self)._buffs._classified then BD(self)._buffs._classified[auraInstanceID] = nil end
                     buffsChanged = true
-                elseif self._debuffs_cache[auraInstanceID] then
-                    self._debuffs_cache[auraInstanceID] = nil
+                elseif BD(self)._debuffs_cache[auraInstanceID] then
+                    BD(self)._debuffs_cache[auraInstanceID] = nil
                     debuffsChanged = true
                 else
-                    self._missing_auras[auraInstanceID] = nil
+                    BD(self)._missing_auras[auraInstanceID] = nil
                 end
             end
         end
 
-        if not needsFullUpdate and next(self._missing_auras) then
-            for _, aura in next, self._missing_auras do
+        if not needsFullUpdate and next(BD(self)._missing_auras) then
+            for _, aura in next, BD(self)._missing_auras do
                 if aura then
                     local isHelpful, isHarmful
                     if aura._hasSecrets then
@@ -2593,10 +2659,10 @@ UnitButton_UpdateAuras = function(self, updateInfo)
                     end
                     if isHelpful then
                         buffsChanged = true
-                        self._buffs_cache[aura.auraInstanceID] = aura
+                        BD(self)._buffs_cache[aura.auraInstanceID] = aura
                     elseif isHarmful then
                         debuffsChanged = true
-                        self._debuffs_cache[aura.auraInstanceID] = aura
+                        BD(self)._debuffs_cache[aura.auraInstanceID] = aura
                     end
                 end
             end
@@ -2609,8 +2675,8 @@ UnitButton_UpdateAuras = function(self, updateInfo)
             if buffsChanged then UnitButton_UpdateBuffs(self) end
             if debuffsChanged then UnitButton_UpdateDebuffs(self) end
         end
-        if self._recentlyAddedAuraIDs then
-            wipe(self._recentlyAddedAuraIDs)
+        if BD(self)._recentlyAddedAuraIDs then
+            wipe(BD(self)._recentlyAddedAuraIDs)
         end
     end
 
@@ -2618,44 +2684,53 @@ UnitButton_UpdateAuras = function(self, updateInfo)
 end
 
 local function UnitButton_UpdateCalculator(self)
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
-    local calc = self.widgets.healthCalculator
+    local calc = BD(self).widgets.healthCalculator
     if not calc then return end
+    if calc.SetDamageAbsorbClampMode then
+        calc:SetDamageAbsorbClampMode(Enum.UnitDamageAbsorbClampMode.MaximumHealth)
+    end
+    if calc.SetHealAbsorbClampMode then
+        calc:SetHealAbsorbClampMode(Enum.UnitHealAbsorbClampMode.MaximumHealth)
+    end
     if UnitExists(unit) then
-        UnitGetDetailedHealPrediction(unit, "player", calc)
+        UnitGetDetailedHealPrediction(unit, nil, calc)
+    end
+    if calc.SetMaximumHealthMode then
+        calc:SetMaximumHealthMode(Enum.UnitMaximumHealthMode.Default)
     end
 end
 
 local function UnitButton_UpdateHealthStates(self, diff)
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
 
-    if Cell.isMidnight and self.widgets.healthCalculator then
+    if Cell.isMidnight and BD(self).widgets.healthCalculator then
         UnitButton_UpdateCalculator(self)
         -- Store healthPercent for color logic.
         local health = UnitHealth(unit)
         local healthMax = UnitHealthMax(unit)
         if not F.HasAnySecretValues(health, healthMax) and healthMax > 0 then
-            self.states.healthPercent = health / healthMax
-            self.states.healthMax = healthMax
+            BD(self).states.healthPercent = health / healthMax
+            BD(self).states.healthMax = healthMax
         else
             -- class_color / class_color_dark modes don't use percent, so they still work.
-            self.states.healthPercent = 0
+            BD(self).states.healthPercent = 0
         end
-        self.states.wasDead = self.states.isDead
-        self.states.wasDeadOrGhost = self.states.isDeadOrGhost
+        BD(self).states.wasDead = BD(self).states.isDead
+        BD(self).states.wasDeadOrGhost = BD(self).states.isDeadOrGhost
         local dead = UnitIsDeadOrGhost(unit)
         if F.IsValueNonSecret(dead) then
-            self.states.isDead = dead
-            self.states.isDeadOrGhost = dead
+            BD(self).states.isDead = dead
+            BD(self).states.isDeadOrGhost = dead
         end
 
         if enabledIndicators["healthText"] then
-            local calc = self.widgets.healthCalculator
+            local calc = BD(self).widgets.healthCalculator
             local health = calc:GetCurrentHealth()
             local maxHealth = calc:GetMaximumHealth()
-            local totalAbsorbs = calc:GetTotalDamageAbsorbs()
-            local healAbsorbs = calc:GetTotalHealAbsorbs()
+            local totalAbsorbs = calc:GetDamageAbsorbs()
+            local healAbsorbs = calc:GetHealAbsorbs()
             -- use direct UnitHealth/UnitHealthMax for health text display.
             if F.IsValueNonSecret(maxHealth) and maxHealth == 0 and unit then
                 health = UnitHealth(unit)
@@ -2663,22 +2738,22 @@ local function UnitButton_UpdateHealthStates(self, diff)
                 totalAbsorbs = UnitGetTotalAbsorbs(unit) or 0
                 healAbsorbs = UnitGetTotalHealAbsorbs(unit) or 0
             end
-            self.indicators.healthText:SetValue(health, maxHealth, totalAbsorbs, healAbsorbs, unit)
-            self.indicators.healthText:Show()
+            BD(self).indicators.healthText:SetValue(health, maxHealth, totalAbsorbs, healAbsorbs, unit)
+            BD(self).indicators.healthText:Show()
         else
-            self.indicators.healthText:Hide()
+            BD(self).indicators.healthText:Hide()
         end
 
         -- Fire death-state change callbacks
-        if self.states.wasDead ~= self.states.isDead then
+        if BD(self).states.wasDead ~= BD(self).states.isDead then
             UnitButton_UpdateStatusText(self)
             I.UpdateStatusIcon_Resurrection(self)
-            if not self.states.isDead then
-                self.states.hasSoulstone = nil
+            if not BD(self).states.isDead then
+                BD(self).states.hasSoulstone = nil
                 I.UpdateStatusIcon(self)
             end
         end
-        if self.states.wasDeadOrGhost ~= self.states.isDeadOrGhost then
+        if BD(self).states.wasDeadOrGhost ~= BD(self).states.isDeadOrGhost then
             I.UpdateStatusIcon_Resurrection(self)
             UnitButton_UpdateHealthColor(self)
         end
@@ -2687,52 +2762,52 @@ local function UnitButton_UpdateHealthStates(self, diff)
         local healthMax = UnitHealthMax(unit)
         health = min(health, healthMax) --! diff
 
-        self.states.health = health
-        self.states.healthMax = healthMax
-        self.states.totalAbsorbs = UnitGetTotalAbsorbs(unit)
-        self.states.healAbsorbs = UnitGetTotalHealAbsorbs(unit)
+        BD(self).states.health = health
+        BD(self).states.healthMax = healthMax
+        BD(self).states.totalAbsorbs = UnitGetTotalAbsorbs(unit)
+        BD(self).states.healAbsorbs = UnitGetTotalHealAbsorbs(unit)
 
         if healthMax == 0 then
-            self.states.healthPercent = 0
+            BD(self).states.healthPercent = 0
         else
-            self.states.healthPercent = health / healthMax
+            BD(self).states.healthPercent = health / healthMax
         end
 
-        self.states.wasDead = self.states.isDead
-        self.states.isDead = health == 0
-        if self.states.wasDead ~= self.states.isDead then
+        BD(self).states.wasDead = BD(self).states.isDead
+        BD(self).states.isDead = health == 0
+        if BD(self).states.wasDead ~= BD(self).states.isDead then
             UnitButton_UpdateStatusText(self)
             I.UpdateStatusIcon_Resurrection(self)
-            if not self.states.isDead then
-                self.states.hasSoulstone = nil
+            if not BD(self).states.isDead then
+                BD(self).states.hasSoulstone = nil
                 I.UpdateStatusIcon(self)
             end
         end
 
-        self.states.wasDeadOrGhost = self.states.isDeadOrGhost
-        self.states.isDeadOrGhost = UnitIsDeadOrGhost(unit)
-        if self.states.wasDeadOrGhost ~= self.states.isDeadOrGhost then
+        BD(self).states.wasDeadOrGhost = BD(self).states.isDeadOrGhost
+        BD(self).states.isDeadOrGhost = UnitIsDeadOrGhost(unit)
+        if BD(self).states.wasDeadOrGhost ~= BD(self).states.isDeadOrGhost then
             I.UpdateStatusIcon_Resurrection(self)
             UnitButton_UpdateHealthColor(self)
         end
 
-        if enabledIndicators["healthText"] then -- and not self.states.isDeadOrGhost then
-            self.indicators.healthText:SetValue(health, healthMax, self.states.totalAbsorbs, self.states.healAbsorbs, unit)
-            self.indicators.healthText:Show()
+        if enabledIndicators["healthText"] then -- and not BD(self).states.isDeadOrGhost then
+            BD(self).indicators.healthText:SetValue(health, healthMax, BD(self).states.totalAbsorbs, BD(self).states.healAbsorbs, unit)
+            BD(self).indicators.healthText:Show()
         else
-            self.indicators.healthText:Hide()
+            BD(self).indicators.healthText:Hide()
         end
     end
 end
 
 local function UnitButton_UpdatePowerStates(self)
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
-    self.states.power = UnitPower(unit)
-    self.states.powerMax = UnitPowerMax(unit)
-    if F.IsValueNonSecret(self.states.powerMax) then
-        if self.states.powerMax <= 0 then self.states.powerMax = 1 end
+    BD(self).states.power = UnitPower(unit)
+    BD(self).states.powerMax = UnitPowerMax(unit)
+    if F.IsValueNonSecret(BD(self).states.powerMax) then
+        if BD(self).states.powerMax <= 0 then BD(self).states.powerMax = 1 end
     end
 end
 
@@ -2740,13 +2815,13 @@ end
 -- power filter funcs
 -------------------------------------------------
 local function GetRole(b)
-    if b.states.role and F.IsValueNonSecret(b.states.role) and b.states.role ~= "NONE" then
-        return b.states.role
+    if BD(b).states.role and F.IsValueNonSecret(BD(b).states.role) and BD(b).states.role ~= "NONE" then
+        return BD(b).states.role
     end
 
-    local isPlayer = b.states.unit and UnitIsUnit(b.states.unit, "player")
+    local isPlayer = BD(b).states.unit and UnitIsUnit(BD(b).states.unit, "player")
     if GetSpecialization and GetSpecializationRole
-        and b.states.unit and F.IsValueNonSecret(isPlayer) and isPlayer then
+        and BD(b).states.unit and F.IsValueNonSecret(isPlayer) and isPlayer then
         local spec = GetSpecialization()
         if spec then
             local specRole = GetSpecializationRole(spec)
@@ -2756,30 +2831,27 @@ local function GetRole(b)
         end
     end
 
-    if b.states.unit then
-        local freshRole = UnitGroupRolesAssigned(b.states.unit)
+    if BD(b).states.unit then
+        local freshRole = UnitGroupRolesAssigned(BD(b).states.unit)
         if freshRole and F.IsValueNonSecret(freshRole) and freshRole ~= "NONE" then
-            b.states.role = freshRole
+            BD(b).states.role = freshRole
             return freshRole
         end
     end
 
     local info
-    if b.states.guid and F.IsValueNonSecret(b.states.guid) then
-        info = LGI:GetCachedInfo(b.states.guid)
+    if BD(b).states.guid and F.IsValueNonSecret(BD(b).states.guid) then
+        info = LGI:GetCachedInfo(BD(b).states.guid)
     end
     if info and F.IsValueNonSecret(info.role) then
         return info.role
     end
 end
 
--- Evaluate a role filter table when the specific role is unknown.
--- Returns false if ALL roles in the table are disabled, true otherwise.
 local function EvaluateFilterWithoutRole(filterTable)
     if type(filterTable) == "boolean" then
         return filterTable
     end
-    -- If any role is enabled, show (safe default when role unknown)
     for _, enabled in pairs(filterTable) do
         if enabled then
             return true
@@ -2792,27 +2864,27 @@ end
 -- Determine class and role for a unit button (used by power filter functions)
 local function GetClassAndRole(b)
     local class, role
-    local guid = b.states.guid
+    local guid = BD(b).states.guid
     if guid and not F.IsValueNonSecret(guid) then
-        if b.states.class and F.IsValueNonSecret(b.states.class) then
-            class = b.states.class
+        if BD(b).states.class and F.IsValueNonSecret(BD(b).states.class) then
+            class = BD(b).states.class
             role = GetRole(b)
-        elseif b.states.unit and UnitInPartyIsAI(b.states.unit) then
-            class = b.states.class
+        elseif BD(b).states.unit and UnitInPartyIsAI(BD(b).states.unit) then
+            class = BD(b).states.class
             role = GetRole(b)
         end
         return class, role
     end
-    if b.states.inVehicle then
+    if BD(b).states.inVehicle then
         class = "VEHICLE"
     elseif F.IsPlayer(guid) then
-        class = b.states.class
+        class = BD(b).states.class
         role = GetRole(b)
     elseif F.IsPet(guid) then
         class = "PET"
     elseif F.IsNPC(guid) then
-        if UnitInPartyIsAI(b.states.unit) then
-            class = b.states.class
+        if UnitInPartyIsAI(BD(b).states.unit) then
+            class = BD(b).states.class
             role = GetRole(b)
         else
             class = "NPC"
@@ -2825,9 +2897,9 @@ end
 
 ShouldShowPowerText = function(b)
     if not enabledIndicators["powerText"] then return end
-    if not (b:IsVisible() or b.isPreview) then return end
+    if not (b:IsVisible() or BD(b).isPreview) then return end
 
-    if b.states.guid == nil then
+    if BD(b).states.guid == nil then
         return true
     end
 
@@ -2849,10 +2921,10 @@ ShouldShowPowerText = function(b)
 end
 
 ShouldShowPowerBar = function(b)
-    if not (b:IsVisible() or b.isPreview) then return end
-    if not b.powerSize or b.powerSize == 0 then return end
+    if not (b:IsVisible() or BD(b).isPreview) then return end
+    if not BD(b).powerSize or BD(b).powerSize == 0 then return end
 
-    if b.states.guid == nil then
+    if BD(b).states.guid == nil then
         return true
     end
 
@@ -2877,7 +2949,13 @@ ShouldShowPowerBar = function(b)
 end
 
 CheckPowerEventRegistration = function(b)
-    if b:IsVisible() and not b.isPreview and (b._shouldShowPowerText or b._shouldShowPowerBar) then
+    local want = b:IsVisible() and not BD(b).isPreview and (BD(b)._shouldShowPowerText or BD(b)._shouldShowPowerBar)
+    if useEventHub then
+        BD(b)._wantPowerEvents = want and true or false
+        SyncButtonTracker(b)
+        return want
+    end
+    if want then
         b:RegisterEvent("UNIT_POWER_FREQUENT")
         b:RegisterEvent("UNIT_MAXPOWER")
         b:RegisterEvent("UNIT_DISPLAYPOWER")
@@ -2891,22 +2969,22 @@ CheckPowerEventRegistration = function(b)
 end
 
 local function ShowPowerBar(b)
-    b.widgets.powerBar:Show()
-    b.widgets.powerBarLoss:Show()
-    b.widgets.gapTexture:SetShown(CELL_BORDER_SIZE ~= 0)
+    BD(b).widgets.powerBar:Show()
+    BD(b).widgets.powerBarLoss:Show()
+    BD(b).widgets.gapTexture:SetShown(CELL_BORDER_SIZE ~= 0)
 
-    P.ClearPoints(b.widgets.healthBar)
-    P.ClearPoints(b.widgets.powerBar)
-    if b.orientation == "horizontal" or b.orientation == "vertical_health" then
-        P.Point(b.widgets.healthBar, "TOPLEFT", b, "TOPLEFT", CELL_BORDER_SIZE, -CELL_BORDER_SIZE)
-        P.Point(b.widgets.healthBar, "BOTTOMRIGHT", b, "BOTTOMRIGHT", -CELL_BORDER_SIZE, b.powerSize + CELL_BORDER_SIZE * 2)
-        P.Point(b.widgets.powerBar, "TOPLEFT", b.widgets.healthBar, "BOTTOMLEFT", 0, -CELL_BORDER_SIZE)
-        P.Point(b.widgets.powerBar, "BOTTOMRIGHT", b, "BOTTOMRIGHT", -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
+    P.ClearPoints(BD(b).widgets.healthBar)
+    P.ClearPoints(BD(b).widgets.powerBar)
+    if BD(b).orientation == "horizontal" or BD(b).orientation == "vertical_health" then
+        P.Point(BD(b).widgets.healthBar, "TOPLEFT", b, "TOPLEFT", CELL_BORDER_SIZE, -CELL_BORDER_SIZE)
+        P.Point(BD(b).widgets.healthBar, "BOTTOMRIGHT", b, "BOTTOMRIGHT", -CELL_BORDER_SIZE, BD(b).powerSize + CELL_BORDER_SIZE * 2)
+        P.Point(BD(b).widgets.powerBar, "TOPLEFT", BD(b).widgets.healthBar, "BOTTOMLEFT", 0, -CELL_BORDER_SIZE)
+        P.Point(BD(b).widgets.powerBar, "BOTTOMRIGHT", b, "BOTTOMRIGHT", -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
     else
-        P.Point(b.widgets.healthBar, "TOPLEFT", b, "TOPLEFT", CELL_BORDER_SIZE, -CELL_BORDER_SIZE)
-        P.Point(b.widgets.healthBar, "BOTTOMRIGHT", b, "BOTTOMRIGHT", -(b.powerSize + CELL_BORDER_SIZE * 2), CELL_BORDER_SIZE)
-        P.Point(b.widgets.powerBar, "TOPLEFT", b.widgets.healthBar, "TOPRIGHT", CELL_BORDER_SIZE, 0)
-        P.Point(b.widgets.powerBar, "BOTTOMRIGHT", b, "BOTTOMRIGHT", -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
+        P.Point(BD(b).widgets.healthBar, "TOPLEFT", b, "TOPLEFT", CELL_BORDER_SIZE, -CELL_BORDER_SIZE)
+        P.Point(BD(b).widgets.healthBar, "BOTTOMRIGHT", b, "BOTTOMRIGHT", -(BD(b).powerSize + CELL_BORDER_SIZE * 2), CELL_BORDER_SIZE)
+        P.Point(BD(b).widgets.powerBar, "TOPLEFT", BD(b).widgets.healthBar, "TOPRIGHT", CELL_BORDER_SIZE, 0)
+        P.Point(BD(b).widgets.powerBar, "BOTTOMRIGHT", b, "BOTTOMRIGHT", -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
     end
 
     if b:IsVisible() then
@@ -2921,26 +2999,26 @@ end
 
 local function HidePowerBar(b)
     CheckPowerEventRegistration(b)
-    b.widgets.powerBar:Hide()
-    b.widgets.powerBarLoss:Hide()
-    b.widgets.gapTexture:Hide()
+    BD(b).widgets.powerBar:Hide()
+    BD(b).widgets.powerBarLoss:Hide()
+    BD(b).widgets.gapTexture:Hide()
 
-    P.ClearPoints(b.widgets.healthBar)
-    P.Point(b.widgets.healthBar, "TOPLEFT", b, "TOPLEFT", CELL_BORDER_SIZE, -CELL_BORDER_SIZE)
-    P.Point(b.widgets.healthBar, "BOTTOMRIGHT", b, "BOTTOMRIGHT", -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
+    P.ClearPoints(BD(b).widgets.healthBar)
+    P.Point(BD(b).widgets.healthBar, "TOPLEFT", b, "TOPLEFT", CELL_BORDER_SIZE, -CELL_BORDER_SIZE)
+    P.Point(BD(b).widgets.healthBar, "BOTTOMRIGHT", b, "BOTTOMRIGHT", -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
 end
 
 -------------------------------------------------
 -- unit button functions
 -------------------------------------------------
 local function UnitButton_UpdateTarget(self)
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
     if F.IsKnownTrue(UnitIsUnit(unit, "target")) then
-        if highlightEnabled then self.widgets.targetHighlight:Show() end
+        if highlightEnabled then BD(self).widgets.targetHighlight:Show() end
     else
-        self.widgets.targetHighlight:Hide()
+        BD(self).widgets.targetHighlight:Hide()
     end
 end
 
@@ -2960,25 +3038,25 @@ local function CheckVehicleRoot(self, petUnit)
         end
     end
 
-    self.indicators.roleIcon:SetRole(isRoot and "VEHICLE-ROOT" or "VEHICLE")
+    BD(self).indicators.roleIcon:SetRole(isRoot and "VEHICLE-ROOT" or "VEHICLE")
 end
 
 UnitButton_UpdateRole = function(self)
-    local unit = self.states.unit
+    local unit = BD(self).states.unit
     if not unit then return end
 
     local role = UnitGroupRolesAssigned(unit)
     if F.IsValueNonSecret(role) then
-        self.states.role = role
+        BD(self).states.role = role
     end
 
-    local roleIcon = self.indicators.roleIcon
+    local roleIcon = BD(self).indicators.roleIcon
     if enabledIndicators["roleIcon"] then
 
         roleIcon:SetRole(role)
 
         --! check vehicle root
-        if self.states.guid and F.IsValueNonSecret(self.states.guid) and strfind(self.states.guid, "^Vehicle") and not F.IsKnownTrue(UnitInPartyIsAI(unit)) then
+        if BD(self).states.guid and F.IsValueNonSecret(BD(self).states.guid) and strfind(BD(self).states.guid, "^Vehicle") and not F.IsKnownTrue(UnitInPartyIsAI(unit)) then
             CheckVehicleRoot(self, unit)
         end
     else
@@ -2987,10 +3065,10 @@ UnitButton_UpdateRole = function(self)
 end
 
 UnitButton_UpdateLeader = function(self, event)
-    local unit = self.states.unit
+    local unit = BD(self).states.unit
     if not unit then return end
 
-    local leaderIcon = self.indicators.leaderIcon
+    local leaderIcon = BD(self).indicators.leaderIcon
 
     if enabledIndicators["leaderIcon"] then
         if indicatorBooleans["leaderIcon"] and (InCombatLockdown() or event == "PLAYER_REGEN_DISABLED") then
@@ -2999,9 +3077,9 @@ UnitButton_UpdateLeader = function(self, event)
         end
 
         local isLeader = UnitIsGroupLeader(unit)
-        self.states.isLeader = isLeader
+        BD(self).states.isLeader = isLeader
         local isAssistant = UnitIsGroupAssistant(unit) and IsInRaid()
-        self.states.isAssistant = isAssistant
+        BD(self).states.isAssistant = isAssistant
 
         leaderIcon:SetIcon(isLeader, isAssistant)
     else
@@ -3010,10 +3088,10 @@ UnitButton_UpdateLeader = function(self, event)
 end
 
 local function UnitButton_UpdatePlayerRaidIcon(self)
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
-    local playerRaidIcon = self.indicators.playerRaidIcon
+    local playerRaidIcon = BD(self).indicators.playerRaidIcon
 
     local index = GetRaidTargetIndex(unit)
 
@@ -3030,10 +3108,10 @@ local function UnitButton_UpdatePlayerRaidIcon(self)
 end
 
 local function UnitButton_UpdateTargetRaidIcon(self)
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
-    local targetRaidIcon = self.indicators.targetRaidIcon
+    local targetRaidIcon = BD(self).indicators.targetRaidIcon
 
     local index = GetRaidTargetIndex(unit.."target")
 
@@ -3050,32 +3128,32 @@ local function UnitButton_UpdateTargetRaidIcon(self)
 end
 
 local function UnitButton_UpdateReadyCheck(self)
-    local unit = self.states.unit
+    local unit = BD(self).states.unit
     if not unit then return end
 
     local status = GetReadyCheckStatus(unit)
-    self.states.readyCheckStatus = status
+    BD(self).states.readyCheckStatus = status
 
     if enabledIndicators["readyCheckIcon"] and status then
-        -- self.widgets.readyCheckHighlight:SetVertexColor(unpack(READYCHECK_STATUS[status].c))
-        -- self.widgets.readyCheckHighlight:Show()
-        self.indicators.readyCheckIcon:SetStatus(status)
+        -- BD(self).widgets.readyCheckHighlight:SetVertexColor(unpack(READYCHECK_STATUS[status].c))
+        -- BD(self).widgets.readyCheckHighlight:Show()
+        BD(self).indicators.readyCheckIcon:SetStatus(status)
     else
-        -- self.widgets.readyCheckHighlight:Hide()
-        self.indicators.readyCheckIcon:Hide()
+        -- BD(self).widgets.readyCheckHighlight:Hide()
+        BD(self).indicators.readyCheckIcon:Hide()
     end
 end
 
 local function UnitButton_FinishReadyCheck(self)
     if not enabledIndicators["readyCheckIcon"] then return end
 
-    if self.states.readyCheckStatus == "waiting" then
-        -- self.widgets.readyCheckHighlight:SetVertexColor(unpack(READYCHECK_STATUS.notready.c))
-        self.indicators.readyCheckIcon:SetStatus("notready")
+    if BD(self).states.readyCheckStatus == "waiting" then
+        -- BD(self).widgets.readyCheckHighlight:SetVertexColor(unpack(READYCHECK_STATUS.notready.c))
+        BD(self).indicators.readyCheckIcon:SetStatus("notready")
     end
     C_Timer.After(6, function()
-        -- self.widgets.readyCheckHighlight:Hide()
-        self.indicators.readyCheckIcon:Hide()
+        -- BD(self).widgets.readyCheckHighlight:Hide()
+        BD(self).indicators.readyCheckIcon:Hide()
     end)
 end
 
@@ -3085,20 +3163,20 @@ local function FitPowerTextFrame(frame)
 end
 
 UnitButton_UpdatePowerText = function(self)
-    if not self._shouldShowPowerText then return end
+    if not BD(self)._shouldShowPowerText then return end
 
-    local frame = self.indicators.powerText
+    local frame = BD(self).indicators.powerText
     if not frame then return end
 
-    local power = self.states.power
-    local powerMax = self.states.powerMax
-    local dead = self.states.isDeadOrGhost
+    local power = BD(self).states.power
+    local powerMax = BD(self).states.powerMax
+    local dead = BD(self).states.isDeadOrGhost
     if power == nil or (F.IsValueNonSecret(dead) and dead) then
         frame:Hide()
         return
     end
 
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     local fmt = frame._format or "number"
     if not F.HasAnySecretValues(power, powerMax) then
         frame:SetValue(power, powerMax)
@@ -3126,50 +3204,50 @@ UnitButton_UpdatePowerText = function(self)
 end
 
 UnitButton_UpdatePowerTextColor = function(self)
-    if not self._shouldShowPowerText then return end
+    if not BD(self)._shouldShowPowerText then return end
 
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
     local color = indicatorColors["powerText"]
     if not color then return end
 
     if color[1] == "power_color" then
-        self.indicators.powerText:SetColor(F.GetPowerColor(unit))
+        BD(self).indicators.powerText:SetColor(F.GetPowerColor(unit))
     elseif color[1] == "class_color" then
-        self.indicators.powerText:SetColor(F.GetUnitClassColor(unit))
+        BD(self).indicators.powerText:SetColor(F.GetUnitClassColor(unit))
     elseif color[2] then
-        self.indicators.powerText:SetColor(unpack(color[2]))
+        BD(self).indicators.powerText:SetColor(unpack(color[2]))
     end
 end
 
 UnitButton_UpdatePowerMax = function(self)
-    if not self._shouldShowPowerBar then return end
-    if self.states.powerMax == nil then return end
+    if not BD(self)._shouldShowPowerBar then return end
+    if BD(self).states.powerMax == nil then return end
 
     if barAnimationType == "Smooth" and not Cell.isMidnight then
-        self.widgets.powerBar:SetMinMaxSmoothedValue(0, self.states.powerMax)
+        BD(self).widgets.powerBar:SetMinMaxSmoothedValue(0, BD(self).states.powerMax)
     else
-        self.widgets.powerBar:SetMinMaxValues(0, self.states.powerMax)
+        BD(self).widgets.powerBar:SetMinMaxValues(0, BD(self).states.powerMax)
     end
 end
 
 UnitButton_UpdatePower = function(self)
-    if not self._shouldShowPowerBar then return end
-    if self.states.power == nil then return end
+    if not BD(self)._shouldShowPowerBar then return end
+    if BD(self).states.power == nil then return end
 
     if Cell.isMidnight and SBI_ExponentialEaseOut then
         local smoothEnum = (barAnimationType == "Smooth" and SBI_ExponentialEaseOut) or SBI_Immediate
-        self.widgets.powerBar:SetValue(self.states.power, smoothEnum)
+        BD(self).widgets.powerBar:SetValue(BD(self).states.power, smoothEnum)
     else
-        self.widgets.powerBar:SetBarValue(self.states.power)
+        BD(self).widgets.powerBar:SetBarValue(BD(self).states.power)
     end
 end
 
 UnitButton_UpdatePowerType = function(self)
-    if not self._shouldShowPowerBar then return end
+    if not BD(self)._shouldShowPowerBar then return end
 
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
     local r, g, b, lossR, lossG, lossB
@@ -3180,40 +3258,40 @@ UnitButton_UpdatePowerType = function(self)
         r, g, b = 0.4, 0.4, 0.4
         lossR, lossG, lossB = 0.4, 0.4, 0.4
     else
-        r, g, b, lossR, lossG, lossB, self.states.powerType = F.GetPowerBarColor(unit, self.states.class)
+        r, g, b, lossR, lossG, lossB, BD(self).states.powerType = F.GetPowerBarColor(unit, BD(self).states.class)
     end
 
-    self.widgets.powerBar:SetStatusBarColor(r, g, b)
-    self.widgets.powerBarLoss:SetVertexColor(lossR, lossG, lossB)
+    BD(self).widgets.powerBar:SetStatusBarColor(r, g, b)
+    BD(self).widgets.powerBarLoss:SetVertexColor(lossR, lossG, lossB)
 end
 
 local function UnitButton_UpdateHealthMax(self)
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
     UnitButton_UpdateHealthStates(self)
 
-    if Cell.isMidnight and self.widgets.healthCalculator then
-        local maxHealth = self.widgets.healthCalculator:GetMaximumHealth()
-        self.widgets.healthBar:SetMinMaxValues(0, maxHealth)
+    if Cell.isMidnight and BD(self).widgets.healthCalculator then
+        local maxHealth = BD(self).widgets.healthCalculator:GetMaximumHealth()
+        BD(self).widgets.healthBar:SetMinMaxValues(0, maxHealth)
         -- Also update overlay bar ranges
-        if self.widgets.incomingHeal then
-            self.widgets.incomingHeal:SetMinMaxValues(0, maxHealth)
+        if BD(self).widgets.incomingHeal then
+            BD(self).widgets.incomingHeal:SetMinMaxValues(0, maxHealth)
         end
-        if self.widgets.shieldBar then
-            self.widgets.shieldBar:SetMinMaxValues(0, maxHealth)
+        if BD(self).widgets.shieldBar then
+            BD(self).widgets.shieldBar:SetMinMaxValues(0, maxHealth)
         end
-        if self.widgets.shieldBarR then
-            self.widgets.shieldBarR:SetMinMaxValues(0, maxHealth)
+        if BD(self).widgets.shieldBarR then
+            BD(self).widgets.shieldBarR:SetMinMaxValues(0, maxHealth)
         end
-        if self.widgets.absorbsBar then
-            self.widgets.absorbsBar:SetMinMaxValues(0, maxHealth)
+        if BD(self).widgets.absorbsBar then
+            BD(self).widgets.absorbsBar:SetMinMaxValues(0, maxHealth)
         end
     else
         if barAnimationType == "Smooth" or barAnimationType == "Legacy" or barAnimationType == "Old" then
-            self.widgets.healthBar:SetMinMaxSmoothedValue(0, self.states.healthMax)
+            BD(self).widgets.healthBar:SetMinMaxSmoothedValue(0, BD(self).states.healthMax)
         else
-            self.widgets.healthBar:SetMinMaxValues(0, self.states.healthMax)
+            BD(self).widgets.healthBar:SetMinMaxValues(0, BD(self).states.healthMax)
         end
     end
 
@@ -3223,59 +3301,68 @@ local function UnitButton_UpdateHealthMax(self)
 end
 
 local function UnitButton_UpdateHealth(self, diff, skipStateUpdates)
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
     if not skipStateUpdates then
         UnitButton_UpdateHealthStates(self, diff)
     end
 
-    if Cell.isMidnight and self.widgets.healthCalculator then
+    if Cell.isMidnight and BD(self).widgets.healthCalculator then
         -- "Legacy": same as upstream Cell_beta — immediate SetValue.
-        local calc = self.widgets.healthCalculator
+        local calc = BD(self).widgets.healthCalculator
         local health = calc:GetCurrentHealth()
         local smoothEnum = (barAnimationType == "Smooth" and SBI_ExponentialEaseOut) or SBI_Immediate
-        self.widgets.healthBar:SetValue(health, smoothEnum)
+        if smoothEnum then
+            BD(self).widgets.healthBar:SetValue(health, smoothEnum)
+        else
+            BD(self).widgets.healthBar:SetValue(health)
+        end
 
         if Cell.vars.useThresholdColor or Cell.vars.useFullColor then
             UnitButton_UpdateHealthColor(self)
         end
 
-        if enabledIndicators["healthThresholds"] and self.widgets.healthCalculator then
-            self.indicators.healthThresholds:CheckThresholdMidnight(self.widgets.healthCalculator)
+        if enabledIndicators["healthThresholds"] and BD(self).widgets.healthCalculator then
+            BD(self).indicators.healthThresholds:CheckThresholdMidnight(BD(self).widgets.healthCalculator)
         else
-            self.indicators.healthThresholds:Hide()
+            BD(self).indicators.healthThresholds:Hide()
         end
 
         -- CELL_FADE_OUT_HEALTH_PERCENT: use EvaluateMissingHealthPercent with a Curve to fade
         -- frames that are above the health threshold (healthy enough to fade out)
-        if CELL_FADE_OUT_HEALTH_PERCENT and self.widgets.healthCalculator then
-            RebuildFadeOutHealthCurve()
-            if fadeOutHealthCurve and self.states.inRange then
-                -- Curve output: 1.0 if below threshold (needs healing), outOfRangeAlpha if above
-                local targetAlpha = self.widgets.healthCalculator:EvaluateCurrentHealthPercent(fadeOutHealthCurve)
-                self:SetAlpha(targetAlpha)
+        if CELL_FADE_OUT_HEALTH_PERCENT and BD(self).widgets.healthCalculator then
+            local fadeOutHealthCurve = RebuildFadeOutHealthCurve()
+            if fadeOutHealthCurve and BD(self).states.inRange then
+                -- Curve output: full color if below threshold (needs healing), dimmed
+                -- (outOfRangeAlpha) if above -- alpha comes out through the color's
+                -- own alpha channel, never a raw number from this call.
+                local resultColor = BD(self).widgets.healthCalculator:EvaluateCurrentHealthPercent(fadeOutHealthCurve)
+                if resultColor then
+                    local _, _, _, targetAlpha = resultColor:GetRGBA()
+                    self:SetAlpha(targetAlpha)
+                end
             end
         end
     else
-        local healthPercent = self.states.healthPercent
+        local healthPercent = BD(self).states.healthPercent
 
-        self.widgets.healthBar:SetBarValue(self.states.health)
+        BD(self).widgets.healthBar:SetBarValue(BD(self).states.health)
 
         if Cell.vars.useThresholdColor or Cell.vars.useFullColor then
             UnitButton_UpdateHealthColor(self)
         end
 
-        self.states.healthPercentOld = healthPercent
+        BD(self).states.healthPercentOld = healthPercent
 
         if enabledIndicators["healthThresholds"] then
-            self.indicators.healthThresholds:CheckThreshold(healthPercent)
+            BD(self).indicators.healthThresholds:CheckThreshold(healthPercent)
         else
-            self.indicators.healthThresholds:Hide()
+            BD(self).indicators.healthThresholds:Hide()
         end
 
         if CELL_FADE_OUT_HEALTH_PERCENT then
-            if self.states.inRange and healthPercent < CELL_FADE_OUT_HEALTH_PERCENT then
+            if BD(self).states.inRange and healthPercent < CELL_FADE_OUT_HEALTH_PERCENT then
                 A.FrameFadeIn(self, 0.25, self:GetAlpha(), 1)
             else
                 A.FrameFadeOut(self, 0.25, self:GetAlpha(), CellDB["appearance"]["outOfRangeAlpha"])
@@ -3285,28 +3372,28 @@ local function UnitButton_UpdateHealth(self, diff, skipStateUpdates)
 end
 
 local function UnitButton_UpdateHealPrediction(self, skipStateUpdates)
-    if Cell.isMidnight and self.widgets.healPredictionCalculator then
+    if Cell.isMidnight and BD(self).widgets.healPredictionCalculator then
         -- This keeps clamp/overflow settings isolated from the shared
         -- Bar is anchored to health fill edge (set in SetOrientation).
         if not predictionEnabled then
-            self.widgets.incomingHeal:Hide()
+            BD(self).widgets.incomingHeal:Hide()
             return
         end
-        local unit = self.states.displayedUnit
+        local unit = BD(self).states.displayedUnit
         if not unit then return end
-        local calc = self.widgets.healPredictionCalculator
+        local calc = BD(self).widgets.healPredictionCalculator
         -- Configure clamp: 0 = MissingHealth (no overheal past frame edge)
         calc:SetIncomingHealClampMode(0)
         calc:SetIncomingHealOverflowPercent(1.0)
-        UnitGetDetailedHealPrediction(unit, "player", calc)
+        UnitGetDetailedHealPrediction(unit, nil, calc)
         local maxHealth = calc:GetMaximumHealth()
         local incomingHeals = calc:GetIncomingHeals()
-        local bar = self.widgets.incomingHeal
+        local bar = BD(self).widgets.incomingHeal
         -- Set explicit size: bar fills from health edge across remaining bar space
-        if self.orientation == "horizontal" then
-            bar:SetWidth(self.widgets.healthBar:GetWidth())
+        if BD(self).orientation == "horizontal" then
+            bar:SetWidth(BD(self).widgets.healthBar:GetWidth())
         else
-            bar:SetHeight(self.widgets.healthBar:GetHeight())
+            bar:SetHeight(BD(self).widgets.healthBar:GetHeight())
         end
         bar:SetMinMaxValues(0, maxHealth)
         bar:SetValue(incomingHeals)
@@ -3314,26 +3401,26 @@ local function UnitButton_UpdateHealPrediction(self, skipStateUpdates)
         return
     end
     if not predictionEnabled then
-        self.widgets.incomingHeal:Hide()
+        BD(self).widgets.incomingHeal:Hide()
         return
     end
 
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
     if not skipStateUpdates then
         UnitButton_UpdateHealthStates(self)
     end
 
-    local incomingHeal = self.widgets.incomingHeal
+    local incomingHeal = BD(self).widgets.incomingHeal
     -- Set size to match health bar for correct proportions
-    if self.orientation == "horizontal" then
-        incomingHeal:SetWidth(self.widgets.healthBar:GetWidth())
+    if BD(self).orientation == "horizontal" then
+        incomingHeal:SetWidth(BD(self).widgets.healthBar:GetWidth())
     else
-        incomingHeal:SetHeight(self.widgets.healthBar:GetHeight())
+        incomingHeal:SetHeight(BD(self).widgets.healthBar:GetHeight())
     end
 
-    local calc = self.widgets.healPredictionCalculator
+    local calc = BD(self).widgets.healPredictionCalculator
     if calc and UnitGetDetailedHealPrediction then
         if UnitExists(unit) then
             UnitGetDetailedHealPrediction(unit, nil, calc)
@@ -3342,40 +3429,40 @@ local function UnitButton_UpdateHealPrediction(self, skipStateUpdates)
         if calc.GetIncomingHeals then
             allHeal = select(1, calc:GetIncomingHeals())
         end
-        incomingHeal:SetMinMaxValues(0, self.states.healthMax)
+        incomingHeal:SetMinMaxValues(0, BD(self).states.healthMax)
         incomingHeal:SetValue((allHeal == nil) and 0 or allHeal)
     else
         local value = UnitGetIncomingHeals(unit) or 0
-        incomingHeal:SetMinMaxValues(0, self.states.healthMax)
+        incomingHeal:SetMinMaxValues(0, BD(self).states.healthMax)
         incomingHeal:SetValue(value)
     end
     incomingHeal:Show()
 end
 
 UnitButton_UpdateShieldAbsorbs = function(self, skipStateUpdates)
-        if Cell.isMidnight and self.widgets.healthCalculator then
+        if Cell.isMidnight and BD(self).widgets.healthCalculator then
             if not shieldEnabled then
-                self.widgets.shieldBar:Hide()
-                self.widgets.shieldBarR:Hide()
-                self.widgets.overShieldGlow:Hide()
-                self.widgets.overShieldGlowR:Hide()
-                self.indicators.shieldBar:Hide()
+                BD(self).widgets.shieldBar:Hide()
+                BD(self).widgets.shieldBarR:Hide()
+                BD(self).widgets.overShieldGlow:Hide()
+                BD(self).widgets.overShieldGlowR:Hide()
+                BD(self).indicators.shieldBar:Hide()
                 return
             end
-            local unit = self.states.displayedUnit
+            local unit = BD(self).states.displayedUnit
             if not unit then return end
-            -- (UpdateHealthStates already populated it).
             if not skipStateUpdates then
                 UnitButton_UpdateCalculator(self)
             end
-        local absorbs = self.widgets.healthCalculator:GetTotalDamageAbsorbs()
-        local healthMax = self.widgets.healthCalculator:GetMaximumHealth()
+        local absorbs = BD(self).widgets.healthCalculator:GetDamageAbsorbs()
+        local healthMax = BD(self).widgets.healthCalculator:GetMaximumHealth()
 
-        -- Overshield detection: GetDamageAbsorbs returns (amount, isClamped)
-        -- where isClamped is true when absorbs exceed max health (overshield).
         local _, isClamped
-        local calc = self.widgets.healPredictionCalculator
+        local calc = BD(self).widgets.healPredictionCalculator
         if calc and UnitGetDetailedHealPrediction then
+            if calc.SetDamageAbsorbClampMode then
+                calc:SetDamageAbsorbClampMode(Enum.UnitDamageAbsorbClampMode.MaximumHealth)
+            end
             if UnitExists(unit) then
                 UnitGetDetailedHealPrediction(unit, nil, calc)
             end
@@ -3385,12 +3472,12 @@ UnitButton_UpdateShieldAbsorbs = function(self, skipStateUpdates)
         end
 
         if overshieldReverseFillEnabled then
-            self.widgets.shieldBar:Hide()
-            self.widgets.shieldBarR:SetMinMaxValues(0, healthMax)
-            self.widgets.shieldBarR:SetValue(absorbs)
-            self.widgets.shieldBarR:Show()
+            BD(self).widgets.shieldBar:Hide()
+            BD(self).widgets.shieldBarR:SetMinMaxValues(0, healthMax)
+            BD(self).widgets.shieldBarR:SetValue(absorbs)
+            BD(self).widgets.shieldBarR:Show()
             if overshieldEnabled and isClamped ~= nil then
-                local glow = self.widgets.overShieldGlowR
+                local glow = BD(self).widgets.overShieldGlowR
                 if glow.SetAlphaFromBoolean then
                     glow:Show()
                     glow:SetAlphaFromBoolean(isClamped, 1, 0)
@@ -3400,15 +3487,15 @@ UnitButton_UpdateShieldAbsorbs = function(self, skipStateUpdates)
                     glow:Hide()
                 end
             else
-                self.widgets.overShieldGlowR:Hide()
+                BD(self).widgets.overShieldGlowR:Hide()
             end
-            self.widgets.overShieldGlow:Hide()
+            BD(self).widgets.overShieldGlow:Hide()
         else
-            self.widgets.shieldBar:SetMinMaxValues(0, healthMax)
-            self.widgets.shieldBar:SetValue(absorbs)
-            self.widgets.shieldBar:Show()
+            BD(self).widgets.shieldBar:SetMinMaxValues(0, healthMax)
+            BD(self).widgets.shieldBar:SetValue(absorbs)
+            BD(self).widgets.shieldBar:Show()
             if overshieldEnabled and isClamped ~= nil then
-                local glow = self.widgets.overShieldGlow
+                local glow = BD(self).widgets.overShieldGlow
                 if glow.SetAlphaFromBoolean then
                     glow:Show()
                     glow:SetAlphaFromBoolean(isClamped, 1, 0)
@@ -3418,15 +3505,15 @@ UnitButton_UpdateShieldAbsorbs = function(self, skipStateUpdates)
                     glow:Hide()
                 end
             else
-                self.widgets.overShieldGlow:Hide()
+                BD(self).widgets.overShieldGlow:Hide()
             end
-            self.widgets.shieldBarR:Hide()
-            self.widgets.overShieldGlowR:Hide()
+            BD(self).widgets.shieldBarR:Hide()
+            BD(self).widgets.overShieldGlowR:Hide()
         end
 
         -- Update shield indicator (user-configurable indicator on top of health bar)
         if enabledIndicators["shieldBar"] then
-            local indBar = self.indicators.shieldBar
+            local indBar = BD(self).indicators.shieldBar
             indBar:Show()
             indBar:SetAbsorbs(absorbs, healthMax)
             if indicatorBooleans["shieldBar"] then
@@ -3442,37 +3529,40 @@ UnitButton_UpdateShieldAbsorbs = function(self, skipStateUpdates)
                 indBar:SetAlpha(1)
             end
         else
-            self.indicators.shieldBar:Hide()
+            BD(self).indicators.shieldBar:Hide()
         end
         return
     end
 
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
     if not skipStateUpdates then
         UnitButton_UpdateHealthStates(self)
     end
 
-    local shieldBar = self.widgets.shieldBar
-    local _ta = self.states.totalAbsorbs
+    local shieldBar = BD(self).widgets.shieldBar
+    local _ta = BD(self).states.totalAbsorbs
     local totalAbsorbs = (_ta == nil) and 0 or _ta
-    local healthMax = self.states.healthMax
-    local health = self.states.health
+    local healthMax = BD(self).states.healthMax
+    local health = BD(self).states.health
 
     local isSecret = F.HasAnySecretValues(totalAbsorbs, healthMax, health)
 
     if isSecret then
         -- Set size to match health bar for correct proportions
-        if self.orientation == "horizontal" then
-            shieldBar:SetWidth(self.widgets.healthBar:GetWidth())
+        if BD(self).orientation == "horizontal" then
+            shieldBar:SetWidth(BD(self).widgets.healthBar:GetWidth())
         else
-            shieldBar:SetHeight(self.widgets.healthBar:GetHeight())
+            shieldBar:SetHeight(BD(self).widgets.healthBar:GetHeight())
         end
 
-        local calc = self.widgets.healPredictionCalculator
+        local calc = BD(self).widgets.healPredictionCalculator
         local absorbAmt, isClamped
         if calc and UnitGetDetailedHealPrediction then
+            if calc.SetDamageAbsorbClampMode then
+                calc:SetDamageAbsorbClampMode(Enum.UnitDamageAbsorbClampMode.MaximumHealth)
+            end
             if UnitExists(unit) then
                 UnitGetDetailedHealPrediction(unit, nil, calc)
             end
@@ -3491,7 +3581,7 @@ UnitButton_UpdateShieldAbsorbs = function(self, skipStateUpdates)
         end
 
         if overshieldEnabled and isClamped ~= nil then
-            local glow = self.widgets.overShieldGlow
+            local glow = BD(self).widgets.overShieldGlow
             if glow.SetAlphaFromBoolean then
                 glow:Show()
                 glow:SetAlphaFromBoolean(isClamped, 1, 0)
@@ -3503,23 +3593,23 @@ UnitButton_UpdateShieldAbsorbs = function(self, skipStateUpdates)
                 end
             end
         else
-            self.widgets.overShieldGlow:Hide()
+            BD(self).widgets.overShieldGlow:Hide()
         end
-        self.widgets.shieldBarR:Hide()
-        self.widgets.overShieldGlowR:Hide()
+        BD(self).widgets.shieldBarR:Hide()
+        BD(self).widgets.overShieldGlowR:Hide()
 
         if enabledIndicators["shieldBar"] then
             -- Size the indicator to match health bar
-            local indBar = self.indicators.shieldBar
-            if self.orientation == "horizontal" then
-                indBar:SetWidth(self.widgets.healthBar:GetWidth())
+            local indBar = BD(self).indicators.shieldBar
+            if BD(self).orientation == "horizontal" then
+                indBar:SetWidth(BD(self).widgets.healthBar:GetWidth())
             else
-                indBar:SetHeight(self.widgets.healthBar:GetHeight())
+                indBar:SetHeight(BD(self).widgets.healthBar:GetHeight())
             end
             indBar:SetAbsorbs(displayAbsorbs, healthMax)
             indBar:Show()
         else
-            self.indicators.shieldBar:Hide()
+            BD(self).indicators.shieldBar:Hide()
         end
     else
         if totalAbsorbs > 0 then
@@ -3531,26 +3621,26 @@ UnitButton_UpdateShieldAbsorbs = function(self, skipStateUpdates)
                     -- onlyShowOvershields
                     local overshieldPercent = (totalAbsorbs + health - healthMax) / healthMax
                     if overshieldPercent > 0 then
-                        self.indicators.shieldBar:Show()
-                        self.indicators.shieldBar:SetPercent(overshieldPercent)
+                        BD(self).indicators.shieldBar:Show()
+                        BD(self).indicators.shieldBar:SetPercent(overshieldPercent)
                     else
-                        self.indicators.shieldBar:Hide()
+                        BD(self).indicators.shieldBar:Hide()
                     end
                 else
-                    self.indicators.shieldBar:Show()
-                    self.indicators.shieldBar:SetPercent(shieldPercent)
+                    BD(self).indicators.shieldBar:Show()
+                    BD(self).indicators.shieldBar:SetPercent(shieldPercent)
                 end
             else
-                self.indicators.shieldBar:Hide()
+                BD(self).indicators.shieldBar:Hide()
             end
 
             -- Widget shield bar (StatusBar)
             if shieldEnabled then
                 -- Set size to match health bar
-                if self.orientation == "horizontal" then
-                    shieldBar:SetWidth(self.widgets.healthBar:GetWidth())
+                if BD(self).orientation == "horizontal" then
+                    shieldBar:SetWidth(BD(self).widgets.healthBar:GetWidth())
                 else
-                    shieldBar:SetHeight(self.widgets.healthBar:GetHeight())
+                    shieldBar:SetHeight(BD(self).widgets.healthBar:GetHeight())
                 end
                 shieldBar:SetMinMaxValues(0, healthMax)
                 shieldBar:SetValue(totalAbsorbs)
@@ -3559,93 +3649,95 @@ UnitButton_UpdateShieldAbsorbs = function(self, skipStateUpdates)
                 shieldBar:Hide()
             end
 
-            local healthPercent = self.states.healthPercent
+            local healthPercent = BD(self).states.healthPercent
             if shieldPercent + healthPercent > 1 then
                 if overshieldReverseFillEnabled then
                     local p = shieldPercent + healthPercent - 1
                     if p > healthPercent then p = healthPercent end
-                    local barSize = (self.orientation == "horizontal")
-                        and self.widgets.healthBar:GetWidth()
-                        or self.widgets.healthBar:GetHeight()
-                    local shieldBarR = self.widgets.shieldBarR
-                    if self.orientation == "horizontal" then
+                    local barSize = (BD(self).orientation == "horizontal")
+                        and BD(self).widgets.healthBar:GetWidth()
+                        or BD(self).widgets.healthBar:GetHeight()
+                    local shieldBarR = BD(self).widgets.shieldBarR
+                    if BD(self).orientation == "horizontal" then
                         shieldBarR:SetWidth(p * barSize)
                     else
                         shieldBarR:SetHeight(p * barSize)
                     end
                     shieldBarR:Show()
                     if overshieldEnabled then
-                        self.widgets.overShieldGlowR:Show()
+                        BD(self).widgets.overShieldGlowR:Show()
                     else
-                        self.widgets.overShieldGlowR:Hide()
+                        BD(self).widgets.overShieldGlowR:Hide()
                     end
-                    self.widgets.overShieldGlow:Hide()
+                    BD(self).widgets.overShieldGlow:Hide()
                 else
                     if overshieldEnabled then
-                        self.widgets.overShieldGlow:Show()
+                        BD(self).widgets.overShieldGlow:Show()
                     else
-                        self.widgets.overShieldGlow:Hide()
+                        BD(self).widgets.overShieldGlow:Hide()
                     end
-                    self.widgets.shieldBarR:Hide()
-                    self.widgets.overShieldGlowR:Hide()
+                    BD(self).widgets.shieldBarR:Hide()
+                    BD(self).widgets.overShieldGlowR:Hide()
                 end
             else
-                self.widgets.overShieldGlow:Hide()
-                self.widgets.shieldBarR:Hide()
-                self.widgets.overShieldGlowR:Hide()
+                BD(self).widgets.overShieldGlow:Hide()
+                BD(self).widgets.shieldBarR:Hide()
+                BD(self).widgets.overShieldGlowR:Hide()
             end
         else
-            self.indicators.shieldBar:Hide()
+            BD(self).indicators.shieldBar:Hide()
             shieldBar:Hide()
-            self.widgets.overShieldGlow:Hide()
-            self.widgets.shieldBarR:Hide()
-            self.widgets.overShieldGlowR:Hide()
+            BD(self).widgets.overShieldGlow:Hide()
+            BD(self).widgets.shieldBarR:Hide()
+            BD(self).widgets.overShieldGlowR:Hide()
         end
     end
 end
 
 local function UnitButton_UpdateHealAbsorbs(self, skipStateUpdates)
-    if Cell.isMidnight and self.widgets.healthCalculator then
+    if Cell.isMidnight and BD(self).widgets.healthCalculator then
         if not absorbEnabled then
-            self.widgets.absorbsBar:Hide()
-            self.widgets.overAbsorbGlow:Hide()
+            BD(self).widgets.absorbsBar:Hide()
+            BD(self).widgets.overAbsorbGlow:Hide()
             return
         end
-        local unit = self.states.displayedUnit
+        local unit = BD(self).states.displayedUnit
         if not unit then return end
-        -- (UpdateHealthStates already populated it).
         if not skipStateUpdates then
             UnitButton_UpdateCalculator(self)
         end
-        local healAbsorbs = self.widgets.healthCalculator:GetHealAbsorbs()
-        self.widgets.absorbsBar:SetValue(healAbsorbs)
-        self.widgets.absorbsBar:Show()
+        local healAbsorbs = BD(self).widgets.healthCalculator:GetHealAbsorbs()
+        BD(self).widgets.absorbsBar:SetValue(healAbsorbs)
+        BD(self).widgets.absorbsBar:Show()
         return
     end
 
     if not absorbEnabled then
-        self.widgets.absorbsBar:Hide()
-        self.widgets.overAbsorbGlow:Hide()
+        BD(self).widgets.absorbsBar:Hide()
+        BD(self).widgets.overAbsorbGlow:Hide()
         return
     end
 
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
     if not skipStateUpdates then
         UnitButton_UpdateHealthStates(self)
     end
 
-    local absorbsBar = self.widgets.absorbsBar
+    local absorbsBar = BD(self).widgets.absorbsBar
     if absorbInvertColor then
-        local r, g, b = F.InvertColor(self.widgets.healthBar:GetStatusBarColor())
+        local r, g, b = F.InvertColor(BD(self).widgets.healthBar:GetStatusBarColor())
         absorbsBar:SetStatusBarColor(r, g, b)
         absorbsBar.overAbsorbGlow:SetVertexColor(r, g, b)
     end
 
-    local calc = self.widgets.healPredictionCalculator
+    local calc = BD(self).widgets.healPredictionCalculator
     local healAbsorbAmt, isClamped
     if calc and UnitGetDetailedHealPrediction then
+        if calc.SetHealAbsorbClampMode then
+            calc:SetHealAbsorbClampMode(Enum.UnitHealAbsorbClampMode.MaximumHealth)
+        end
         if UnitExists(unit) then
             UnitGetDetailedHealPrediction(unit, nil, calc)
         end
@@ -3654,13 +3746,13 @@ local function UnitButton_UpdateHealAbsorbs(self, skipStateUpdates)
         end
     end
 
-    local _healAbs = (healAbsorbAmt == nil) and self.states.healAbsorbs or healAbsorbAmt
+    local _healAbs = (healAbsorbAmt == nil) and BD(self).states.healAbsorbs or healAbsorbAmt
     local displayAbsorbs = (_healAbs == nil) and 0 or _healAbs
-    absorbsBar:SetMinMaxValues(0, self.states.health)
+    absorbsBar:SetMinMaxValues(0, BD(self).states.health)
     absorbsBar:SetValue(displayAbsorbs)
     absorbsBar:Show()
 
-    local glow = self.widgets.overAbsorbGlow
+    local glow = BD(self).widgets.overAbsorbGlow
     if isClamped ~= nil then
         if SetAlphaFromBoolean then
             glow:Show()
@@ -3673,7 +3765,7 @@ local function UnitButton_UpdateHealAbsorbs(self, skipStateUpdates)
             end
         end
     else
-        local showGlow = F.IsValueNonSecret(displayAbsorbs) and displayAbsorbs and displayAbsorbs > self.states.health
+        local showGlow = F.IsValueNonSecret(displayAbsorbs) and displayAbsorbs and displayAbsorbs > BD(self).states.health
         if showGlow then
             glow:Show()
         else
@@ -3683,80 +3775,83 @@ local function UnitButton_UpdateHealAbsorbs(self, skipStateUpdates)
 end
 
 local function UnitButton_UpdateThreat(self)
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit or not UnitExists(unit) then return end
 
     local status = UnitThreatSituation(unit)
     if F.IsValueNonSecret(status) and status and status >= 1 then
         if enabledIndicators["aggroBlink"] then
-            self.indicators.aggroBlink:ShowAggro(GetThreatStatusColor(status))
+            BD(self).indicators.aggroBlink:ShowAggro(GetThreatStatusColor(status))
         end
         if enabledIndicators["aggroBorder"] then
-            self.indicators.aggroBorder:ShowAggro(GetThreatStatusColor(status))
+            BD(self).indicators.aggroBorder:ShowAggro(GetThreatStatusColor(status))
         end
     else
-        self.indicators.aggroBlink:Hide()
-        self.indicators.aggroBorder:Hide()
+        BD(self).indicators.aggroBlink:Hide()
+        BD(self).indicators.aggroBorder:Hide()
     end
 end
 
 local function UnitButton_UpdateThreatBar(self)
     if not enabledIndicators["aggroBar"] then
-        self.indicators.aggroBar:Hide()
+        BD(self).indicators.aggroBar:Hide()
         return
     end
 
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit or not UnitExists(unit) then return end
 
     -- isTanking, status, scaledPercentage, rawPercentage, threatValue = UnitDetailedThreatSituation(unit, mobUnit)
     local _, status, scaledPercentage, rawPercentage = UnitDetailedThreatSituation(unit, "target")
     if F.IsValueNonSecret(status) and status then
-        self.indicators.aggroBar:Show()
-        self.indicators.aggroBar:SetSmoothedValue(scaledPercentage)
-        self.indicators.aggroBar:SetStatusBarColor(GetThreatStatusColor(status))
+        BD(self).indicators.aggroBar:Show()
+        BD(self).indicators.aggroBar:SetSmoothedValue(scaledPercentage)
+        BD(self).indicators.aggroBar:SetStatusBarColor(GetThreatStatusColor(status))
     else
-        self.indicators.aggroBar:Hide()
+        BD(self).indicators.aggroBar:Hide()
     end
 end
 
 local function UnitButton_UpdateCombatIcon(self)
     if not enabledIndicators["combatIcon"] then return end
 
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
     if not (indicatorBooleans["combatIcon"] and InCombatLockdown()) and F.IsKnownTrue(UnitAffectingCombat(unit)) then
-        self.indicators.combatIcon:Show()
+        BD(self).indicators.combatIcon:Show()
     else
-        self.indicators.combatIcon:Hide()
+        BD(self).indicators.combatIcon:Hide()
     end
 end
 
 -- UNIT_IN_RANGE_UPDATE: unit, inRange
 local IsInRange = F.IsInRange
 local function UnitButton_UpdateInRange(self, ir)
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
     local inRange = IsInRange(unit)
     -- so frames don't grey out incorrectly
     if inRange == nil then inRange = true end
 
-    self.states.inRange = inRange
+    BD(self).states.inRange = inRange
     if Cell.loaded then
-        if self.states.inRange ~= self.states.wasInRange then
+        if BD(self).states.inRange ~= BD(self).states.wasInRange then
             if inRange then
                 if CELL_FADE_OUT_HEALTH_PERCENT then
-                    if Cell.isMidnight and self.widgets and self.widgets.healthCalculator then
-                        RebuildFadeOutHealthCurve()
+                    if Cell.isMidnight and BD(self).widgets and BD(self).widgets.healthCalculator then
+                        local fadeOutHealthCurve = RebuildFadeOutHealthCurve()
                         if fadeOutHealthCurve then
-                            local targetAlpha = self.widgets.healthCalculator:EvaluateCurrentHealthPercent(fadeOutHealthCurve)
-                            self:SetAlpha(targetAlpha)
+                            local resultColor = BD(self).widgets.healthCalculator:EvaluateCurrentHealthPercent(fadeOutHealthCurve)
+                            if resultColor then
+                                local _, _, _, targetAlpha = resultColor:GetRGBA()
+                                self:SetAlpha(targetAlpha)
+                            end
                         else
                             A.FrameFadeIn(self, 0.25, self:GetAlpha(), 1)
                         end
-                    elseif not self.states.healthPercent or self.states.healthPercent < CELL_FADE_OUT_HEALTH_PERCENT then
+                    elseif not BD(self).states.healthPercent or BD(self).states.healthPercent < CELL_FADE_OUT_HEALTH_PERCENT then
                         A.FrameFadeIn(self, 0.25, self:GetAlpha(), 1)
                     else
                         A.FrameFadeOut(self, 0.25, self:GetAlpha(), CellDB["appearance"]["outOfRangeAlpha"])
@@ -3768,29 +3863,32 @@ local function UnitButton_UpdateInRange(self, ir)
                 A.FrameFadeOut(self, 0.25, self:GetAlpha(), CellDB["appearance"]["outOfRangeAlpha"])
             end
         end
-        self.states.wasInRange = inRange
+        BD(self).states.wasInRange = inRange
         -- self:SetAlpha(inRange and 1 or CellDB["appearance"]["outOfRangeAlpha"])
     end
 end
 
 local function UnitButton_UpdateVehicleStatus(self)
-    local unit = self.states.unit
+    local unit = BD(self).states.unit
     if not unit then return end
 
     if UnitHasVehicleUI(unit) then -- or UnitInVehicle(unit) or UnitUsingVehicle(unit) then
-        self.states.inVehicle = true
+        BD(self).states.inVehicle = true
         if unit == "player" then
-            self.states.displayedUnit = "vehicle"
+            BD(self).states.displayedUnit = "vehicle"
         else
             -- local prefix, id, suffix = strmatch(unit, "([^%d]+)([%d]*)(.*)")
             local prefix, id = strmatch(unit, "([^%d]+)([%d]*)")
-            self.states.displayedUnit = prefix .. "pet" .. (id or "")
+            BD(self).states.displayedUnit = prefix .. "pet" .. (id or "")
         end
-        self.indicators.nameText:UpdateVehicleName()
+        BD(self).indicators.nameText:UpdateVehicleName()
     else
-        self.states.inVehicle = nil
-        self.states.displayedUnit = self.states.unit
-        self.indicators.nameText.vehicle:SetText("")
+        BD(self).states.inVehicle = nil
+        BD(self).states.displayedUnit = BD(self).states.unit
+        BD(self).indicators.nameText.vehicle:SetText("")
+    end
+    if useEventHub then
+        SyncButtonTracker(self)
     end
     if I.UpdateHealersAuraDisplayUnit then
         I.UpdateHealersAuraDisplayUnit(self)
@@ -3804,18 +3902,18 @@ local function UnitButton_UpdateVehicleStatus(self)
 end
 
 UnitButton_UpdateStatusText = function(self)
-    local statusText = self.indicators.statusText
+    local statusText = BD(self).indicators.statusText
     if not enabledIndicators["statusText"] then
         -- statusText:Hide()
         statusText:SetStatus()
         return
     end
 
-    local unit = self.states.unit
+    local unit = BD(self).states.unit
     if not unit then return end
 
-    self.states.guid = UnitGUID(unit) -- update!
-    if not self.states.guid then return end
+    BD(self).states.guid = UnitGUID(unit) -- update!
+    if not BD(self).states.guid then return end
 
     if F.IsValueNonSecret(UnitIsConnected(unit)) and not UnitIsConnected(unit) and F.IsKnownTrue(UnitIsPlayer(unit)) then
         statusText:Show()
@@ -3863,30 +3961,30 @@ UnitButton_UpdateStatusText = function(self)
 end
 
 local function UnitButton_UpdateName(self)
-    local unit = self.states.unit
+    local unit = BD(self).states.unit
     if not unit then return end
 
-    self.states.name = UnitName(unit)
-    self.states.fullName = F.UnitFullName(unit)
-    local resolvedClass = F.ResolveUnitClassFile(unit, self.states.class)
+    BD(self).states.name = UnitName(unit)
+    BD(self).states.fullName = F.UnitFullName(unit)
+    local resolvedClass = F.ResolveUnitClassFile(unit, BD(self).states.class)
     if resolvedClass then
-        self.states.class = resolvedClass
-        self.states._classGuid = UnitGUID(unit)
+        BD(self).states.class = resolvedClass
+        BD(self).states._classGuid = UnitGUID(unit)
     else
         local classFile = UnitClassBase(unit)
         if classFile and F.IsValueNonSecret(classFile) then
-            self.states.class = classFile
-            self.states._classGuid = UnitGUID(unit)
+            BD(self).states.class = classFile
+            BD(self).states._classGuid = UnitGUID(unit)
         end
     end
-    self.states.guid = UnitGUID(unit)
-    self.states.isPlayer = UnitIsPlayer(unit)
+    BD(self).states.guid = UnitGUID(unit)
+    BD(self).states.isPlayer = UnitIsPlayer(unit)
 
-    self.indicators.nameText:UpdateName()
+    BD(self).indicators.nameText:UpdateName()
 end
 
 UnitButton_UpdateNameTextColor = function(self)
-    local unit = self.states.unit
+    local unit = BD(self).states.unit
     if not unit then return end
 
     if enabledIndicators["nameText"] then
@@ -3897,40 +3995,40 @@ UnitButton_UpdateNameTextColor = function(self)
         if indicatorColors["nameText"][1] == "class_color"
             or (F.IsValueNonSecret(connected) and not connected)
             or charmedPlayer
-            or self.states.inVehicle then
-            self.indicators.nameText:SetColor(F.GetUnitClassColor(unit))
+            or BD(self).states.inVehicle then
+            BD(self).indicators.nameText:SetColor(F.GetUnitClassColor(unit))
         else
-            self.indicators.nameText:SetColor(unpack(indicatorColors["nameText"][2]))
+            BD(self).indicators.nameText:SetColor(unpack(indicatorColors["nameText"][2]))
         end
     end
 end
 
 UnitButton_UpdateHealthTextColor = function(self)
-    local unit = self.states.unit
+    local unit = BD(self).states.unit
     if not unit then return end
 
     if enabledIndicators["healthText"] then
-        self.indicators.healthText:SetColor(F.GetUnitClassColor(unit))
+        BD(self).indicators.healthText:SetColor(F.GetUnitClassColor(unit))
     end
 end
 
 UnitButton_UpdateHealthColor = function(self)
-    local unit = self.states.unit
+    local unit = BD(self).states.unit
     if not unit then return end
 
     -- Keep last known class for the same GUID so bars don't pick up a recycled frame's color.
     local guid = UnitGUID(unit)
     local resolved = F.ResolveUnitClassFile(unit)
     if resolved then
-        self.states.class = resolved
-        self.states._classGuid = guid
-    elseif guid and F.IsValueNonSecret(guid) and self.states._classGuid == guid and self.states.class then
+        BD(self).states.class = resolved
+        BD(self).states._classGuid = guid
+    elseif guid and F.IsValueNonSecret(guid) and BD(self).states._classGuid == guid and BD(self).states.class then
         -- keep cached class for this unit
     else
         local fallback = UnitClassBase(unit)
         if fallback and F.IsValueNonSecret(fallback) then
-            self.states.class = fallback
-            self.states._classGuid = guid
+            BD(self).states.class = fallback
+            BD(self).states._classGuid = guid
         end
     end
 
@@ -3943,7 +4041,7 @@ UnitButton_UpdateHealthColor = function(self)
         lossA =  CellDB["appearance"]["lossAlpha"]
     end
 
-    if Cell.isMidnight and self.widgets.healthBarColorCurve and UnitHealthPercent then
+    if Cell.isMidnight and BD(self).widgets.healthBarColorCurve and UnitHealthPercent then
         local useCurve = false
 
         if F.IsPlayerOrPartyAI(unit) then
@@ -3958,7 +4056,7 @@ UnitButton_UpdateHealthColor = function(self)
             else
                 useCurve = true
             end
-        elseif F.IsPet(self.states.guid, self.states.unit) then
+        elseif F.IsPet(BD(self).states.guid, BD(self).states.unit) then
             useCurve = true
         else
             useCurve = true
@@ -3968,13 +4066,41 @@ UnitButton_UpdateHealthColor = function(self)
             -- Rebuild curves (handles class color per unit + current settings)
             B.UpdateHealthColorCurve(self)
             -- UnitHealthPercent(unit, true, curve) evaluates health% against the curve
-            local barColor = UnitHealthPercent(unit, true, self.widgets.healthBarColorCurve)
-            local lossColor = UnitHealthPercent(unit, true, self.widgets.healthLossColorCurve)
+            local barColor = UnitHealthPercent(unit, true, BD(self).widgets.healthBarColorCurve)
+            local lossColor = UnitHealthPercent(unit, true, BD(self).widgets.healthLossColorCurve)
             if barColor then
                 barR, barG, barB = barColor:GetRGB()
+            else
+                -- Fallback when the percent/curve API returns nil (common while unit/health is secret):
+                -- still paint class/custom colors so the frame is not stuck on a dark empty bar.
+                local class = BD(self).states.class or Cell.vars.playerClass
+                local cr, cg, cb = F.GetClassColor(class)
+                local barMode = Cell.loaded and CellDB["appearance"]["barColor"][1]
+                if barMode == "class_color_dark" then
+                    barR, barG, barB = cr * 0.2, cg * 0.2, cb * 0.2
+                elseif barMode == "custom" then
+                    local cc = CellDB["appearance"]["barColor"][2]
+                    barR, barG, barB = cc[1], cc[2], cc[3]
+                else
+                    barR, barG, barB = cr, cg, cb
+                end
             end
             if lossColor then
                 lossR, lossG, lossB = lossColor:GetRGB()
+            else
+                local class = BD(self).states.class or Cell.vars.playerClass
+                local cr, cg, cb = F.GetClassColor(class)
+                local lossMode = Cell.loaded and CellDB["appearance"]["lossColor"][1]
+                if lossMode == "class_color_dark" then
+                    lossR, lossG, lossB = cr * 0.2, cg * 0.2, cb * 0.2
+                elseif lossMode == "custom" then
+                    local cc = CellDB["appearance"]["lossColor"][2]
+                    lossR, lossG, lossB = cc[1], cc[2], cc[3]
+                elseif lossMode == "class_color" then
+                    lossR, lossG, lossB = cr, cg, cb
+                else
+                    lossR, lossG, lossB = cr * 0.2, cg * 0.2, cb * 0.2
+                end
             end
             if Cell.vars.useFullColor then
                 local health = UnitHealth(unit)
@@ -3986,7 +4112,7 @@ UnitButton_UpdateHealthColor = function(self)
                 end
             end
             -- deathColor override
-            if F.IsKnownTrue(self.states.isDeadOrGhost) or F.IsKnownTrue(self.states.isDead) then
+            if F.IsKnownTrue(BD(self).states.isDeadOrGhost) or F.IsKnownTrue(BD(self).states.isDead) then
                 if Cell.vars.useDeathColor then
                     lossR = CellDB["appearance"]["deathColor"][2][1]
                     lossG = CellDB["appearance"]["deathColor"][2][2]
@@ -3996,16 +4122,16 @@ UnitButton_UpdateHealthColor = function(self)
         end
 
         if barR then
-            self.widgets.healthBar:SetStatusBarColor(barR, barG, barB, barA)
+            BD(self).widgets.healthBar:SetStatusBarColor(barR, barG, barB, barA)
         end
         if lossR then
-            self.widgets.healthBarLoss:SetVertexColor(lossR, lossG, lossB, lossA)
+            BD(self).widgets.healthBarLoss:SetVertexColor(lossR, lossG, lossB, lossA)
         end
         -- Incoming heal color
         if Cell.loaded and CellDB["appearance"]["healPrediction"][2] then
-            self.widgets.incomingHeal:SetStatusBarColor(CellDB["appearance"]["healPrediction"][3][1], CellDB["appearance"]["healPrediction"][3][2], CellDB["appearance"]["healPrediction"][3][3], CellDB["appearance"]["healPrediction"][3][4])
+            BD(self).widgets.incomingHeal:SetStatusBarColor(CellDB["appearance"]["healPrediction"][3][1], CellDB["appearance"]["healPrediction"][3][2], CellDB["appearance"]["healPrediction"][3][3], CellDB["appearance"]["healPrediction"][3][4])
         elseif barR then
-            self.widgets.incomingHeal:SetStatusBarColor(barR, barG, barB, 0.4)
+            BD(self).widgets.incomingHeal:SetStatusBarColor(barR, barG, barB, 0.4)
         end
         return
     end
@@ -4019,24 +4145,24 @@ UnitButton_UpdateHealthColor = function(self)
         elseif F.IsKnownTrue(charmed) then
             barR, barG, barB, barA = 0.5, 0, 1, 1
             lossR, lossG, lossB, lossA = barR*0.2, barG*0.2, barB*0.2, 1
-        elseif self.states.inVehicle then
-            barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(self.states.healthPercent, F.IsKnownTrue(self.states.isDeadOrGhost) or F.IsKnownTrue(self.states.isDead), 0, 1, 0.2)
+        elseif BD(self).states.inVehicle then
+            barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(BD(self).states.healthPercent, F.IsKnownTrue(BD(self).states.isDeadOrGhost) or F.IsKnownTrue(BD(self).states.isDead), 0, 1, 0.2)
         else
-            barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(self.states.healthPercent, F.IsKnownTrue(self.states.isDeadOrGhost) or F.IsKnownTrue(self.states.isDead), F.GetClassColor(self.states.class))
+            barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(BD(self).states.healthPercent, F.IsKnownTrue(BD(self).states.isDeadOrGhost) or F.IsKnownTrue(BD(self).states.isDead), F.GetClassColor(BD(self).states.class))
         end
-    elseif F.IsPet(self.states.guid, self.states.unit) then
-        barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(self.states.healthPercent, F.IsKnownTrue(self.states.isDeadOrGhost) or F.IsKnownTrue(self.states.isDead), 0.5, 0.5, 1)
+    elseif F.IsPet(BD(self).states.guid, BD(self).states.unit) then
+        barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(BD(self).states.healthPercent, F.IsKnownTrue(BD(self).states.isDeadOrGhost) or F.IsKnownTrue(BD(self).states.isDead), 0.5, 0.5, 1)
     else
-        barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(self.states.healthPercent, F.IsKnownTrue(self.states.isDeadOrGhost) or F.IsKnownTrue(self.states.isDead), 0, 1, 0.2)
+        barR, barG, barB, lossR, lossG, lossB = F.GetHealthBarColor(BD(self).states.healthPercent, F.IsKnownTrue(BD(self).states.isDeadOrGhost) or F.IsKnownTrue(BD(self).states.isDead), 0, 1, 0.2)
     end
 
-    self.widgets.healthBar:SetStatusBarColor(barR, barG, barB, barA)
-    self.widgets.healthBarLoss:SetVertexColor(lossR, lossG, lossB, lossA)
+    BD(self).widgets.healthBar:SetStatusBarColor(barR, barG, barB, barA)
+    BD(self).widgets.healthBarLoss:SetVertexColor(lossR, lossG, lossB, lossA)
 
     if Cell.loaded and CellDB["appearance"]["healPrediction"][2] then
-        self.widgets.incomingHeal:SetVertexColor(CellDB["appearance"]["healPrediction"][3][1], CellDB["appearance"]["healPrediction"][3][2], CellDB["appearance"]["healPrediction"][3][3], CellDB["appearance"]["healPrediction"][3][4])
+        BD(self).widgets.incomingHeal:SetVertexColor(CellDB["appearance"]["healPrediction"][3][1], CellDB["appearance"]["healPrediction"][3][2], CellDB["appearance"]["healPrediction"][3][3], CellDB["appearance"]["healPrediction"][3][4])
     else
-        self.widgets.incomingHeal:SetVertexColor(barR, barG, barB, 0.4)
+        BD(self).widgets.incomingHeal:SetVertexColor(barR, barG, barB, 0.4)
     end
 end
 
@@ -4082,6 +4208,7 @@ local Cell_ = Cell
 
 local L = Cell_.L
 local F = Cell_.funcs
+local function BD(b) return F.GetButtonData(b) end
 local I = Cell_.iFuncs
 local B = Cell_.bFuncs
 local U = Cell_.uFuncs
@@ -4171,20 +4298,18 @@ do
         curve:AddPoint(1.0, col)
     end
 
-    -- Builds curves from user settings so UnitHealthPercent(unit, true, curve)
-    -- can evaluate gradient colors at the C level.
     function B.UpdateHealthColorCurve(button)
         if not Cell.isMidnight then return end
-        if not button.widgets.healthBarColorCurve then return end
+        if not BD(button).widgets.healthBarColorCurve then return end
         if not Cell.loaded then return end
 
-        local unit = button.states.displayedUnit or button.states.unit
-        local barCurve = button.widgets.healthBarColorCurve
-        local lossCurve = button.widgets.healthLossColorCurve
+        local unit = BD(button).states.displayedUnit or BD(button).states.unit
+        local barCurve = BD(button).widgets.healthBarColorCurve
+        local lossCurve = BD(button).widgets.healthLossColorCurve
 
-        local class = F.ResolveUnitClassFile(unit, button.states.class) or button.states.class or Cell.vars.playerClass
+        local class = F.ResolveUnitClassFile(unit, BD(button).states.class) or BD(button).states.class or Cell.vars.playerClass
         if class and F.IsValueNonSecret(class) then
-            button.states.class = class
+            BD(button).states.class = class
         end
         local cr, cg, cb = F.GetClassColor(class)
 
@@ -4272,21 +4397,21 @@ local UnitButton_UpdateAll = function(self)
 
     UnitButton_UpdatePowerStates(self)
     if Cell.loaded then
-        if self._powerUpdateRequired then
-            self._powerUpdateRequired = nil
+        if BD(self)._powerUpdateRequired then
+            BD(self)._powerUpdateRequired = nil
 
-            self._shouldShowPowerText = ShouldShowPowerText(self)
-            self._shouldShowPowerBar = ShouldShowPowerBar(self)
+            BD(self)._shouldShowPowerText = ShouldShowPowerText(self)
+            BD(self)._shouldShowPowerBar = ShouldShowPowerBar(self)
             CheckPowerEventRegistration(self)
 
-            if self._shouldShowPowerText then
+            if BD(self)._shouldShowPowerText then
                 UnitButton_UpdatePowerTextColor(self)
                 UnitButton_UpdatePowerText(self)
             else
-                self.indicators.powerText:Hide()
+                BD(self).indicators.powerText:Hide()
             end
 
-            if self._shouldShowPowerBar then
+            if BD(self)._shouldShowPowerBar then
                 ShowPowerBar(self)
             else
                 HidePowerBar(self)
@@ -4301,7 +4426,143 @@ end
 -------------------------------------------------
 -- unit button events
 -------------------------------------------------
+local UnitButton_OnEvent
+local UnitButton_OnTick
+
+-- Midnight: keep SecureUnitButton children event-clean.
+-- Unit events → per-button addon tracker frames (RegisterUnitEvent).
+-- Global events → one shared hub.
+local activeButtons = setmetatable({}, { __mode = "k" })
+local buttonTrackers = setmetatable({}, { __mode = "k" }) -- button -> Frame
+local eventHub
+local tickHub
+
+local POWER_HUB_EVENTS = {
+    UNIT_POWER_FREQUENT = true,
+    UNIT_MAXPOWER = true,
+    UNIT_DISPLAYPOWER = true,
+}
+
+local UNIT_TRACKER_EVENTS = {
+    "UNIT_HEALTH",
+    "UNIT_MAXHEALTH",
+    "UNIT_POWER_FREQUENT",
+    "UNIT_MAXPOWER",
+    "UNIT_DISPLAYPOWER",
+    "UNIT_SPELLCAST_SUCCEEDED",
+    "UNIT_HEAL_PREDICTION",
+    "UNIT_ABSORB_AMOUNT_CHANGED",
+    "UNIT_HEAL_ABSORB_AMOUNT_CHANGED",
+    "UNIT_THREAT_SITUATION_UPDATE",
+    "UNIT_THREAT_LIST_UPDATE",
+    "UNIT_ENTERED_VEHICLE",
+    "UNIT_EXITED_VEHICLE",
+    "INCOMING_SUMMON_CHANGED",
+    "UNIT_IN_RANGE_UPDATE",
+    "UNIT_FLAGS",
+    "UNIT_FACTION",
+    "UNIT_CONNECTION",
+    "PLAYER_FLAGS_CHANGED",
+    "UNIT_NAME_UPDATE",
+    "UNIT_TARGET",
+    "READY_CHECK_CONFIRM",
+    "UNIT_PORTRAIT_UPDATE",
+}
+
+local function EnsureButtonTracker(button)
+    local t = buttonTrackers[button]
+    if t then return t end
+    t = CreateFrame("Frame")
+    buttonTrackers[button] = t
+    t:SetScript("OnEvent", function(_, event, unit, arg, arg2, ...)
+        if not button:IsShown() then return end
+        if POWER_HUB_EVENTS[event] and not BD(button)._wantPowerEvents then
+            return
+        end
+        UnitButton_OnEvent(button, event, unit, arg, arg2, ...)
+    end)
+    return t
+end
+
+local function SyncButtonTracker(button)
+    if not useEventHub then return end
+    local t = EnsureButtonTracker(button)
+    local bd = BD(button)
+    local unit = bd.states and bd.states.unit
+    local displayed = bd.states and bd.states.displayedUnit
+    if (not unit) and button.GetAttribute then
+        unit = button:GetAttribute("unit")
+    end
+    if not unit then
+        t:UnregisterAllEvents()
+        t._boundUnit = nil
+        t._boundDisplayed = nil
+        return
+    end
+    displayed = displayed or unit
+
+    -- Rebind when unit tokens change (RegisterUnitEvent is 1–2 units per event).
+    if t._boundUnit == unit and t._boundDisplayed == displayed and t._boundWantPower == bd._wantPowerEvents then
+        return
+    end
+    t:UnregisterAllEvents()
+    t._boundUnit = unit
+    t._boundDisplayed = displayed
+    t._boundWantPower = bd._wantPowerEvents
+
+    local u2 = (displayed ~= unit) and displayed or nil
+    for i = 1, #UNIT_TRACKER_EVENTS do
+        local ev = UNIT_TRACKER_EVENTS[i]
+        if POWER_HUB_EVENTS[ev] and not bd._wantPowerEvents then
+            -- skip power events when power bar/text hidden
+        elseif u2 then
+            t:RegisterUnitEvent(ev, unit, u2)
+        else
+            t:RegisterUnitEvent(ev, unit)
+        end
+    end
+end
+
+local function HubRegisterButton(button)
+    activeButtons[button] = true
+    SyncButtonTracker(button)
+    if tickHub then
+        tickHub:Show()
+    end
+end
+
+local function HubUnregisterButton(button)
+    activeButtons[button] = nil
+    local t = buttonTrackers[button]
+    if t then
+        t:UnregisterAllEvents()
+        t._boundUnit = nil
+        t._boundDisplayed = nil
+    end
+    if tickHub and not next(activeButtons) then
+        tickHub:Hide()
+    end
+end
+
+local function HubDispatchGlobal(event, unit, arg, arg2, ...)
+    for btn in pairs(activeButtons) do
+        if btn:IsShown() then
+            pcall(UnitButton_OnEvent, btn, event, unit, arg, arg2, ...)
+        end
+    end
+end
+
 local function UnitButton_RegisterEvents(self)
+    if useEventHub then
+        HubRegisterButton(self)
+        CheckPowerEventRegistration(self)
+        SyncButtonTracker(self)
+        local success, result = pcall(UnitButton_UpdateAll, self)
+        if not success then
+            F.Debug("UnitButton_UpdateAll |cffff0000FAILED:|r", self:GetName(), result)
+        end
+        return
+    end
     -- self:RegisterEvent("PLAYER_ENTERING_WORLD")
     self:RegisterEvent("GROUP_ROSTER_UPDATE")
 
@@ -4389,14 +4650,33 @@ local function UnitButton_RegisterEvents(self)
 end
 
 local function UnitButton_UnregisterEvents(self)
+    if useEventHub then
+        HubUnregisterButton(self)
+        return
+    end
     self:UnregisterAllEvents()
 end
 
-local function UnitButton_OnEvent(self, event, unit, arg, arg2, ...)
-    if unit and (self.states.displayedUnit == unit or self.states.unit == unit) then
+UnitButton_OnEvent = function(self, event, unit, arg, arg2, ...)
+    if event == "UNIT_AURA" and Cell.isMidnight then
+        return
+    end
+
+    local function UnitMatches(u)
+        if not u then return false end
+        local bd = BD(self)
+        local a, b = bd.states.displayedUnit, bd.states.unit
+        if a == u or b == u then return true end
+        -- UnitIsUnit can return a secret boolean (e.g. player vs targettarget) — never test it raw.
+        if a and F.IsKnownTrue(UnitIsUnit(a, u)) then return true end
+        if b and b ~= a and F.IsKnownTrue(UnitIsUnit(b, u)) then return true end
+        return false
+    end
+
+    if unit and UnitMatches(unit) then
         if  event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE" or event == "UNIT_CONNECTION" then
-            self._updateRequired = 1
-            self._powerUpdateRequired = 1
+            BD(self)._updateRequired = 1
+            BD(self)._powerUpdateRequired = 1
 
         elseif event == "UNIT_NAME_UPDATE" then
             UnitButton_UpdateName(self)
@@ -4424,14 +4704,12 @@ local function UnitButton_OnEvent(self, event, unit, arg, arg2, ...)
 
         elseif event == "UNIT_ABSORB_AMOUNT_CHANGED" then
             UnitButton_UpdateShieldAbsorbs(self)
-            -- Refresh health text so shield component updates immediately
             if enabledIndicators["healthText"] then
                 UnitButton_UpdateHealthStates(self)
             end
 
         elseif event == "UNIT_HEAL_ABSORB_AMOUNT_CHANGED" then
             UnitButton_UpdateHealAbsorbs(self)
-            -- Refresh health text so healAbsorb component updates immediately
             if enabledIndicators["healthText"] then
                 UnitButton_UpdateHealthStates(self)
             end
@@ -4467,7 +4745,17 @@ local function UnitButton_OnEvent(self, event, unit, arg, arg2, ...)
             end
 
         elseif event == "UNIT_AURA" then
-            UnitButton_UpdateAuras(self, arg)
+            if ShouldDeferUnitAura(unit) then
+                local btn = self
+                C_Timer.After(0, function()
+                    local bd = F.BD(btn)
+                    if bd.states and (bd.states.displayedUnit == unit or bd.states.unit == unit) then
+                        UnitButton_UpdateAuras(btn, nil)
+                    end
+                end)
+            else
+                UnitButton_UpdateAuras(self, arg)
+            end
 
         elseif event == "UNIT_IN_RANGE_UPDATE" then
             UnitButton_UpdateInRange(self, arg)
@@ -4493,9 +4781,9 @@ local function UnitButton_OnEvent(self, event, unit, arg, arg2, ...)
             UnitButton_UpdateReadyCheck(self)
 
         elseif event == "UNIT_PORTRAIT_UPDATE" then -- pet summoned far away
-            if self.states.healthMax == 0 then
-                self._updateRequired = 1
-                self._powerUpdateRequired = 1
+            if BD(self).states.healthMax == 0 then
+                BD(self)._updateRequired = 1
+                BD(self)._powerUpdateRequired = 1
             end
         end
 
@@ -4503,11 +4791,11 @@ local function UnitButton_OnEvent(self, event, unit, arg, arg2, ...)
         if event == "GROUP_ROSTER_UPDATE" then
             -- FIXME:
             -- if IsDelveInProgress() then
-            --     self.__tickCount = 2
-            --     self.__updateElapsed = 0.25
+            --     BD(self).__tickCount = 2
+            --     BD(self).__updateElapsed = 0.25
             -- else
-                self._updateRequired = 1
-                self._powerUpdateRequired = 1
+                BD(self)._updateRequired = 1
+                BD(self)._powerUpdateRequired = 1
             -- end
 
         elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_REGEN_DISABLED" then
@@ -4525,7 +4813,8 @@ local function UnitButton_OnEvent(self, event, unit, arg, arg2, ...)
                 -- Delayed retry: values at full health/power won't get events
                 local btn = self
                 C_Timer.After(0.5, function()
-                    if btn.states.displayedUnit then
+                    local bd = F.BD(btn)
+                    if bd.states and bd.states.displayedUnit then
                         UnitButton_UpdateHealth(btn)
                         UnitButton_UpdateShieldAbsorbs(btn)
                         UnitButton_UpdateHealAbsorbs(btn)
@@ -4558,7 +4847,7 @@ local function UnitButton_OnEvent(self, event, unit, arg, arg2, ...)
 
         elseif event == "ZONE_CHANGED_NEW_AREA" then
             -- F.Debug("|cffbbbbbb=== ZONE_CHANGED_NEW_AREA ===")
-            -- self._updateRequired = 1
+            -- BD(self)._updateRequired = 1
             UnitButton_UpdateStatusText(self)
 
         -- elseif event == "VOICE_CHAT_CHANNEL_ACTIVATED" or event == "VOICE_CHAT_CHANNEL_DEACTIVATED" then
@@ -4581,50 +4870,111 @@ Cell.RegisterCallback("LeaveInstance", "UnitButton_LeaveInstance", EnterLeaveIns
 
 local function UnitButton_OnAttributeChanged(self, name, value)
     if name == "unit" then
-        if not value or value ~= self.states.unit then
-            if self.__unitGuid then
-                if not self.isSpotlight and F.IsValueNonSecret(self.__unitGuid) then
-                    Cell.vars.guids[self.__unitGuid] = nil
+        local prevUnit = BD(self).states.unit
+        local unitChanged = (value ~= prevUnit)
+
+        -- A raid reshuffle can hand this button a different token (e.g. raid3
+        -- -> raid5) while the same player stays on it. Skip the state wipe and
+        -- full repaint in that case; only the GUID/name bookkeeping needs to move.
+        local samePlayerNewSlot = false
+        if unitChanged and value and prevUnit then
+            local oldGuid = BD(self).__unitGuid
+            if oldGuid and F.IsValueNonSecret(oldGuid) then
+                local newGuid = UnitGUID(value)
+                if newGuid and F.IsValueNonSecret(newGuid) and newGuid == oldGuid then
+                    samePlayerNewSlot = true
                 end
-                self.__unitGuid = nil
-            end
-
-            if self.__unitName then
-                if not self.isSpotlight and F.IsValueNonSecret(self.__unitName) then
-                    Cell.vars.names[self.__unitName] = nil
-                end
-                self.__unitName = nil
-            end
-
-            self._recentSecretHelpfulCastKind = nil
-            self._recentSecretHelpfulCastAt = nil
-            self._recentSecretHelpfulCastSpellId = nil
-            wipe(self.states)
-
-            if self.widgets and self.widgets.healthCalculator then
-                self.widgets.healthCalculator:ResetPredictedValues()
             end
         end
 
-        -- private auras
-        if self.states.unit ~= value then
-            self.indicators.privateAuras:UpdatePrivateAuraAnchor(value)
+        if not value or unitChanged then
+            if samePlayerNewSlot then
+                -- Same occupant, just a new token -- repoint the registries
+                -- instead of tearing them down, and leave BD(self).states
+                -- alone (still correct for this occupant, nothing to redo).
+                if not BD(self).isSpotlight and F.IsValueNonSecret(BD(self).__unitGuid) then
+                    Cell.vars.guids[BD(self).__unitGuid] = value
+                end
+                if BD(self).__unitName and not BD(self).isSpotlight and F.IsValueNonSecret(BD(self).__unitName) then
+                    Cell.vars.names[BD(self).__unitName] = value
+                end
+            else
+                if BD(self).__unitGuid then
+                    if not BD(self).isSpotlight and F.IsValueNonSecret(BD(self).__unitGuid) then
+                        Cell.vars.guids[BD(self).__unitGuid] = nil
+                    end
+                    BD(self).__unitGuid = nil
+                end
+
+                if BD(self).__unitName then
+                    if not BD(self).isSpotlight and F.IsValueNonSecret(BD(self).__unitName) then
+                        Cell.vars.names[BD(self).__unitName] = nil
+                    end
+                    BD(self).__unitName = nil
+                end
+
+                BD(self)._recentSecretHelpfulCastKind = nil
+                BD(self)._recentSecretHelpfulCastAt = nil
+                BD(self)._recentSecretHelpfulCastSpellId = nil
+                wipe(BD(self).states)
+
+                if BD(self).widgets and BD(self).widgets.healthCalculator then
+                    pcall(BD(self).widgets.healthCalculator.ResetPredictedValues, BD(self).widgets.healthCalculator)
+                end
+            end
+        end
+
+        -- Restore unit tokens immediately after wipe so a later error cannot leave the button unit-less
+        -- (that stuck health at 0 and left the bar on a dark loss/background color).
+        if type(value) == "string" then
+            BD(self).states.unit = value
+            BD(self).states.displayedUnit = value
+            if string.find(value, "^raid%d+$") then
+                Cell.unitButtons.raid.units[value] = self
+            end
+        end
+
+        if unitChanged then
+            if BD(self).indicators and BD(self).indicators.privateAuras then
+                pcall(BD(self).indicators.privateAuras.UpdatePrivateAuraAnchor, BD(self).indicators.privateAuras, value)
+            end
         end
 
         if type(value) == "string" then
-            self.states.unit = value
-            self.states.displayedUnit = value
-            if string.find(value, "^raid%d+$") then 
-                Cell.unitButtons.raid.units[value] = self 
+            if useEventHub then
+                SyncButtonTracker(self)
             end
-            if I.UpdateHealersAuraDisplayUnit then
-                I.UpdateHealersAuraDisplayUnit(self)
-            end
-            if I.UpdateCustomAuraDisplays then
-                I.UpdateCustomAuraDisplays(self)
-            end
-            if I.UpdateCombatAuraDisplays then
-                I.UpdateCombatAuraDisplays(self)
+
+            if unitChanged then
+                if samePlayerNewSlot then
+                    if I.UpdateHealersAuraDisplayUnit then
+                        pcall(I.UpdateHealersAuraDisplayUnit, self)
+                    end
+                    if I.UpdateCustomAuraDisplays then
+                        pcall(I.UpdateCustomAuraDisplays, self)
+                    end
+                    if I.UpdateCombatAuraDisplays then
+                        pcall(I.UpdateCombatAuraDisplays, self)
+                    end
+                else
+                    -- New occupant: defer the full repaint one frame instead of
+                    -- running it inside the header's own reassignment pass, so a
+                    -- join/leave touching many buttons doesn't stack it all at once.
+                    C_Timer.After(0, function()
+                        if not self:IsVisible() then return end
+                        if BD(self).states.unit ~= value then return end
+                        if I.UpdateHealersAuraDisplayUnit then
+                            pcall(I.UpdateHealersAuraDisplayUnit, self)
+                        end
+                        if I.UpdateCustomAuraDisplays then
+                            pcall(I.UpdateCustomAuraDisplays, self)
+                        end
+                        if I.UpdateCombatAuraDisplays then
+                            pcall(I.UpdateCombatAuraDisplays, self)
+                        end
+                        pcall(UnitButton_UpdateAll, self)
+                    end)
+                end
             end
         end
     end
@@ -4638,27 +4988,27 @@ Cell.vars.names = {} -- name to unitid
 
 local function UnitButton_OnShow(self)
     -- print(GetTime(), "OnShow", self:GetName())
-    self._updateRequired = nil -- prevent UnitButton_UpdateAll twice. when convert party <-> raid, GROUP_ROSTER_UPDATE fired.
-    self._powerUpdateRequired = 1
+    BD(self)._updateRequired = nil -- prevent UnitButton_UpdateAll twice. when convert party <-> raid, GROUP_ROSTER_UPDATE fired.
+    BD(self)._powerUpdateRequired = 1
     UnitButton_RegisterEvents(self)
 
     --[[
-    if self.states.unit then
+    if BD(self).states.unit then
         -- NOTE: update Cell.vars.guids
-        local guid = UnitGUID(self.states.unit)
+        local guid = UnitGUID(BD(self).states.unit)
         if guid then
-            Cell.vars.guids[guid] = self.states.unit
+            Cell.vars.guids[guid] = BD(self).states.unit
         end
         --! NOTE: can't get valid name immediately after an unseen player joining into group
-        self.__timer = C_Timer.NewTicker(0.5, function()
-            local name = GetUnitName(self.states.unit, true)
+        BD(self).__timer = C_Timer.NewTicker(0.5, function()
+            local name = GetUnitName(BD(self).states.unit, true)
             if name and name ~= _G.UNKNOWN then
-                Cell.vars.names[name] = self.states.unit
-                self.__timer:Cancel()
-                self.__timer = nil
+                Cell.vars.names[name] = BD(self).states.unit
+                BD(self).__timer:Cancel()
+                BD(self).__timer = nil
             end
         end)
-        -- print("show", self.states.unit, guid, name)
+        -- print("show", BD(self).states.unit, guid, name)
     end
     ]]
 end
@@ -4667,36 +5017,36 @@ local function UnitButton_OnHide(self)
     UnitButton_UnregisterEvents(self)
     ResetAuraTables(self)
 
-    if self.__unitGuid then
-        if not self.isSpotlight and F.IsValueNonSecret(self.__unitGuid) then
-            Cell.vars.guids[self.__unitGuid] = nil
+    if BD(self).__unitGuid then
+        if not BD(self).isSpotlight and F.IsValueNonSecret(BD(self).__unitGuid) then
+            Cell.vars.guids[BD(self).__unitGuid] = nil
         end
-        self.__unitGuid = nil
+        BD(self).__unitGuid = nil
     end
 
-    if self.__unitName then
-        if not self.isSpotlight and F.IsValueNonSecret(self.__unitName) then
-            Cell.vars.names[self.__unitName] = nil
+    if BD(self).__unitName then
+        if not BD(self).isSpotlight and F.IsValueNonSecret(BD(self).__unitName) then
+            Cell.vars.names[BD(self).__unitName] = nil
         end
-        self.__unitName = nil
+        BD(self).__unitName = nil
     end
 
-    self.__displayedGuid = nil
-    self._updateRequired = nil
+    BD(self).__displayedGuid = nil
+    BD(self)._updateRequired = nil
 
-    F.RemoveElementsExceptKeys(self.states, "unit", "displayedUnit")
+    F.RemoveElementsExceptKeys(BD(self).states, "unit", "displayedUnit")
 
-    if self.widgets and self.widgets.healthCalculator then
-        self.widgets.healthCalculator:ResetPredictedValues()
+    if BD(self).widgets and BD(self).widgets.healthCalculator then
+        BD(self).widgets.healthCalculator:ResetPredictedValues()
     end
 end
 
 local function UnitButton_OnEnter(self)
     if not IsEncounterInProgress() then UnitButton_UpdateStatusText(self) end
 
-    if highlightEnabled then self.widgets.mouseoverHighlight:Show() end
+    if highlightEnabled then BD(self).widgets.mouseoverHighlight:Show() end
 
-    local unit = self.states.displayedUnit
+    local unit = BD(self).states.displayedUnit
     if not unit then return end
 
     if F.ShouldShowUnitTooltip and not F.ShouldShowUnitTooltip() then return end
@@ -4704,63 +5054,83 @@ local function UnitButton_OnEnter(self)
 end
 
 local function UnitButton_OnLeave(self)
-    self.widgets.mouseoverHighlight:Hide()
+    BD(self).widgets.mouseoverHighlight:Hide()
     GameTooltip:Hide()
 end
 
 local UNKNOWN, UNKNOWNOBJECT = _G.UNKNOWN, _G.UNKNOWNOBJECT
-local function UnitButton_OnTick(self)
-    local e = (self.__tickCount or 0) + 1
+UnitButton_OnTick = function(self)
+    local e = (BD(self).__tickCount or 0) + 1
     if e >= 2 then
         e = 0
 
-        if self.states.unit and self.states.displayedUnit then
-            local displayedGuid = UnitGUID(self.states.displayedUnit)
+        if useEventHub then
+            local attrUnit = self.GetAttribute and self:GetAttribute("unit")
+            if attrUnit and type(attrUnit) == "string" then
+                if BD(self).states.unit ~= attrUnit then
+                    BD(self).states.unit = attrUnit
+                    if not BD(self).states.displayedUnit then
+                        BD(self).states.displayedUnit = attrUnit
+                    end
+                    SyncButtonTracker(self)
+                    BD(self)._updateRequired = 1
+                    BD(self)._powerUpdateRequired = 1
+                else
+                    local t = buttonTrackers[self]
+                    if not t or t._boundUnit ~= attrUnit then
+                        SyncButtonTracker(self)
+                    end
+                end
+            end
+        end
+
+        if BD(self).states.unit and BD(self).states.displayedUnit then
+            local displayedGuid = UnitGUID(BD(self).states.displayedUnit)
             
             local guidChanged = false
-            if not F.IsValueNonSecret(displayedGuid) or not F.IsValueNonSecret(self.__displayedGuid) then
+            if not F.IsValueNonSecret(displayedGuid) or not F.IsValueNonSecret(BD(self).__displayedGuid) then
                 guidChanged = true
             else
-                guidChanged = displayedGuid ~= self.__displayedGuid
+                guidChanged = displayedGuid ~= BD(self).__displayedGuid
             end
 
             if guidChanged then
-                F.RemoveElementsExceptKeys(self.states, "unit", "displayedUnit")
-                self.__displayedGuid = displayedGuid
+                F.RemoveElementsExceptKeys(BD(self).states, "unit", "displayedUnit")
+                BD(self).__displayedGuid = displayedGuid
                 if displayedGuid ~= nil then
-                    self._updateRequired = 1
-                    self._powerUpdateRequired = 1
+                    BD(self)._updateRequired = 1
+                    BD(self)._powerUpdateRequired = 1
                 end
             end
 
-            local guid = UnitGUID(self.states.unit)
+            local guid = UnitGUID(BD(self).states.unit)
             local unitGuidChanged = false
 
-            if not F.IsValueNonSecret(guid) or not F.IsValueNonSecret(self.__unitGuid) then
+            if not F.IsValueNonSecret(guid) or not F.IsValueNonSecret(BD(self).__unitGuid) then
                 unitGuidChanged = guid ~= nil
             else
-                unitGuidChanged = guid and guid ~= self.__unitGuid
+                unitGuidChanged = guid and guid ~= BD(self).__unitGuid
             end
 
             if unitGuidChanged then
-                self.__unitGuid = guid
+                BD(self).__unitGuid = guid
                 
-                if not self.isSpotlight and F.IsValueNonSecret(guid) then
-                    Cell.vars.guids[guid] = self.states.unit
+                if not BD(self).isSpotlight and F.IsValueNonSecret(guid) then
+                    Cell.vars.guids[guid] = BD(self).states.unit
                 end
 
-                if UnitIsPlayer(self.states.unit) then
-                    local name = GetUnitName(self.states.unit, true)
-                    if (name and self.__nameRetries and self.__nameRetries >= 4) or 
+                if UnitIsPlayer(BD(self).states.unit) then
+                    local name = GetUnitName(BD(self).states.unit, true)
+                    if (name and BD(self).__nameRetries and BD(self).__nameRetries >= 4) or 
                        (name and name ~= UNKNOWN and name ~= UNKNOWNOBJECT) then
-                        self.__unitName = name
-                        if not self.isSpotlight and F.IsValueNonSecret(name) then 
-                            Cell.vars.names[name] = self.states.unit 
+                        BD(self).__unitName = name
+                        if not BD(self).isSpotlight and F.IsValueNonSecret(name) then 
+                            Cell.vars.names[name] = BD(self).states.unit 
                         end
-                        self.__nameRetries = nil
+                        BD(self).__nameRetries = nil
                     else
-                        self.__nameRetries = (self.__nameRetries or 0) + 1
-                        self.__unitGuid = nil
+                        BD(self).__nameRetries = (BD(self).__nameRetries or 0) + 1
+                        BD(self).__unitGuid = nil
                     end
                 end
             end
@@ -4769,10 +5139,10 @@ local function UnitButton_OnTick(self)
         UnitButton_UpdateInRange(self)
     end
 
-    self.__tickCount = e
+    BD(self).__tickCount = e
 
-    if self._updateRequired and self._indicatorsReady then
-        self._updateRequired = nil
+    if BD(self)._updateRequired and BD(self)._indicatorsReady then
+        BD(self)._updateRequired = nil
         UnitButton_UpdateAll(self)
     end
 
@@ -4782,13 +5152,48 @@ local function UnitButton_OnTick(self)
 end
 
 local function UnitButton_OnUpdate(self, elapsed)
-    local e = (self.__updateElapsed or 0) + elapsed
+    local e = (BD(self).__updateElapsed or 0) + elapsed
     if e > 0.25 then
         e = 0
         UnitButton_OnTick(self)
         UnitButton_UpdateCombatIcon(self)
     end
-    self.__updateElapsed = e
+    BD(self).__updateElapsed = e
+end
+
+if useEventHub then
+    eventHub = CreateFrame("Frame")
+    -- Global / non-unit-filtered events only. Per-unit events use button trackers.
+    local hubEvents = {
+        "GROUP_ROSTER_UPDATE",
+        "ZONE_CHANGED_NEW_AREA",
+        "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED",
+        "PLAYER_TARGET_CHANGED",
+        "RAID_TARGET_UPDATE",
+        "READY_CHECK", "READY_CHECK_FINISHED",
+    }
+    for i = 1, #hubEvents do
+        eventHub:RegisterEvent(hubEvents[i])
+    end
+    eventHub:SetScript("OnEvent", function(_, event, unit, arg, arg2, ...)
+        HubDispatchGlobal(event, unit, arg, arg2, ...)
+    end)
+
+    tickHub = CreateFrame("Frame")
+    tickHub:Hide()
+    tickHub:SetScript("OnUpdate", function(_, elapsed)
+        for btn in pairs(activeButtons) do
+            if btn:IsShown() then
+                local e = (BD(btn).__updateElapsed or 0) + elapsed
+                if e > 0.25 then
+                    e = 0
+                    UnitButton_OnTick(btn)
+                    UnitButton_UpdateCombatIcon(btn)
+                end
+                BD(btn).__updateElapsed = e
+            end
+        end
+    end)
 end
 
 -------------------------------------------------
@@ -4796,14 +5201,14 @@ end
 -------------------------------------------------
 function B.SetPowerSize(button, size)
     -- print(GetTime(), "SetPowerSize", button:GetName(), button:IsShown(), button:IsVisible())
-    button.powerSize = size
+    BD(button).powerSize = size
 
     if size == 0 then
         HidePowerBar(button)
-        button._shouldShowPowerBar = false
+        BD(button)._shouldShowPowerBar = false
     else
-        button._shouldShowPowerBar = ShouldShowPowerBar(button)
-        if button._shouldShowPowerBar then
+        BD(button)._shouldShowPowerBar = ShouldShowPowerBar(button)
+        if BD(button)._shouldShowPowerBar then
             ShowPowerBar(button)
         else
             HidePowerBar(button)
@@ -4821,21 +5226,21 @@ function B.UpdateShields(button)
     absorbInvertColor = CellDB["appearance"]["healAbsorbInvertColor"]
 
     if Cell.isMidnight then
-        button.widgets.shieldBar:SetStatusBarColor(unpack(CellDB["appearance"]["shield"][2]))
-        button.widgets.shieldBarR:SetStatusBarColor(unpack(CellDB["appearance"]["shield"][2]))
+        BD(button).widgets.shieldBar:SetStatusBarColor(unpack(CellDB["appearance"]["shield"][2]))
+        BD(button).widgets.shieldBarR:SetStatusBarColor(unpack(CellDB["appearance"]["shield"][2]))
     else
-        button.widgets.shieldBar:SetVertexColor(unpack(CellDB["appearance"]["shield"][2]))
-        button.widgets.shieldBarR:SetVertexColor(unpack(CellDB["appearance"]["shield"][2]))
+        BD(button).widgets.shieldBar:SetVertexColor(unpack(CellDB["appearance"]["shield"][2]))
+        BD(button).widgets.shieldBarR:SetVertexColor(unpack(CellDB["appearance"]["shield"][2]))
     end
     -- overShieldGlow textures are always textures
-    button.widgets.overShieldGlow:SetVertexColor(unpack(CellDB["appearance"]["overshield"][2]))
-    button.widgets.overShieldGlowR:SetVertexColor(unpack(CellDB["appearance"]["overshield"][2]))
+    BD(button).widgets.overShieldGlow:SetVertexColor(unpack(CellDB["appearance"]["overshield"][2]))
+    BD(button).widgets.overShieldGlowR:SetVertexColor(unpack(CellDB["appearance"]["overshield"][2]))
     if not absorbInvertColor then
-        button.widgets.overAbsorbGlow:SetVertexColor(unpack(CellDB["appearance"]["healAbsorb"][2]))
+        BD(button).widgets.overAbsorbGlow:SetVertexColor(unpack(CellDB["appearance"]["healAbsorb"][2]))
         if Cell.isMidnight then
-            button.widgets.absorbsBar:SetStatusBarColor(unpack(CellDB["appearance"]["healAbsorb"][2]))
+            BD(button).widgets.absorbsBar:SetStatusBarColor(unpack(CellDB["appearance"]["healAbsorb"][2]))
         else
-            button.widgets.absorbsBar:SetVertexColor(unpack(CellDB["appearance"]["healAbsorb"][2]))
+            BD(button).widgets.absorbsBar:SetVertexColor(unpack(CellDB["appearance"]["healAbsorb"][2]))
         end
     end
 
@@ -4845,18 +5250,18 @@ function B.UpdateShields(button)
 end
 
 function B.SetTexture(button, tex)
-    button.widgets.healthBar:SetStatusBarTexture(tex)
-    button.widgets.healthBar:GetStatusBarTexture():SetDrawLayer("ARTWORK", -7) --! VERY IMPORTANT
-    button.widgets.healthBarLoss:SetTexture(tex)
-    button.widgets.powerBar:SetStatusBarTexture(tex)
-    button.widgets.powerBar:GetStatusBarTexture():SetDrawLayer("ARTWORK", -7) --! VERY IMPORTANT
-    button.widgets.powerBarLoss:SetTexture(tex)
+    BD(button).widgets.healthBar:SetStatusBarTexture(tex)
+    BD(button).widgets.healthBar:GetStatusBarTexture():SetDrawLayer("ARTWORK", -7) --! VERY IMPORTANT
+    BD(button).widgets.healthBarLoss:SetTexture(tex)
+    BD(button).widgets.powerBar:SetStatusBarTexture(tex)
+    BD(button).widgets.powerBar:GetStatusBarTexture():SetDrawLayer("ARTWORK", -7) --! VERY IMPORTANT
+    BD(button).widgets.powerBarLoss:SetTexture(tex)
     if Cell.isMidnight then
-        button.widgets.incomingHeal:SetStatusBarTexture(tex)
+        BD(button).widgets.incomingHeal:SetStatusBarTexture(tex)
     else
-        button.widgets.incomingHeal:SetTexture(tex)
+        BD(button).widgets.incomingHeal:SetTexture(tex)
     end
-    button.widgets.damageFlashTex:SetTexture(tex)
+    BD(button).widgets.damageFlashTex:SetTexture(tex)
 end
 
 function B.UpdateColor(button)
@@ -5046,23 +5451,23 @@ local function DamageFlashTex_SetValue_Vertical(self, lostPercent)
 end
 
 function B.SetOrientation(button, orientation, rotateTexture)
-    local healthBar = button.widgets.healthBar
-    local healthBarLoss = button.widgets.healthBarLoss
-    local powerBar = button.widgets.powerBar
-    local powerBarLoss = button.widgets.powerBarLoss
-    local incomingHeal = button.widgets.incomingHeal
-    local damageFlashTex = button.widgets.damageFlashTex
-    local gapTexture = button.widgets.gapTexture
-    local shieldBar = button.widgets.shieldBar
-    local shieldBarR = button.widgets.shieldBarR
-    local overShieldGlow = button.widgets.overShieldGlow
-    local overShieldGlowR = button.widgets.overShieldGlowR
-    local overAbsorbGlow = button.widgets.overAbsorbGlow
-    local absorbsBar = button.widgets.absorbsBar
+    local healthBar = BD(button).widgets.healthBar
+    local healthBarLoss = BD(button).widgets.healthBarLoss
+    local powerBar = BD(button).widgets.powerBar
+    local powerBarLoss = BD(button).widgets.powerBarLoss
+    local incomingHeal = BD(button).widgets.incomingHeal
+    local damageFlashTex = BD(button).widgets.damageFlashTex
+    local gapTexture = BD(button).widgets.gapTexture
+    local shieldBar = BD(button).widgets.shieldBar
+    local shieldBarR = BD(button).widgets.shieldBarR
+    local overShieldGlow = BD(button).widgets.overShieldGlow
+    local overShieldGlowR = BD(button).widgets.overShieldGlowR
+    local overAbsorbGlow = BD(button).widgets.overAbsorbGlow
+    local absorbsBar = BD(button).widgets.absorbsBar
 
     gapTexture:SetColorTexture(unpack(CELL_BORDER_COLOR))
 
-    button.orientation = orientation
+    BD(button).orientation = orientation
     if orientation == "vertical_health" then
         healthBar:SetOrientation("vertical")
         powerBar:SetOrientation("horizontal")
@@ -5081,7 +5486,7 @@ function B.SetOrientation(button, orientation, rotateTexture)
     absorbsBar:SetOrientation(barOrientation)
     absorbsBar:SetRotatesTexture(rotateTexture)
 
-    button.indicators.healthThresholds:SetOrientation(orientation)
+    BD(button).indicators.healthThresholds:SetOrientation(orientation)
 
     if rotateTexture then
         F.RotateTexture(healthBarLoss, 90)
@@ -5267,13 +5672,13 @@ function B.SetOrientation(button, orientation, rotateTexture)
 end
 
 function B.UpdateHighlightColor(button)
-    button.widgets.targetHighlight:SetBackdropBorderColor(unpack(CellDB["appearance"]["targetColor"]))
-    button.widgets.mouseoverHighlight:SetBackdropBorderColor(unpack(CellDB["appearance"]["mouseoverColor"]))
+    BD(button).widgets.targetHighlight:SetBackdropBorderColor(unpack(CellDB["appearance"]["targetColor"]))
+    BD(button).widgets.mouseoverHighlight:SetBackdropBorderColor(unpack(CellDB["appearance"]["mouseoverColor"]))
 end
 
 function B.UpdateHighlightSize(button)
-    local targetHighlight = button.widgets.targetHighlight
-    local mouseoverHighlight = button.widgets.mouseoverHighlight
+    local targetHighlight = BD(button).widgets.targetHighlight
+    local mouseoverHighlight = BD(button).widgets.mouseoverHighlight
 
     local size = CellDB["appearance"]["highlightSize"]
 
@@ -5351,26 +5756,26 @@ end
 
 -- healthText
 function B.UpdateHealthText(button)
-    if button.states.displayedUnit then
+    if BD(button).states.displayedUnit then
         UnitButton_UpdateHealthStates(button)
     end
 end
 
 -- powerText
 function B.UpdatePowerText(button)
-    if not button.states.displayedUnit and button.states.unit then
-        button.states.displayedUnit = button.states.unit
+    if not BD(button).states.displayedUnit and BD(button).states.unit then
+        BD(button).states.displayedUnit = BD(button).states.unit
     end
-    if not button.states.displayedUnit then
+    if not BD(button).states.displayedUnit then
         local attrUnit = button:GetAttribute("unit")
         if attrUnit then
-            button.states.displayedUnit = attrUnit
+            BD(button).states.displayedUnit = attrUnit
         end
     end
-    if button._shouldShowPowerText == nil and ShouldShowPowerText then
-        button._shouldShowPowerText = ShouldShowPowerText(button)
+    if BD(button)._shouldShowPowerText == nil and ShouldShowPowerText then
+        BD(button)._shouldShowPowerText = ShouldShowPowerText(button)
     end
-    if button.states.displayedUnit then
+    if BD(button).states.displayedUnit then
         UnitButton_UpdatePowerStates(button)
         UnitButton_UpdatePowerText(button)
         UnitButton_UpdatePowerTextColor(button)
@@ -5392,21 +5797,21 @@ function B.UpdateAnimation(button)
     barAnimationType = CellDB["appearance"]["barAnimation"]
 
     if Cell.isMidnight then
-        button.widgets.healthBar:ResetSmoothedValue()
-        button.widgets.powerBar:ResetSmoothedValue()
-        button.widgets.healthBar.SetBarValue = button.widgets.healthBar.SetValue
-        button.widgets.powerBar.SetBarValue = button.widgets.powerBar.SetValue
+        BD(button).widgets.healthBar:ResetSmoothedValue()
+        BD(button).widgets.powerBar:ResetSmoothedValue()
+        BD(button).widgets.healthBar.SetBarValue = BD(button).widgets.healthBar.SetValue
+        BD(button).widgets.powerBar.SetBarValue = BD(button).widgets.powerBar.SetValue
     elseif barAnimationType == "Smooth" or barAnimationType == "Legacy" or barAnimationType == "Old" then
-        button.widgets.healthBar.SetBarValue = button.widgets.healthBar.SetSmoothedValue
-        button.widgets.powerBar.SetBarValue = button.widgets.powerBar.SetSmoothedValue
+        BD(button).widgets.healthBar.SetBarValue = BD(button).widgets.healthBar.SetSmoothedValue
+        BD(button).widgets.powerBar.SetBarValue = BD(button).widgets.powerBar.SetSmoothedValue
     else
-        button.widgets.healthBar:ResetSmoothedValue()
-        button.widgets.healthBar.SetBarValue = button.widgets.healthBar.SetValue
-        button.widgets.powerBar:ResetSmoothedValue()
-        button.widgets.powerBar.SetBarValue = button.widgets.powerBar.SetValue
+        BD(button).widgets.healthBar:ResetSmoothedValue()
+        BD(button).widgets.healthBar.SetBarValue = BD(button).widgets.healthBar.SetValue
+        BD(button).widgets.powerBar:ResetSmoothedValue()
+        BD(button).widgets.powerBar.SetBarValue = BD(button).widgets.powerBar.SetValue
     end
 
-    button.widgets.damageFlashAG:Finish()
+    BD(button).widgets.damageFlashAG:Finish()
 end
 
 -- backdrop
@@ -5426,36 +5831,36 @@ function B.UpdatePixelPerfect(button, updateIndicators)
     if not InCombatLockdown() then P.Resize(button) end
     P.Reborder(button)
 
-    P.Repoint(button.widgets.healthBar)
-    P.Repoint(button.widgets.healthBarLoss)
-    P.Repoint(button.widgets.powerBar)
-    P.Repoint(button.widgets.powerBarLoss)
-    P.Repoint(button.widgets.gapTexture)
-    P.Resize(button.widgets.gapTexture)
+    P.Repoint(BD(button).widgets.healthBar)
+    P.Repoint(BD(button).widgets.healthBarLoss)
+    P.Repoint(BD(button).widgets.powerBar)
+    P.Repoint(BD(button).widgets.powerBarLoss)
+    P.Repoint(BD(button).widgets.gapTexture)
+    P.Resize(BD(button).widgets.gapTexture)
 
-    P.Repoint(button.widgets.incomingHeal)
-    P.Repoint(button.widgets.shieldBar)
-    P.Repoint(button.widgets.absorbsBar)
-    P.Repoint(button.widgets.damageFlashTex)
+    P.Repoint(BD(button).widgets.incomingHeal)
+    P.Repoint(BD(button).widgets.shieldBar)
+    P.Repoint(BD(button).widgets.absorbsBar)
+    P.Repoint(BD(button).widgets.damageFlashTex)
 
-    P.Resize(button.widgets.overShieldGlow)
-    P.Repoint(button.widgets.overShieldGlow)
-    P.Resize(button.widgets.overAbsorbGlow)
-    P.Repoint(button.widgets.overAbsorbGlow)
+    P.Resize(BD(button).widgets.overShieldGlow)
+    P.Repoint(BD(button).widgets.overShieldGlow)
+    P.Resize(BD(button).widgets.overAbsorbGlow)
+    P.Repoint(BD(button).widgets.overAbsorbGlow)
 
     B.UpdateHighlightSize(button)
     B.UpdateBackdrop(button)
 
     if updateIndicators then
         -- indicators
-        for _, i in next, button.indicators do
+        for _, i in next, BD(button).indicators do
             if i.UpdatePixelPerfect then
                 i:UpdatePixelPerfect()
             end
         end
     end
 
-    button.widgets.srIcon:UpdatePixelPerfect()
+    BD(button).widgets.srIcon:UpdatePixelPerfect()
 end
 
 B.UpdateAll = UnitButton_UpdateAll
@@ -5487,7 +5892,6 @@ local startTimeCache = {}
 -- NOTE: prevent a nil method error
 local DumbFunc = function() end
 
--- Remaining HandleBuff dependencies (defined above, stored here for HandleBuff.lua)
 Cell._hb.GetTime = GetTime
 Cell._hb.enabledIndicators = enabledIndicators
 Cell._hb.indicatorNums = indicatorNums
@@ -5498,17 +5902,17 @@ Cell._hb.UpdateAuraRefreshState = UpdateAuraRefreshState
 function CellUnitButton_OnLoad(button)
     local name = button:GetName()
 
-    button.widgets = {}
-    button.states = {}
-    button.indicators = {}
+    BD(button).widgets = {}
+    BD(button).states = {}
+    BD(button).indicators = {}
 
     if Cell.isMidnight and CreateUnitHealPredictionCalculator then
-        button.widgets.healthCalculator = CreateUnitHealPredictionCalculator()
-        button.widgets.healPredictionCalculator = CreateUnitHealPredictionCalculator()
+        BD(button).widgets.healthCalculator = CreateUnitHealPredictionCalculator()
+        BD(button).widgets.healPredictionCalculator = CreateUnitHealPredictionCalculator()
     end
     if Cell.isMidnight and C_CurveUtil then
-        button.widgets.healthBarColorCurve = C_CurveUtil.CreateColorCurve()
-        button.widgets.healthLossColorCurve = C_CurveUtil.CreateColorCurve()
+        BD(button).widgets.healthBarColorCurve = C_CurveUtil.CreateColorCurve()
+        BD(button).widgets.healthLossColorCurve = C_CurveUtil.CreateColorCurve()
     end
 
     InitAuraTables(button)
@@ -5518,12 +5922,12 @@ function CellUnitButton_OnLoad(button)
     button:SetAttribute("ping-receiver", true)
 
     function button:GetTargetPingGUID()
-        return button.__unitGuid
+        return BD(button).__unitGuid
     end
 
     -- background
     -- local background = button:CreateTexture(name.."Background", "BORDER")
-    -- button.widgets.background = background
+    -- BD(button).widgets.background = background
     -- background:SetAllPoints(button)
     -- background:SetTexture(Cell.vars.whiteTexture)
     -- background:SetVertexColor(0, 0, 0, 1)
@@ -5539,7 +5943,7 @@ function CellUnitButton_OnLoad(button)
 
     -- healthbar
     local healthBar = CreateFrame("StatusBar", name.."HealthBar", button)
-    button.widgets.healthBar = healthBar
+    BD(button).widgets.healthBar = healthBar
     -- P.Point(healthBar, "TOPLEFT", button, "TOPLEFT", 1, -1)
     -- P.Point(healthBar, "BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 4)
     healthBar:SetStatusBarTexture(Cell.vars.texture)
@@ -5555,14 +5959,14 @@ function CellUnitButton_OnLoad(button)
 
     -- hp loss
     local healthBarLoss = button:CreateTexture(name.."HealthBarLoss", "ARTWORK", nil , -7)
-    button.widgets.healthBarLoss = healthBarLoss
+    BD(button).widgets.healthBarLoss = healthBarLoss
     -- P.Point(healthBarLoss, "TOPRIGHT", healthBar)
     -- P.Point(healthBarLoss, "BOTTOMLEFT", healthBar:GetStatusBarTexture(), "BOTTOMRIGHT")
     healthBarLoss:SetTexture(Cell.vars.texture)
 
     -- powerbar
     local powerBar = CreateFrame("StatusBar", name.."PowerBar", button)
-    button.widgets.powerBar = powerBar
+    BD(button).widgets.powerBar = powerBar
     -- P.Point(powerBar, "TOPLEFT", healthBar, "BOTTOMLEFT", 0, -1)
     -- P.Point(powerBar, "BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
     powerBar:SetStatusBarTexture(Cell.vars.texture)
@@ -5571,7 +5975,7 @@ function CellUnitButton_OnLoad(button)
     powerBar.SetBarValue = powerBar.SetValue
 
     local gapTexture = button:CreateTexture(nil, "BORDER")
-    button.widgets.gapTexture = gapTexture
+    BD(button).widgets.gapTexture = gapTexture
     -- P.Point(gapTexture, "BOTTOMLEFT", powerBar, "TOPLEFT")
     -- P.Point(gapTexture, "BOTTOMRIGHT", powerBar, "TOPRIGHT")
     -- P.Height(gapTexture, 1)
@@ -5579,7 +5983,7 @@ function CellUnitButton_OnLoad(button)
 
     -- power loss
     local powerBarLoss = button:CreateTexture(name.."PowerBarLoss", "ARTWORK", nil , -7)
-    button.widgets.powerBarLoss = powerBarLoss
+    BD(button).widgets.powerBarLoss = powerBarLoss
     -- P.Point(powerBarLoss, "TOPRIGHT", powerBar)
     -- P.Point(powerBarLoss, "BOTTOMLEFT", powerBar:GetStatusBarTexture(), "BOTTOMRIGHT")
     powerBarLoss:SetTexture(Cell.vars.texture)
@@ -5599,42 +6003,42 @@ function CellUnitButton_OnLoad(button)
         incomingHeal:SetTexture(Cell.vars.texture)
         incomingHeal.SetValue = DumbFunc
     end
-    button.widgets.incomingHeal = incomingHeal
+    BD(button).widgets.incomingHeal = incomingHeal
     incomingHeal:Hide()
 
     --* indicatorFrame
     local indicatorFrame = CreateFrame("Frame", name.."IndicatorFrame", button)
-    button.widgets.indicatorFrame = indicatorFrame
+    BD(button).widgets.indicatorFrame = indicatorFrame
     indicatorFrame:SetFrameLevel(button:GetFrameLevel()+220)
     indicatorFrame:SetAllPoints(button)
 
     --* tsGlowFrame (Targeted Spells)
     local tsGlowFrame = CreateFrame("Frame", name.."TSGlowFrame", button)
-    button.widgets.tsGlowFrame = tsGlowFrame
+    BD(button).widgets.tsGlowFrame = tsGlowFrame
     tsGlowFrame:SetFrameLevel(button:GetFrameLevel()+200)
     tsGlowFrame:SetAllPoints(button)
 
     --* srGlowFrame (Spell Request)
     local srGlowFrame = CreateFrame("Frame", name.."SRGlowFrame", button)
-    button.widgets.srGlowFrame = srGlowFrame
+    BD(button).widgets.srGlowFrame = srGlowFrame
     srGlowFrame:SetFrameLevel(button:GetFrameLevel()+200)
     srGlowFrame:SetAllPoints(button)
 
     --* drGlowFrame (Dispel Request)
     local drGlowFrame = CreateFrame("Frame", name.."DRGlowFrame", button)
-    button.widgets.drGlowFrame = drGlowFrame
+    BD(button).widgets.drGlowFrame = drGlowFrame
     drGlowFrame:SetFrameLevel(button:GetFrameLevel()+200)
     drGlowFrame:SetAllPoints(button)
 
     --* highLevelFrame
     local highLevelFrame = CreateFrame("Frame", name.."HighLevelFrame", button)
-    button.widgets.highLevelFrame = highLevelFrame
+    BD(button).widgets.highLevelFrame = highLevelFrame
     highLevelFrame:SetFrameLevel(button:GetFrameLevel()+140)
     highLevelFrame:SetAllPoints(button)
 
     --* midLevelFrame
     local midLevelFrame = CreateFrame("Frame", name.."MidLevelFrame", button)
-    button.widgets.midLevelFrame = midLevelFrame
+    BD(button).widgets.midLevelFrame = midLevelFrame
     midLevelFrame:SetFrameLevel(button:GetFrameLevel()+120)
     midLevelFrame:SetAllPoints(healthBar)
 
@@ -5655,7 +6059,7 @@ function CellUnitButton_OnLoad(button)
         shieldBar:SetVertTile(true)
         shieldBar.SetValue = DumbFunc
     end
-    button.widgets.shieldBar = shieldBar
+    BD(button).widgets.shieldBar = shieldBar
     shieldBar:Hide()
 
     local shieldBarR
@@ -5674,13 +6078,13 @@ function CellUnitButton_OnLoad(button)
         shieldBarR:SetHorizTile(true)
         shieldBarR:SetVertTile(true)
     end
-    button.widgets.shieldBarR = shieldBarR
+    BD(button).widgets.shieldBarR = shieldBarR
     shieldBarR:Hide()
     shieldBar.shieldBarR = shieldBarR
 
     -- over-shield glow
     local overShieldGlow = midLevelFrame:CreateTexture(name.."OverShieldGlow", "ARTWORK", nil, -4)
-    button.widgets.overShieldGlow = overShieldGlow
+    BD(button).widgets.overShieldGlow = overShieldGlow
     overShieldGlow:SetTexture("Interface\\AddOns\\Cell\\Media\\overshield")
     -- overShieldGlow:SetBlendMode("ADD")
     overShieldGlow:Hide()
@@ -5688,14 +6092,14 @@ function CellUnitButton_OnLoad(button)
 
     -- over-shield glow reversed
     local overShieldGlowR = midLevelFrame:CreateTexture(name.."OverShieldGlowR", "ARTWORK", nil, -4)
-    button.widgets.overShieldGlowR = overShieldGlowR
+    BD(button).widgets.overShieldGlowR = overShieldGlowR
     overShieldGlowR:SetTexture("Interface\\AddOns\\Cell\\Media\\overshield_reversed")
     -- overShieldGlowR:SetBlendMode("ADD")
     overShieldGlowR:Hide()
     shieldBar.overShieldGlowR = overShieldGlowR
 
     local overAbsorbGlow = midLevelFrame:CreateTexture(name.."OverAbsorbGlow", "ARTWORK", nil, -2)
-    button.widgets.overAbsorbGlow = overAbsorbGlow
+    BD(button).widgets.overAbsorbGlow = overAbsorbGlow
     overAbsorbGlow:SetTexture("Interface\\AddOns\\Cell\\Media\\overabsorb")
     -- overAbsorbGlow:SetBlendMode("ADD")
     overAbsorbGlow:Hide()
@@ -5720,31 +6124,31 @@ function CellUnitButton_OnLoad(button)
         absorbsBar:SetVertexColor(1, 0.1, 0.1, 1)
         absorbsBar.SetValue = DumbFunc
     end
-    button.widgets.absorbsBar = absorbsBar
+    BD(button).widgets.absorbsBar = absorbsBar
     absorbsBar.healthBar = healthBar
     -- absorbsBar:SetBlendMode("ADD")
     absorbsBar:Hide()
     absorbsBar.overAbsorbGlow = overAbsorbGlow
 
     if Cell.isMidnight then
-        if button.widgets.incomingHeal then
-            button.widgets.incomingHeal:SetMinMaxValues(0, 1)
+        if BD(button).widgets.incomingHeal then
+            BD(button).widgets.incomingHeal:SetMinMaxValues(0, 1)
         end
-        if button.widgets.shieldBar then
-            button.widgets.shieldBar:SetMinMaxValues(0, 1)
+        if BD(button).widgets.shieldBar then
+            BD(button).widgets.shieldBar:SetMinMaxValues(0, 1)
         end
-        if button.widgets.shieldBarR then
-            button.widgets.shieldBarR:SetMinMaxValues(0, 1)
+        if BD(button).widgets.shieldBarR then
+            BD(button).widgets.shieldBarR:SetMinMaxValues(0, 1)
         end
-        if button.widgets.absorbsBar then
-            button.widgets.absorbsBar:SetMinMaxValues(0, 1)
+        if BD(button).widgets.absorbsBar then
+            BD(button).widgets.absorbsBar:SetMinMaxValues(0, 1)
         end
     end
 
     -- bar animation
     -- flash
     local damageFlashTex = healthBar:CreateTexture(name.."DamageFlash", "ARTWORK", nil, -6)
-    button.widgets.damageFlashTex = damageFlashTex
+    BD(button).widgets.damageFlashTex = damageFlashTex
     damageFlashTex:SetTexture(Cell.vars.whiteTexture)
     damageFlashTex:SetVertexColor(1, 1, 1, 0.7)
     -- P.Point(damageFlashTex, "TOPLEFT", healthBar:GetStatusBarTexture(), "TOPRIGHT")
@@ -5754,7 +6158,7 @@ function CellUnitButton_OnLoad(button)
 
     -- damage flash animation group
     local damageFlashAG = damageFlashTex:CreateAnimationGroup()
-    button.widgets.damageFlashAG = damageFlashAG
+    BD(button).widgets.damageFlashAG = damageFlashAG
 
     local alpha = damageFlashAG:CreateAnimation("Alpha")
     alpha:SetFromAlpha(0.7)
@@ -5775,7 +6179,7 @@ function CellUnitButton_OnLoad(button)
 
     -- target highlight
     local targetHighlight = CreateFrame("Frame", name.."TargetHighlight", button, "BackdropTemplate")
-    button.widgets.targetHighlight = targetHighlight
+    BD(button).widgets.targetHighlight = targetHighlight
     targetHighlight:SetIgnoreParentAlpha(true)
     targetHighlight:SetFrameLevel(button:GetFrameLevel()+3)
     -- targetHighlight:SetBackdrop({edgeFile = Cell.vars.whiteTexture, edgeSize = P.Scale(1)})
@@ -5785,7 +6189,7 @@ function CellUnitButton_OnLoad(button)
 
     -- mouseover highlight
     local mouseoverHighlight = CreateFrame("Frame", name.."MouseoverHighlight", button, "BackdropTemplate")
-    button.widgets.mouseoverHighlight = mouseoverHighlight
+    BD(button).widgets.mouseoverHighlight = mouseoverHighlight
     mouseoverHighlight:SetIgnoreParentAlpha(true)
     mouseoverHighlight:SetFrameLevel(button:GetFrameLevel()+4)
     -- mouseoverHighlight:SetBackdrop({edgeFile = Cell.vars.whiteTexture, edgeSize = P.Scale(1)})
@@ -5795,7 +6199,7 @@ function CellUnitButton_OnLoad(button)
 
     -- readyCheck highlight
     -- local readyCheckHighlight = button:CreateTexture(name.."ReadyCheckHighlight", "BACKGROUND")
-    -- button.widgets.readyCheckHighlight = readyCheckHighlight
+    -- BD(button).widgets.readyCheckHighlight = readyCheckHighlight
     -- readyCheckHighlight:SetPoint("TOPLEFT", -1, 1)
     -- readyCheckHighlight:SetPoint("BOTTOMRIGHT", 1, -1)
     -- readyCheckHighlight:SetTexture(Cell.vars.whiteTexture)
@@ -5803,7 +6207,7 @@ function CellUnitButton_OnLoad(button)
 
     -- aggro bar
     local aggroBar = Cell.CreateStatusBar(name.."AggroBar", indicatorFrame, 20, 4, 100, true)
-    button.indicators.aggroBar = aggroBar
+    BD(button).indicators.aggroBar = aggroBar
     aggroBar:Hide()
 
     -- indicators
@@ -5839,10 +6243,10 @@ function CellUnitButton_OnLoad(button)
     U.CreateSpellRequestIcon(button)
     U.CreateDispelRequestText(button)
 
-    button._waitingForIndicatorCreation = true
+    BD(button)._waitingForIndicatorCreation = true
 
     -- events
-    button:SetScript("OnAttributeChanged", UnitButton_OnAttributeChanged) -- init
+    button:HookScript("OnAttributeChanged", UnitButton_OnAttributeChanged) -- init
     button:HookScript("OnShow", UnitButton_OnShow)
     button:HookScript("OnHide", UnitButton_OnHide) -- use _onhide for click-castings
     button:HookScript("OnEnter", UnitButton_OnEnter) -- SecureHandlerEnterLeaveTemplate

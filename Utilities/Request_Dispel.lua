@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 local F = Cell.funcs
 local U = Cell.uFuncs
@@ -400,10 +400,10 @@ local flipBookFrames = {
 }
 
 function U.CreateDispelRequestText(parent)
-    local drText = CreateFrame("Frame", parent:GetName().."DispelRequestText", parent.widgets.indicatorFrame)
-    parent.widgets.drText = drText
+    local drText = CreateFrame("Frame", parent:GetName().."DispelRequestText", F.BD(parent).widgets.indicatorFrame)
+    F.BD(parent).widgets.drText = drText
     drText:SetIgnoreParentAlpha(true)
-    drText:SetFrameLevel(parent.widgets.indicatorFrame:GetFrameLevel()+110)
+    drText:SetFrameLevel(F.BD(parent).widgets.indicatorFrame:GetFrameLevel()+110)
     drText:Hide()
 
     local tex = drText:CreateTexture(nil, "ARTWORK")

@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 local F = Cell.funcs
 local B = Cell.bFuncs
@@ -6,6 +6,15 @@ local I = Cell.iFuncs
 local P = Cell.pixelPerfectFuncs
 
 local LoadData, LoadButtonStyle, LoadDebuffTypeColor
+
+-- CELL_FADE_OUT_HEALTH_PERCENT drives the frame-fade-at-full-health check in
+-- UnitButton.lua (and its Vanilla/Cata_Wrath/Mists counterparts) -- a global
+-- rather than a CellDB read because those files check it on every single health
+-- update, and a global lookup there is cheaper than indexing CellDB each time.
+-- Re-synced here whenever the setting changes and once at login.
+local function ApplyHealthFadeThreshold()
+    CELL_FADE_OUT_HEALTH_PERCENT = (CellDB["appearance"]["healthFadeEnabled"] and CellDB["appearance"]["healthFadeThreshold"]) or nil
+end
 
 local appearanceTab = Cell.CreateFrame("CellOptionsFrame_AppearanceTab", Cell.frames.optionsFrame, nil, nil, true)
 Cell.frames.appearanceTab = appearanceTab
@@ -323,14 +332,14 @@ local function CreatePreviewButtons()
     previewButton:SetScript("OnUpdate", nil)
     previewButton:Show()
 
-    previewButton.previewHealthText = previewButton.widgets.indicatorFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+    previewButton.previewHealthText = F.BD(previewButton).widgets.indicatorFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
     previewButton.previewHealthText:SetPoint("CENTER")
 
-    previewButton.widgets.healthBar:SetMinMaxSmoothedValue(0, 100)
-    previewButton.widgets.healthBar:SetMinMaxValues(0, 100)
+    F.BD(previewButton).widgets.healthBar:SetMinMaxSmoothedValue(0, 100)
+    F.BD(previewButton).widgets.healthBar:SetMinMaxValues(0, 100)
 
-    previewButton.widgets.powerBar:SetMinMaxValues(0, 1)
-    previewButton.widgets.powerBar:SetValue(1)
+    F.BD(previewButton).widgets.powerBar:SetMinMaxValues(0, 1)
+    F.BD(previewButton).widgets.powerBar:SetValue(1)
 
     local previewButtonBG = Cell.CreateFrame("CellAppearancePreviewButtonBG", appearanceTab)
     previewButtonBG:SetPoint("TOPLEFT", previewButton, 0, 20)
@@ -354,10 +363,10 @@ local function CreatePreviewButtons()
     previewButton2:SetScript("OnHide", nil)
     previewButton2:Show()
 
-    previewButton2.widgets.healthBar:SetMinMaxValues(0, 100)
-    previewButton2.widgets.healthBar:SetValue(60)
-    previewButton2.states.healthMax = 100
-    previewButton2.states.healthPercent = 0.6
+    F.BD(previewButton2).widgets.healthBar:SetMinMaxValues(0, 100)
+    F.BD(previewButton2).widgets.healthBar:SetValue(60)
+    F.BD(previewButton2).states.healthMax = 100
+    F.BD(previewButton2).states.healthPercent = 0.6
 
     local previewButtonBG2 = Cell.CreateFrame("CellAppearancePreviewButtonBG2", appearanceTab)
     previewButtonBG2:SetPoint("TOPLEFT", previewButton2, 0, 20)
@@ -374,8 +383,8 @@ local function CreatePreviewButtons()
     local ticker
     previewButton:SetScript("OnShow", function()
         previewButton.perc = 1
-        previewButton.widgets.healthBar:SetValue(100)
-        -- previewButton.widgets.healthBar:SetSmoothedValue(100)
+        F.BD(previewButton).widgets.healthBar:SetValue(100)
+        -- F.BD(previewButton).widgets.healthBar:SetSmoothedValue(100)
         previewButton.previewHealthText:SetText("100%")
 
         local health, healthPercent, healthPercentOld, currentState = 100, 1, 1, 1
@@ -387,15 +396,15 @@ local function CreatePreviewButtons()
 
             local anim = CellDB["appearance"]["barAnimation"]
             if anim == "Legacy" or anim == "Old" then
-                previewButton.widgets.healthBar:SetSmoothedValue(health)
+                F.BD(previewButton).widgets.healthBar:SetSmoothedValue(health)
             elseif anim == "Smooth" then
                 if Cell.isMidnight and Enum and Enum.StatusBarInterpolation and Enum.StatusBarInterpolation.ExponentialEaseOut then
-                    previewButton.widgets.healthBar:SetValue(health, Enum.StatusBarInterpolation.ExponentialEaseOut)
+                    F.BD(previewButton).widgets.healthBar:SetValue(health, Enum.StatusBarInterpolation.ExponentialEaseOut)
                 else
-                    previewButton.widgets.healthBar:SetSmoothedValue(health)
+                    F.BD(previewButton).widgets.healthBar:SetSmoothedValue(health)
                 end
             else
-                previewButton.widgets.healthBar:SetValue(health)
+                F.BD(previewButton).widgets.healthBar:SetValue(health)
             end
 
             -- update text
@@ -407,8 +416,8 @@ local function CreatePreviewButtons()
 
             -- update color
             local r, g, b, lossR, lossG, lossB = F.GetHealthBarColor(healthPercent, health == 0, F.GetClassColor(Cell.vars.playerClass))
-            previewButton.widgets.healthBar:SetStatusBarColor(r, g, b, CellDB["appearance"]["barAlpha"])
-            previewButton.widgets.healthBarLoss:SetVertexColor(lossR, lossG, lossB, CellDB["appearance"]["lossAlpha"])
+            F.BD(previewButton).widgets.healthBar:SetStatusBarColor(r, g, b, CellDB["appearance"]["barAlpha"])
+            F.BD(previewButton).widgets.healthBarLoss:SetVertexColor(lossR, lossG, lossB, CellDB["appearance"]["lossAlpha"])
 
             healthPercentOld = healthPercent
             currentState = currentState == 8 and 1 or (currentState + 1)
@@ -433,41 +442,41 @@ local function UpdatePreviewShields(r, g, b)
     if CellDB["appearance"]["healPrediction"][1] then
         if Cell.isMidnight then
             -- StatusBar: set range to match health bar, show 20% incoming heal
-            previewButton2.widgets.incomingHeal:SetMinMaxValues(0, 100)
-            previewButton2.widgets.incomingHeal:SetValue(20)
-            previewButton2.widgets.incomingHeal:Show()
+            F.BD(previewButton2).widgets.incomingHeal:SetMinMaxValues(0, 100)
+            F.BD(previewButton2).widgets.incomingHeal:SetValue(20)
+            F.BD(previewButton2).widgets.incomingHeal:Show()
         else
-            previewButton2.widgets.incomingHeal:SetValue(0.2, 0.6)
+            F.BD(previewButton2).widgets.incomingHeal:SetValue(0.2, 0.6)
         end
         if CellDB["appearance"]["healPrediction"][2] then
-            previewButton2.widgets.incomingHeal:SetVertexColor(CellDB["appearance"]["healPrediction"][3][1], CellDB["appearance"]["healPrediction"][3][2], CellDB["appearance"]["healPrediction"][3][3], CellDB["appearance"]["healPrediction"][3][4])
+            F.BD(previewButton2).widgets.incomingHeal:SetVertexColor(CellDB["appearance"]["healPrediction"][3][1], CellDB["appearance"]["healPrediction"][3][2], CellDB["appearance"]["healPrediction"][3][3], CellDB["appearance"]["healPrediction"][3][4])
         else
-            previewButton2.widgets.incomingHeal:SetVertexColor(r, g, b, 0.4)
+            F.BD(previewButton2).widgets.incomingHeal:SetVertexColor(r, g, b, 0.4)
         end
     else
-        previewButton2.widgets.incomingHeal:Hide()
+        F.BD(previewButton2).widgets.incomingHeal:Hide()
     end
 
     -- Heal absorb
     if Cell.isRetail or Cell.isMists then
         if CellDB["appearance"]["healAbsorb"][1] then
             if Cell.isMidnight then
-                previewButton2.widgets.absorbsBar:SetMinMaxValues(0, 100)
-                previewButton2.widgets.absorbsBar:SetValue(20)
-                previewButton2.widgets.absorbsBar:Show()
+                F.BD(previewButton2).widgets.absorbsBar:SetMinMaxValues(0, 100)
+                F.BD(previewButton2).widgets.absorbsBar:SetValue(20)
+                F.BD(previewButton2).widgets.absorbsBar:Show()
             else
-                previewButton2.widgets.absorbsBar:SetValue(0.8, 0.6)
+                F.BD(previewButton2).widgets.absorbsBar:SetValue(0.8, 0.6)
             end
             if CellDB["appearance"]["healAbsorbInvertColor"] then
-                previewButton2.widgets.absorbsBar:SetVertexColor(F.InvertColor(previewButton2.widgets.healthBar:GetStatusBarColor()))
-                previewButton2.widgets.overAbsorbGlow:SetVertexColor(F.InvertColor(previewButton2.widgets.healthBar:GetStatusBarColor()))
+                F.BD(previewButton2).widgets.absorbsBar:SetVertexColor(F.InvertColor(F.BD(previewButton2).widgets.healthBar:GetStatusBarColor()))
+                F.BD(previewButton2).widgets.overAbsorbGlow:SetVertexColor(F.InvertColor(F.BD(previewButton2).widgets.healthBar:GetStatusBarColor()))
             else
-                previewButton2.widgets.absorbsBar:SetVertexColor(unpack(CellDB["appearance"]["healAbsorb"][2]))
-                previewButton2.widgets.overAbsorbGlow:SetVertexColor(unpack(CellDB["appearance"]["healAbsorb"][2]))
+                F.BD(previewButton2).widgets.absorbsBar:SetVertexColor(unpack(CellDB["appearance"]["healAbsorb"][2]))
+                F.BD(previewButton2).widgets.overAbsorbGlow:SetVertexColor(unpack(CellDB["appearance"]["healAbsorb"][2]))
             end
         else
-            previewButton2.widgets.absorbsBar:Hide()
-            previewButton2.widgets.overAbsorbGlow:Hide()
+            F.BD(previewButton2).widgets.absorbsBar:Hide()
+            F.BD(previewButton2).widgets.overAbsorbGlow:Hide()
         end
     end
 
@@ -478,75 +487,75 @@ local function UpdatePreviewShields(r, g, b)
         if CellDB["appearance"]["shield"][1] then
             if reverseFilling then
                 -- Reverse fill: only show shieldBarR, hide shieldBar
-                previewButton2.widgets.shieldBar:Hide()
+                F.BD(previewButton2).widgets.shieldBar:Hide()
                 if Cell.isMidnight then
-                    previewButton2.widgets.shieldBarR:SetMinMaxValues(0, 100)
-                    previewButton2.widgets.shieldBarR:SetValue(30)
+                    F.BD(previewButton2).widgets.shieldBarR:SetMinMaxValues(0, 100)
+                    F.BD(previewButton2).widgets.shieldBarR:SetValue(30)
                 end
-                previewButton2.widgets.shieldBarR:SetVertexColor(unpack(CellDB["appearance"]["shield"][2]))
-                previewButton2.widgets.shieldBarR:Show()
+                F.BD(previewButton2).widgets.shieldBarR:SetVertexColor(unpack(CellDB["appearance"]["shield"][2]))
+                F.BD(previewButton2).widgets.shieldBarR:Show()
             else
                 -- Normal fill: show shieldBar, hide shieldBarR
                 if Cell.isMidnight then
-                    previewButton2.widgets.shieldBar:SetMinMaxValues(0, 100)
-                    previewButton2.widgets.shieldBar:SetValue(30)
+                    F.BD(previewButton2).widgets.shieldBar:SetMinMaxValues(0, 100)
+                    F.BD(previewButton2).widgets.shieldBar:SetValue(30)
                 else
-                    previewButton2.widgets.shieldBar:SetValue(0.6, 0.6)
+                    F.BD(previewButton2).widgets.shieldBar:SetValue(0.6, 0.6)
                 end
-                previewButton2.widgets.shieldBar:SetVertexColor(unpack(CellDB["appearance"]["shield"][2]))
-                previewButton2.widgets.shieldBar:Show()
-                previewButton2.widgets.shieldBarR:Hide()
+                F.BD(previewButton2).widgets.shieldBar:SetVertexColor(unpack(CellDB["appearance"]["shield"][2]))
+                F.BD(previewButton2).widgets.shieldBar:Show()
+                F.BD(previewButton2).widgets.shieldBarR:Hide()
             end
         else
-            previewButton2.widgets.shieldBar:Hide()
-            previewButton2.widgets.shieldBarR:Hide()
+            F.BD(previewButton2).widgets.shieldBar:Hide()
+            F.BD(previewButton2).widgets.shieldBarR:Hide()
         end
 
         if CellDB["appearance"]["overshield"][1] and not reverseFilling then
-            previewButton2.widgets.overShieldGlow:SetVertexColor(unpack(CellDB["appearance"]["overshield"][2]))
-            previewButton2.widgets.overShieldGlow:Show()
+            F.BD(previewButton2).widgets.overShieldGlow:SetVertexColor(unpack(CellDB["appearance"]["overshield"][2]))
+            F.BD(previewButton2).widgets.overShieldGlow:Show()
         else
-            previewButton2.widgets.overShieldGlow:Hide()
+            F.BD(previewButton2).widgets.overShieldGlow:Hide()
         end
 
         if reverseFilling then
             if CellDB["appearance"]["overshield"][1] then
-                previewButton2.widgets.overShieldGlowR:SetVertexColor(unpack(CellDB["appearance"]["overshield"][2]))
-                previewButton2.widgets.overShieldGlowR:Show()
+                F.BD(previewButton2).widgets.overShieldGlowR:SetVertexColor(unpack(CellDB["appearance"]["overshield"][2]))
+                F.BD(previewButton2).widgets.overShieldGlowR:Show()
             else
-                previewButton2.widgets.overShieldGlowR:Hide()
+                F.BD(previewButton2).widgets.overShieldGlowR:Hide()
             end
         else
-            previewButton2.widgets.overShieldGlowR:Hide()
+            F.BD(previewButton2).widgets.overShieldGlowR:Hide()
         end
     end
 end
 
 local function UpdatePreviewButton(which)
     if not which or which == "texture" or which == "reset" then
-        previewButton.widgets.healthBar:SetStatusBarTexture(Cell.vars.texture)
-        previewButton.widgets.healthBarLoss:SetTexture(Cell.vars.texture)
-        previewButton.widgets.powerBar:SetStatusBarTexture(Cell.vars.texture)
-        previewButton.widgets.powerBarLoss:SetTexture(Cell.vars.texture)
+        F.BD(previewButton).widgets.healthBar:SetStatusBarTexture(Cell.vars.texture)
+        F.BD(previewButton).widgets.healthBarLoss:SetTexture(Cell.vars.texture)
+        F.BD(previewButton).widgets.powerBar:SetStatusBarTexture(Cell.vars.texture)
+        F.BD(previewButton).widgets.powerBarLoss:SetTexture(Cell.vars.texture)
         if Cell.isMidnight then
-            previewButton.widgets.incomingHeal:SetStatusBarTexture(Cell.vars.texture)
+            F.BD(previewButton).widgets.incomingHeal:SetStatusBarTexture(Cell.vars.texture)
         else
-            previewButton.widgets.incomingHeal:SetTexture(Cell.vars.texture)
+            F.BD(previewButton).widgets.incomingHeal:SetTexture(Cell.vars.texture)
         end
-        previewButton.widgets.damageFlashTex:SetTexture(Cell.vars.texture)
+        F.BD(previewButton).widgets.damageFlashTex:SetTexture(Cell.vars.texture)
 
-        previewButton2.widgets.healthBar:SetStatusBarTexture(Cell.vars.texture)
-        previewButton2.widgets.healthBar:GetStatusBarTexture():SetDrawLayer("ARTWORK", -7) --! VERY IMPORTANT
-        previewButton2.widgets.healthBarLoss:SetTexture(Cell.vars.texture)
-        previewButton2.widgets.powerBar:SetStatusBarTexture(Cell.vars.texture)
-        previewButton2.widgets.powerBar:GetStatusBarTexture():SetDrawLayer("ARTWORK", -7) --! VERY IMPORTANT
-        previewButton2.widgets.powerBarLoss:SetTexture(Cell.vars.texture)
+        F.BD(previewButton2).widgets.healthBar:SetStatusBarTexture(Cell.vars.texture)
+        F.BD(previewButton2).widgets.healthBar:GetStatusBarTexture():SetDrawLayer("ARTWORK", -7) --! VERY IMPORTANT
+        F.BD(previewButton2).widgets.healthBarLoss:SetTexture(Cell.vars.texture)
+        F.BD(previewButton2).widgets.powerBar:SetStatusBarTexture(Cell.vars.texture)
+        F.BD(previewButton2).widgets.powerBar:GetStatusBarTexture():SetDrawLayer("ARTWORK", -7) --! VERY IMPORTANT
+        F.BD(previewButton2).widgets.powerBarLoss:SetTexture(Cell.vars.texture)
         if Cell.isMidnight then
-            previewButton2.widgets.incomingHeal:SetStatusBarTexture(Cell.vars.texture)
+            F.BD(previewButton2).widgets.incomingHeal:SetStatusBarTexture(Cell.vars.texture)
         else
-            previewButton2.widgets.incomingHeal:SetTexture(Cell.vars.texture)
+            F.BD(previewButton2).widgets.incomingHeal:SetTexture(Cell.vars.texture)
         end
-        previewButton2.widgets.damageFlashTex:SetTexture(Cell.vars.texture)
+        F.BD(previewButton2).widgets.damageFlashTex:SetTexture(Cell.vars.texture)
     end
 
     if not which or which == "layout" then
@@ -564,18 +573,18 @@ local function UpdatePreviewButton(which)
     if not which or which == "color" or which == "alpha" or which == "shields" or which == "reset" then
         -- power color
         local r, g, b = F.GetPowerBarColor("player", Cell.vars.playerClass)
-        previewButton.widgets.powerBar:SetStatusBarColor(r, g, b)
-        previewButton2.widgets.powerBar:SetStatusBarColor(r, g, b)
+        F.BD(previewButton).widgets.powerBar:SetStatusBarColor(r, g, b)
+        F.BD(previewButton2).widgets.powerBar:SetStatusBarColor(r, g, b)
 
         -- health color
         local lossR, lossG, lossB
         r, g, b, lossR, lossG, lossB = F.GetHealthBarColor(previewButton.perc or 1, previewButton.perc == 0, F.GetClassColor(Cell.vars.playerClass))
-        previewButton.widgets.healthBar:SetStatusBarColor(r, g, b, CellDB["appearance"]["barAlpha"])
-        previewButton.widgets.healthBarLoss:SetVertexColor(lossR, lossG, lossB, CellDB["appearance"]["lossAlpha"])
+        F.BD(previewButton).widgets.healthBar:SetStatusBarColor(r, g, b, CellDB["appearance"]["barAlpha"])
+        F.BD(previewButton).widgets.healthBarLoss:SetVertexColor(lossR, lossG, lossB, CellDB["appearance"]["lossAlpha"])
 
         r, g, b, lossR, lossG, lossB = F.GetHealthBarColor(0.6, false, F.GetClassColor(Cell.vars.playerClass))
-        previewButton2.widgets.healthBar:SetStatusBarColor(r, g, b, CellDB["appearance"]["barAlpha"])
-        previewButton2.widgets.healthBarLoss:SetVertexColor(lossR, lossG, lossB, CellDB["appearance"]["lossAlpha"])
+        F.BD(previewButton2).widgets.healthBar:SetStatusBarColor(r, g, b, CellDB["appearance"]["barAlpha"])
+        F.BD(previewButton2).widgets.healthBarLoss:SetVertexColor(lossR, lossG, lossB, CellDB["appearance"]["lossAlpha"])
 
         -- bg alpha
         previewButton:SetBackdropColor(0, 0, 0, CellDB["appearance"]["bgAlpha"])
@@ -596,7 +605,7 @@ end
 local textureDropdown, barColorDropdown, barColorPicker, fullColorCB, fullColorPicker, lossColorDropdown, lossColorPicker, deathColorCB, deathColorPicker, powerColorDropdown, powerColorPicker, barAnimationDropdown, targetColorPicker, mouseoverColorPicker, highlightSize
 local gradientCB, thresholdCP1, thresholdCP2, thresholdCP3, thresholdDropdown, colorThresholdDropdown2
 local gradientLossCB, thresholdLossCP1, thresholdLossCP2, thresholdLossCP3, thresholdLossDropdown1, thresholdLossDropdown2
-local barAlpha, lossAlpha, bgAlpha, oorAlpha, predCB, absorbCB, invertColorCB, shieldCB, oversCB, reverseCB
+local barAlpha, lossAlpha, bgAlpha, oorAlpha, healthFadeBtn, healthFadeOptionsFrame, healthFadeCB, healthFadeThreshold, predCB, absorbCB, invertColorCB, shieldCB, oversCB, reverseCB
 local predCustomCB, predColorPicker, absorbColorPicker, shieldColorPicker, oversColorPicker
 local iconOptionsBtn, iconOptionsFrame, cooldownStyleDropdown, iconAnimationDropdown, durationRoundUpCB, durationDecimalText1, durationDecimalText2, durationDecimalDropdown, durationColorCB, durationNormalCP, durationPercentCP, durationSecondCP, durationPercentDD, durationSecondEB, durationSecondText
 
@@ -612,9 +621,9 @@ local function GetConfiguredCooldownStyle()
 end
 
 local function ApplyCooldownStyleToButton(button, style)
-    if not button or not button.indicators then return end
+    if not button or not F.BD(button).indicators then return end
 
-    for _, indicator in pairs(button.indicators) do
+    for _, indicator in pairs(F.BD(button).indicators) do
         if indicator and indicator.SetCooldownStyle then
             indicator:SetCooldownStyle(style)
         end
@@ -687,6 +696,43 @@ local function CheckTextures()
     else
         textureDropdown:SetSelected(defaultTextureName, defaultTexture)
     end
+end
+
+local function CreateHealthFadeOptionsFrame()
+    if not appearanceTab.mask then
+        Cell.CreateMask(appearanceTab, nil, {1, -1, -1, 1})
+        appearanceTab.mask:Hide()
+    end
+
+    healthFadeOptionsFrame = Cell.CreateFrame("CellOptionsFrame_HealthFadeOptions", appearanceTab, 230, 95)
+    healthFadeOptionsFrame:SetBackdropBorderColor(unpack(Cell.GetAccentColorTable()))
+    healthFadeOptionsFrame:SetPoint("TOP", healthFadeBtn, "BOTTOM", 0, -5)
+    healthFadeOptionsFrame:SetPoint("RIGHT", -5, 0)
+    healthFadeOptionsFrame:SetFrameLevel(appearanceTab:GetFrameLevel() + 50)
+
+    healthFadeOptionsFrame:SetScript("OnShow", function()
+        appearanceTab.mask:Show()
+        healthFadeBtn:SetFrameLevel(appearanceTab:GetFrameLevel() + 50)
+    end)
+    healthFadeOptionsFrame:SetScript("OnHide", function()
+        healthFadeOptionsFrame:Hide()
+        appearanceTab.mask:Hide()
+        healthFadeBtn:SetFrameLevel(appearanceTab:GetFrameLevel() + 1)
+    end)
+
+    healthFadeCB = Cell.CreateCheckButton(healthFadeOptionsFrame, L["Fade at Full Health"], function(checked, self)
+        CellDB["appearance"]["healthFadeEnabled"] = checked
+        ApplyHealthFadeThreshold()
+        Cell.Fire("UpdateAppearance", "outOfRangeAlpha")
+    end, L["Fade at Full Health"], L["healthFadeTip"])
+    healthFadeCB:SetPoint("TOPLEFT", healthFadeOptionsFrame, 10, -20)
+
+    healthFadeThreshold = Cell.CreateSlider(L["Health Fade Threshold"], healthFadeOptionsFrame, 1, 100, 141, 1, function(value)
+        CellDB["appearance"]["healthFadeThreshold"] = value/100
+        ApplyHealthFadeThreshold()
+        Cell.Fire("UpdateAppearance", "outOfRangeAlpha")
+    end, nil, true)
+    healthFadeThreshold:SetPoint("TOPLEFT", healthFadeCB, "BOTTOMLEFT", 5, -30)
 end
 
 local function CreateIconOptionsFrame()
@@ -810,120 +856,154 @@ local function CreateIconOptionsFrame()
     durationColorCB = Cell.CreateCheckButton(iconOptionsFrame, L["Color Duration Text"], function(checked, self)
         CellDropdownList:Hide()
 
-        -- restore sec
-        durationSecondEB:SetText(CellDB["appearance"]["auraIconOptions"]["durationColors"][3][4])
-        durationSecondEB.confirmBtn:Hide()
+        if durationSecondEB then
+            -- restore sec
+            durationSecondEB:SetText(CellDB["appearance"]["auraIconOptions"]["durationColors"][3][4])
+            durationSecondEB.confirmBtn:Hide()
+        end
 
         CellDB["appearance"]["auraIconOptions"]["durationColorEnabled"] = checked
-        Cell.SetEnabled(checked, durationNormalCP, durationPercentCP, durationPercentDD, durationSecondCP, durationSecondEB, durationSecondText)
-
-        Cell.Fire("UpdateAppearance", "icon")
-    end)
-    durationColorCB:SetPoint("TOPLEFT", durationRoundUpCB, "BOTTOMLEFT", 0, -63)
-
-    durationNormalCP = Cell.CreateColorPicker(iconOptionsFrame, L["Normal"], false, function(r, g, b)
-        CellDB["appearance"]["auraIconOptions"]["durationColors"][1][1] = r
-        CellDB["appearance"]["auraIconOptions"]["durationColors"][1][2] = g
-        CellDB["appearance"]["auraIconOptions"]["durationColors"][1][3] = b
-        Cell.Fire("UpdateAppearance", "icon")
-    end)
-    durationNormalCP:SetPoint("TOPLEFT", durationColorCB, "BOTTOMLEFT", 0, -8)
-
-    durationPercentCP = Cell.CreateColorPicker(iconOptionsFrame, L["Remaining Time"].." <", false, function(r, g, b)
-        CellDB["appearance"]["auraIconOptions"]["durationColors"][2][1] = r
-        CellDB["appearance"]["auraIconOptions"]["durationColors"][2][2] = g
-        CellDB["appearance"]["auraIconOptions"]["durationColors"][2][3] = b
-        Cell.Fire("UpdateAppearance", "icon")
-    end)
-    durationPercentCP:SetPoint("TOPLEFT", durationNormalCP, "BOTTOMLEFT", 0, -8)
-
-    durationSecondCP = Cell.CreateColorPicker(iconOptionsFrame, L["Remaining Time"].." <", false, function(r, g, b)
-        CellDB["appearance"]["auraIconOptions"]["durationColors"][3][1] = r
-        CellDB["appearance"]["auraIconOptions"]["durationColors"][3][2] = g
-        CellDB["appearance"]["auraIconOptions"]["durationColors"][3][3] = b
-        Cell.Fire("UpdateAppearance", "icon")
-    end)
-    durationSecondCP:SetPoint("TOPLEFT", durationPercentCP, "BOTTOMLEFT", 0, -8)
-
-    durationPercentDD = Cell.CreateDropdown(iconOptionsFrame, 60)
-    durationPercentDD:SetPoint("LEFT", durationPercentCP.label, "RIGHT", 5, 0)
-    durationPercentDD:SetItems({
-        {
-            ["text"] = "75%",
-            ["value"] = 0.75,
-            ["onClick"] = function()
-                CellDB["appearance"]["auraIconOptions"]["durationColors"][2][4] = 0.75
-                Cell.Fire("UpdateAppearance", "icon")
-            end,
-        },
-        {
-            ["text"] = "50%",
-            ["value"] = 0.5,
-            ["onClick"] = function()
-                CellDB["appearance"]["auraIconOptions"]["durationColors"][2][4] = 0.5
-                Cell.Fire("UpdateAppearance", "icon")
-            end,
-        },
-        {
-            ["text"] = "30%",
-            ["value"] = 0.3,
-            ["onClick"] = function()
-                CellDB["appearance"]["auraIconOptions"]["durationColors"][2][4] = 0.3
-                Cell.Fire("UpdateAppearance", "icon")
-            end,
-        },
-        {
-            ["text"] = "25%",
-            ["value"] = 0.25,
-            ["onClick"] = function()
-                CellDB["appearance"]["auraIconOptions"]["durationColors"][2][4] = 0.25
-                Cell.Fire("UpdateAppearance", "icon")
-            end,
-        },
-        {
-            ["text"] = _G.NONE,
-            ["value"] = 0,
-            ["onClick"] = function()
-                CellDB["appearance"]["auraIconOptions"]["durationColors"][2][4] = 0
-                Cell.Fire("UpdateAppearance", "icon")
-            end,
-        },
-    })
-
-    durationSecondEB = Cell.CreateEditBox(iconOptionsFrame, 43, 20, false, false, true)
-    durationSecondEB:SetPoint("LEFT", durationSecondCP.label, "RIGHT", 5, 0)
-    durationSecondEB:SetMaxLetters(4)
-
-    durationSecondEB.confirmBtn = Cell.CreateButton(iconOptionsFrame, "OK", "accent", {27, 20})
-    durationSecondEB.confirmBtn:SetPoint("LEFT", durationSecondEB, "RIGHT", -1, 0)
-    durationSecondEB.confirmBtn:Hide()
-    durationSecondEB.confirmBtn:SetScript("OnHide", function()
-        durationSecondEB.confirmBtn:Hide()
-    end)
-    durationSecondEB.confirmBtn:SetScript("OnClick", function()
-        local newSec = tonumber(durationSecondEB:GetText())
-        durationSecondEB:SetText(newSec)
-        durationSecondEB.confirmBtn:Hide()
-
-        CellDB["appearance"]["auraIconOptions"]["durationColors"][3][4] = newSec
-
-        Cell.Fire("UpdateAppearance", "icon")
-    end)
-
-    durationSecondEB:SetScript("OnTextChanged", function(self, userChanged)
-        if userChanged then
-            local newSec = tonumber(self:GetText())
-            if newSec and newSec ~= "" then
-                durationSecondEB.confirmBtn:Show()
-            else
-                durationSecondEB.confirmBtn:Hide()
-            end
+        if durationNormalCP then
+            Cell.SetEnabled(checked, durationNormalCP, durationPercentCP, durationPercentDD, durationSecondCP, durationSecondEB, durationSecondText)
         end
+
+        Cell.Fire("UpdateAppearance", "icon")
     end)
 
-    durationSecondText = iconOptionsFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
-    durationSecondText:SetPoint("LEFT", durationSecondEB, "RIGHT", 5, 0)
-    durationSecondText:SetText(L["sec"])
+    if Cell.isRetail then
+        durationColorCB:SetPoint("TOPLEFT", durationRoundUpCB, "BOTTOMLEFT", 0, -63)
+        durationColorCB:SetChecked(false)
+        Cell.SetEnabled(false, durationColorCB)
+
+        local notice = CreateFrame("Frame", nil, iconOptionsFrame, "BackdropTemplate")
+        notice:SetPoint("TOPLEFT", durationColorCB, "BOTTOMLEFT", 0, -8)
+        notice:SetPoint("RIGHT", iconOptionsFrame, "RIGHT", -10, 0)
+        notice:SetHeight(52)
+        notice:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        notice:SetBackdropColor(0.28, 0.18, 0.04, 0.7)
+        notice:SetBackdropBorderColor(1, 0.82, 0.25, 0.75)
+
+        local noticeText = notice:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        noticeText:SetPoint("TOPLEFT", 6, -5)
+        noticeText:SetPoint("BOTTOMRIGHT", -6, 5)
+        noticeText:SetJustifyH("LEFT")
+        noticeText:SetJustifyV("MIDDLE")
+        noticeText:SetWordWrap(true)
+        noticeText:SetTextColor(1, 0.85, 0.35)
+        noticeText:SetText(L["Color Duration Text Unavailable Tip"])
+
+        iconOptionsFrame:SetHeight(280)
+    else
+        durationColorCB:SetPoint("TOPLEFT", durationRoundUpCB, "BOTTOMLEFT", 0, -63)
+
+        durationNormalCP = Cell.CreateColorPicker(iconOptionsFrame, L["Normal"], false, function(r, g, b)
+            CellDB["appearance"]["auraIconOptions"]["durationColors"][1][1] = r
+            CellDB["appearance"]["auraIconOptions"]["durationColors"][1][2] = g
+            CellDB["appearance"]["auraIconOptions"]["durationColors"][1][3] = b
+            Cell.Fire("UpdateAppearance", "icon")
+        end)
+        durationNormalCP:SetPoint("TOPLEFT", durationColorCB, "BOTTOMLEFT", 0, -8)
+
+        durationPercentCP = Cell.CreateColorPicker(iconOptionsFrame, L["Remaining Time"].." <", false, function(r, g, b)
+            CellDB["appearance"]["auraIconOptions"]["durationColors"][2][1] = r
+            CellDB["appearance"]["auraIconOptions"]["durationColors"][2][2] = g
+            CellDB["appearance"]["auraIconOptions"]["durationColors"][2][3] = b
+            Cell.Fire("UpdateAppearance", "icon")
+        end)
+        durationPercentCP:SetPoint("TOPLEFT", durationNormalCP, "BOTTOMLEFT", 0, -8)
+
+        durationSecondCP = Cell.CreateColorPicker(iconOptionsFrame, L["Remaining Time"].." <", false, function(r, g, b)
+            CellDB["appearance"]["auraIconOptions"]["durationColors"][3][1] = r
+            CellDB["appearance"]["auraIconOptions"]["durationColors"][3][2] = g
+            CellDB["appearance"]["auraIconOptions"]["durationColors"][3][3] = b
+            Cell.Fire("UpdateAppearance", "icon")
+        end)
+        durationSecondCP:SetPoint("TOPLEFT", durationPercentCP, "BOTTOMLEFT", 0, -8)
+
+        durationPercentDD = Cell.CreateDropdown(iconOptionsFrame, 60)
+        durationPercentDD:SetPoint("LEFT", durationPercentCP.label, "RIGHT", 5, 0)
+        durationPercentDD:SetItems({
+            {
+                ["text"] = "75%",
+                ["value"] = 0.75,
+                ["onClick"] = function()
+                    CellDB["appearance"]["auraIconOptions"]["durationColors"][2][4] = 0.75
+                    Cell.Fire("UpdateAppearance", "icon")
+                end,
+            },
+            {
+                ["text"] = "50%",
+                ["value"] = 0.5,
+                ["onClick"] = function()
+                    CellDB["appearance"]["auraIconOptions"]["durationColors"][2][4] = 0.5
+                    Cell.Fire("UpdateAppearance", "icon")
+                end,
+            },
+            {
+                ["text"] = "30%",
+                ["value"] = 0.3,
+                ["onClick"] = function()
+                    CellDB["appearance"]["auraIconOptions"]["durationColors"][2][4] = 0.3
+                    Cell.Fire("UpdateAppearance", "icon")
+                end,
+            },
+            {
+                ["text"] = "25%",
+                ["value"] = 0.25,
+                ["onClick"] = function()
+                    CellDB["appearance"]["auraIconOptions"]["durationColors"][2][4] = 0.25
+                    Cell.Fire("UpdateAppearance", "icon")
+                end,
+            },
+            {
+                ["text"] = _G.NONE,
+                ["value"] = 0,
+                ["onClick"] = function()
+                    CellDB["appearance"]["auraIconOptions"]["durationColors"][2][4] = 0
+                    Cell.Fire("UpdateAppearance", "icon")
+                end,
+            },
+        })
+
+        durationSecondEB = Cell.CreateEditBox(iconOptionsFrame, 43, 20, false, false, true)
+        durationSecondEB:SetPoint("LEFT", durationSecondCP.label, "RIGHT", 5, 0)
+        durationSecondEB:SetMaxLetters(4)
+
+        durationSecondEB.confirmBtn = Cell.CreateButton(iconOptionsFrame, "OK", "accent", {27, 20})
+        durationSecondEB.confirmBtn:SetPoint("LEFT", durationSecondEB, "RIGHT", -1, 0)
+        durationSecondEB.confirmBtn:Hide()
+        durationSecondEB.confirmBtn:SetScript("OnHide", function()
+            durationSecondEB.confirmBtn:Hide()
+        end)
+        durationSecondEB.confirmBtn:SetScript("OnClick", function()
+            local newSec = tonumber(durationSecondEB:GetText())
+            durationSecondEB:SetText(newSec)
+            durationSecondEB.confirmBtn:Hide()
+
+            CellDB["appearance"]["auraIconOptions"]["durationColors"][3][4] = newSec
+
+            Cell.Fire("UpdateAppearance", "icon")
+        end)
+
+        durationSecondEB:SetScript("OnTextChanged", function(self, userChanged)
+            if userChanged then
+                local newSec = tonumber(self:GetText())
+                if newSec and newSec ~= "" then
+                    durationSecondEB.confirmBtn:Show()
+                else
+                    durationSecondEB.confirmBtn:Hide()
+                end
+            end
+        end)
+
+        durationSecondText = iconOptionsFrame:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+        durationSecondText:SetPoint("LEFT", durationSecondEB, "RIGHT", 5, 0)
+        durationSecondText:SetText(L["sec"])
+    end
 end
 
 local function UpdateCheckButtons()
@@ -1492,6 +1572,18 @@ local function CreateUnitButtonStylePane()
         Cell.Fire("UpdateAppearance", "highlightSize")
     end
 
+    -- health fade options button (opens healthFadeOptionsFrame, same pattern as
+    -- iconOptionsBtn/iconOptionsFrame above)
+    healthFadeBtn = Cell.CreateButton(unitButtonPane, L["Fade at Full Health"], "accent-hover", {160, 20})
+    healthFadeBtn:SetPoint("TOPLEFT", highlightSize, "BOTTOMLEFT", 0, -25)
+    healthFadeBtn:SetScript("OnClick", function()
+        if healthFadeOptionsFrame:IsShown() then
+            healthFadeOptionsFrame:Hide()
+        else
+            healthFadeOptionsFrame:Show()
+        end
+    end)
+
     -- icon options
     iconOptionsBtn = Cell.CreateButton(unitButtonPane, L["Aura Icon Options"], "accent-hover", {160, 20})
     iconOptionsBtn:SetPoint("TOPLEFT", unitButtonPane, "TOPLEFT", 222, -42)
@@ -1734,6 +1826,8 @@ local function LoadShieldAndAlphaWidgets()
     mouseoverColorPicker:SetColor(CellDB["appearance"]["mouseoverColor"])
     highlightSize:SetValue(CellDB["appearance"]["highlightSize"])
     oorAlpha:SetValue(CellDB["appearance"]["outOfRangeAlpha"]*100)
+    healthFadeCB:SetChecked(CellDB["appearance"]["healthFadeEnabled"])
+    healthFadeThreshold:SetValue(CellDB["appearance"]["healthFadeThreshold"]*100)
     barAlpha:SetValue(CellDB["appearance"]["barAlpha"]*100)
     lossAlpha:SetValue(CellDB["appearance"]["lossAlpha"]*100)
     bgAlpha:SetValue(CellDB["appearance"]["bgAlpha"]*100)
@@ -1760,13 +1854,18 @@ local function LoadIconOptionWidgets()
     durationRoundUpCB:SetChecked(auraIconOptions["durationRoundUp"])
     Cell.SetEnabled(not auraIconOptions["durationRoundUp"], durationDecimalText1, durationDecimalText2, durationDecimalDropdown)
     durationDecimalDropdown:SetSelectedValue(auraIconOptions["durationDecimal"])
-    durationColorCB:SetChecked(auraIconOptions["durationColorEnabled"])
-    Cell.SetEnabled(auraIconOptions["durationColorEnabled"], durationNormalCP, durationPercentCP, durationPercentDD, durationSecondCP, durationSecondEB, durationSecondText)
-    durationNormalCP:SetColor(auraIconOptions["durationColors"][1])
-    durationPercentCP:SetColor(auraIconOptions["durationColors"][2][1], auraIconOptions["durationColors"][2][2], auraIconOptions["durationColors"][2][3])
-    durationPercentDD:SetSelectedValue(auraIconOptions["durationColors"][2][4])
-    durationSecondCP:SetColor(auraIconOptions["durationColors"][3][1], auraIconOptions["durationColors"][3][2], auraIconOptions["durationColors"][3][3])
-    durationSecondEB:SetText(auraIconOptions["durationColors"][3][4])
+    if Cell.isRetail then
+        durationColorCB:SetChecked(false)
+        Cell.SetEnabled(false, durationColorCB)
+    else
+        durationColorCB:SetChecked(auraIconOptions["durationColorEnabled"])
+        Cell.SetEnabled(auraIconOptions["durationColorEnabled"], durationNormalCP, durationPercentCP, durationPercentDD, durationSecondCP, durationSecondEB, durationSecondText)
+        durationNormalCP:SetColor(auraIconOptions["durationColors"][1])
+        durationPercentCP:SetColor(auraIconOptions["durationColors"][2][1], auraIconOptions["durationColors"][2][2], auraIconOptions["durationColors"][2][3])
+        durationPercentDD:SetSelectedValue(auraIconOptions["durationColors"][2][4])
+        durationSecondCP:SetColor(auraIconOptions["durationColors"][3][1], auraIconOptions["durationColors"][3][2], auraIconOptions["durationColors"][3][3])
+        durationSecondEB:SetText(auraIconOptions["durationColors"][3][4])
+    end
 end
 
 LoadButtonStyle = function()
@@ -1831,6 +1930,7 @@ local function ShowTab(tab)
             CreateCellPane()
             CreateUnitButtonStylePane()
             CreateIconOptionsFrame()
+            CreateHealthFadeOptionsFrame()
             CreateDebuffTypeColorPane()
         end
 
@@ -1872,6 +1972,10 @@ Cell.RegisterCallback("UpdateIndicators", "AppearanceTab_UpdateIndicators", Upda
 local function UpdateAppearance(which)
     F.Debug("|cff7f7fffUpdateAppearance:|r", which)
 
+    if not which or which == "outOfRangeAlpha" or which == "reset" then
+        ApplyHealthFadeThreshold()
+    end
+
     if not which or which == "texture" or which == "color" or which == "fullColor" or which == "deathColor" or which == "alpha" or which == "outOfRangeAlpha" or which == "shields" or which == "animation" or which == "highlightColor" or which == "highlightSize" or which == "reset" then
         local tex
         if not which or which == "texture" or which == "reset" then tex = F.GetBarTexture() end
@@ -1904,14 +2008,18 @@ local function UpdateAppearance(which)
             -- outOfRangeAlpha
             if which == "outOfRangeAlpha" or which == "reset" then
                 local alpha = CellDB["appearance"]["outOfRangeAlpha"]
-                local shouldFade = b.states.inRange == false
-                if not shouldFade and CELL_FADE_OUT_HEALTH_PERCENT and b.states.healthPercent and b.states.healthPercent >= CELL_FADE_OUT_HEALTH_PERCENT then
+                local shouldFade = F.BD(b).states.inRange == false
+                if not shouldFade and CELL_FADE_OUT_HEALTH_PERCENT and F.BD(b).states.healthPercent and F.BD(b).states.healthPercent >= CELL_FADE_OUT_HEALTH_PERCENT then
                     shouldFade = true
                 end
                 if shouldFade then
                     b:SetAlpha(alpha)
+                else
+                    -- Covers turning Fade at Full Health off (or raising its threshold)
+                    -- while a frame is currently sitting at the dimmed alpha.
+                    b:SetAlpha(1)
                 end
-                b.states.wasInRange = b.states.inRange
+                F.BD(b).states.wasInRange = F.BD(b).states.inRange
             end
             -- shields
             if not which or which == "shields" or which == "reset" then
@@ -1946,7 +2054,9 @@ local function UpdateAppearance(which)
         Cell.vars.iconDurationDecimal = CellDB["appearance"]["auraIconOptions"]["durationDecimal"]
 
         -- color
-        if CellDB["appearance"]["auraIconOptions"]["durationColorEnabled"] then
+        if Cell.isRetail then
+            Cell.vars.iconDurationColors = nil
+        elseif CellDB["appearance"]["auraIconOptions"]["durationColorEnabled"] then
             Cell.vars.iconDurationColors = CellDB["appearance"]["auraIconOptions"]["durationColors"]
         else
             Cell.vars.iconDurationColors = nil

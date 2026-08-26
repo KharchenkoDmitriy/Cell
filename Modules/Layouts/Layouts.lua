@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 ---@type CellFuncs
 local F = Cell.funcs
@@ -31,11 +31,11 @@ local function CreatePreviewButton()
     previewButton:SetScript("OnUpdate", nil)
     previewButton:Show()
 
-    previewButton.widgets.healthBar:SetMinMaxValues(0, 1)
-    previewButton.widgets.healthBar:SetValue(1)
-    previewButton.widgets.powerBar:SetMinMaxValues(0, 1)
-    previewButton.widgets.powerBar:SetValue(1)
-    previewButton.isPreview = true
+    F.BD(previewButton).widgets.healthBar:SetMinMaxValues(0, 1)
+    F.BD(previewButton).widgets.healthBar:SetValue(1)
+    F.BD(previewButton).widgets.powerBar:SetMinMaxValues(0, 1)
+    F.BD(previewButton).widgets.powerBar:SetValue(1)
+    F.BD(previewButton).isPreview = true
 
     local previewButtonBG = Cell.CreateFrame("CellLayoutsPreviewButtonBG", layoutsTab)
     previewButtonBG:SetPoint("TOPLEFT", previewButton, 0, 20)
@@ -58,35 +58,35 @@ local function UpdatePreviewButton(which, value)
     if not which or which == "nameText" then
         local iTable = selectedLayoutTable["indicators"][1]
         if iTable["enabled"] then
-            previewButton.indicators.nameText:Show()
-            previewButton.indicators.nameText.isPreview = true
-            previewButton.states.name = UnitName("player")
-            previewButton.indicators.nameText:UpdateName()
-            previewButton.indicators.nameText:UpdatePreviewColor(iTable["color"])
-            previewButton.indicators.nameText:UpdateTextWidth(iTable["textWidth"])
-            previewButton.indicators.nameText:SetFont(unpack(iTable["font"]))
-            previewButton.indicators.nameText:ClearAllPoints()
-            local relativeTo = iTable["position"][2] == "healthBar" and previewButton.widgets.healthBar or previewButton
-            previewButton.indicators.nameText:SetPoint(iTable["position"][1], relativeTo, iTable["position"][3], iTable["position"][4], iTable["position"][5])
+            F.BD(previewButton).indicators.nameText:Show()
+            F.BD(previewButton).indicators.nameText.isPreview = true
+            F.BD(previewButton).states.name = UnitName("player")
+            F.BD(previewButton).indicators.nameText:UpdateName()
+            F.BD(previewButton).indicators.nameText:UpdatePreviewColor(iTable["color"])
+            F.BD(previewButton).indicators.nameText:UpdateTextWidth(iTable["textWidth"])
+            F.BD(previewButton).indicators.nameText:SetFont(unpack(iTable["font"]))
+            F.BD(previewButton).indicators.nameText:ClearAllPoints()
+            local relativeTo = iTable["position"][2] == "healthBar" and F.BD(previewButton).widgets.healthBar or previewButton
+            F.BD(previewButton).indicators.nameText:SetPoint(iTable["position"][1], relativeTo, iTable["position"][3], iTable["position"][4], iTable["position"][5])
 
-            -- previewButton.indicators.nameText:UpdateVehicleName()
-            -- previewButton.indicators.nameText:UpdateVehicleNamePosition(iTable["vehicleNamePosition"])
+            -- F.BD(previewButton).indicators.nameText:UpdateVehicleName()
+            -- F.BD(previewButton).indicators.nameText:UpdateVehicleNamePosition(iTable["vehicleNamePosition"])
         else
-            previewButton.indicators.nameText:Hide()
+            F.BD(previewButton).indicators.nameText:Hide()
         end
     end
 
     if not which or which == "appearance" then
-        previewButton.widgets.healthBar:SetStatusBarTexture(Cell.vars.texture)
-        previewButton.widgets.powerBar:SetStatusBarTexture(Cell.vars.texture)
+        F.BD(previewButton).widgets.healthBar:SetStatusBarTexture(Cell.vars.texture)
+        F.BD(previewButton).widgets.powerBar:SetStatusBarTexture(Cell.vars.texture)
 
         -- health color
         local r, g, b = F.GetHealthBarColor(1, false, F.GetClassColor(Cell.vars.playerClass))
-        previewButton.widgets.healthBar:SetStatusBarColor(r, g, b, CellDB["appearance"]["barAlpha"])
+        F.BD(previewButton).widgets.healthBar:SetStatusBarColor(r, g, b, CellDB["appearance"]["barAlpha"])
 
         -- power color
         r, g, b = F.GetPowerBarColor("player", Cell.vars.playerClass)
-        previewButton.widgets.powerBar:SetStatusBarColor(r, g, b)
+        F.BD(previewButton).widgets.powerBar:SetStatusBarColor(r, g, b)
 
         -- alpha
         previewButton:SetBackdropColor(0, 0, 0, CellDB["appearance"]["bgAlpha"])

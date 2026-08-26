@@ -1,4 +1,4 @@
----@class Cell
+﻿---@class Cell
 local Cell = select(2, ...)
 local L = Cell.L
 ---@class CellFuncs
@@ -22,7 +22,7 @@ Cell.isCata = WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC
 Cell.isMists = WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC
 Cell.isTWW = LE_EXPANSION_LEVEL_CURRENT == LE_EXPANSION_WAR_WITHIN
 
-local CELL_VERSION_FALLBACK = "r277.9.7.8"
+local CELL_VERSION_FALLBACK = "r277.9.8"
 
 function F.InitAddonVersion()
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
@@ -292,6 +292,12 @@ function F.ColorGradient(perc, c1, c2, c3, lowBound, highBound)
     return rr1 + (rr2 - rr1) * relperc, rg1 + (rg2 - rg1) * relperc, rb1 + (rb2 - rb1) * relperc
 end
 
+-- ElvUI-style health text coloring: red at 0% health, yellow at 50%, the segment's
+-- own base color (r, g, b) once fully healed.
+function F.GetHealthTextColor(percent, r, g, b)
+    return F.ColorGradient(percent, {1, 0, 0}, {1, 1, 0}, {r, g, b})
+end
+
 function F.ColorThreshold(perc, c1, c2, c3, lowBound, highBound, useThresholdColor)
     if useThresholdColor then
         return F.ColorGradient(perc, c1, c2, c3, lowBound, highBound)
@@ -454,23 +460,23 @@ end
 local abs = math.abs
 
 if Cell.isAsian then
-    function F.FormatNumber(n)
+    function F.FormatNumber(n, decimals)
         if abs(n) >= 100000000 then
-            return F.Round(n / 100000000, 2) .. symbol_1B
+            return F.Round(n / 100000000, decimals or 2) .. symbol_1B
         elseif abs(n) >= 10000 then
-            return F.Round(n / 10000, 1) .. symbol_10K
+            return F.Round(n / 10000, decimals or 1) .. symbol_10K
         else
             return n
         end
     end
 else
-    function F.FormatNumber(n)
+    function F.FormatNumber(n, decimals)
         if abs(n) >= 1000000000 then
-            return F.Round(n / 1000000000, 2) .. "B"
+            return F.Round(n / 1000000000, decimals or 2) .. "B"
         elseif abs(n) >= 1000000 then
-            return F.Round(n / 1000000, 2) .. "M"
+            return F.Round(n / 1000000, decimals or 2) .. "M"
         elseif abs(n) >= 1000 then
-            return F.Round(n / 1000, 1) .. "K"
+            return F.Round(n / 1000, decimals or 1) .. "K"
         else
             return n
         end
@@ -1094,8 +1100,8 @@ function F.HandleUnitButton(type, unit, func, ...)
     end
 
     for _, b in pairs(Cell.unitButtons.spotlight) do
-        if b.states.unit then
-            local isMatch = UnitIsUnit(b.states.unit, unit)
+        if F.BD(b).states.unit then
+            local isMatch = UnitIsUnit(F.BD(b).states.unit, unit)
             if not F.IsValueNonSecret(isMatch) or isMatch then
                 func(b, ...)
                 handled = true
@@ -1849,6 +1855,10 @@ local function ResolveAuraUnit(button)
         if p.states and p.states.unit then
             return p.states.unit
         end
+        local bd = F.BD(p)
+        if bd.states and bd.states.unit then
+            return bd.states.unit
+        end
         if p.unit then
             return p.unit
         end
@@ -2143,23 +2153,115 @@ local function ReadButtonTotalDuration(button, spellIds)
     return ReadSpellAuraTotal(unit, spellIds)
 end
 
-local function TrySetDurationText(button, fontString, formatter, curve, prop)
-    local opts = {}
-    if formatter then
-        opts.textFormatter = formatter
+local auraDurationFormatter
+local auraSecondsDurationFormatter
+
+local function ApplyNumericDurationFormatter(button, formatter)
+    if not (button and formatter) then
+        return
     end
+    if button.GetDurationTextBinding then
+        local ok, binding = pcall(button.GetDurationTextBinding, button)
+        if ok and binding and binding.SetFormatter then
+            pcall(binding.SetFormatter, binding, formatter)
+            return
+        end
+    end
+    if button.SetDurationText and button._cellDurationFS then
+        pcall(button.SetDurationText, button, button._cellDurationFS, { textFormatter = formatter })
+    end
+end
+
+function F.GetAuraDurationFormatter()
+    if auraDurationFormatter then
+        return auraDurationFormatter
+    end
+    if C_StringUtil and C_StringUtil.CreateNumericRuleFormatter and Enum and Enum.NumericRuleFormatRounding then
+        local formatter = C_StringUtil.CreateNumericRuleFormatter()
+        local up = Enum.NumericRuleFormatRounding.Up
+        local down = Enum.NumericRuleFormatRounding.Down
+        local ok = pcall(formatter.SetBreakpoints, formatter, {
+            { threshold = 0,     format = "%d",  step = 1, rounding = up },
+            { threshold = 60,    format = "%dm", step = 1, rounding = down, components = { { div = 60 } } },
+            { threshold = 3600,  format = "%dh", step = 1, rounding = down, components = { { div = 3600 } } },
+            { threshold = 86400, format = "%dd", step = 1, rounding = down, components = { { div = 86400 } } },
+        })
+        if ok then
+            auraDurationFormatter = formatter
+            return auraDurationFormatter
+        end
+    end
+end
+
+local function GetAuraSecondsDurationFormatter()
+    if auraSecondsDurationFormatter then
+        return auraSecondsDurationFormatter
+    end
+    if not (C_StringUtil and C_StringUtil.CreateSecondsFormatter) then
+        return nil
+    end
+    local formatter = C_StringUtil.CreateSecondsFormatter()
+    local abbr = Enum and Enum.SecondsFormatterAbbreviation
+    local interval = Enum and Enum.SecondsFormatterInterval
+    local rounding = Enum and Enum.SecondsFormatterRounding
+    local whitespace = Enum and Enum.SecondsFormatterIntervalWhitespace
+    if abbr then
+        pcall(formatter.SetDefaultAbbreviation, formatter, abbr.Truncate)
+    end
+    if whitespace and whitespace.Strip then
+        pcall(formatter.SetStripIntervalWhitespace, formatter, whitespace.Strip)
+    end
+    if rounding and rounding.Truncate then
+        pcall(formatter.SetRounding, formatter, rounding.Truncate)
+    end
+    pcall(formatter.SetDesiredUnitCount, formatter, 1)
+    pcall(formatter.SetCanRoundUpLastUnit, formatter, true)
+    if interval and interval.Seconds then
+        pcall(formatter.SetMinInterval, formatter, interval.Seconds)
+        if C_CurveUtil and C_CurveUtil.CreateCurve and interval.Minutes then
+            local curve = C_CurveUtil.CreateCurve()
+            local stepType = Enum.LuaCurveType and Enum.LuaCurveType.Step
+            if stepType then
+                curve:SetType(stepType)
+            end
+            curve:AddPoint(0, interval.Seconds)
+            curve:AddPoint(60, interval.Minutes)
+            if interval.Hours then
+                curve:AddPoint(3600, interval.Hours)
+            end
+            if interval.Days then
+                curve:AddPoint(86400, interval.Days)
+            end
+            pcall(formatter.SetMaxIntervalCurve, formatter, curve)
+        end
+    end
+    auraSecondsDurationFormatter = formatter
+    return auraSecondsDurationFormatter
+end
+
+local function TrySetDurationText(button, fontString, formatter, curve, prop)
+    formatter = F.GetAuraDurationFormatter() or formatter
+    local secondsFormatter = GetAuraSecondsDurationFormatter()
+    local opts = {}
+    opts.textFormatter = formatter or secondsFormatter
     if curve then
         opts.textColor = { curve = curve, property = prop }
         if pcall(button.SetDurationText, button, fontString, opts) then
+            ApplyNumericDurationFormatter(button, formatter)
             return true, true
         end
         opts.textColor = nil
     end
-    if pcall(button.SetDurationText, button, fontString, opts) then
+    if opts.textFormatter and pcall(button.SetDurationText, button, fontString, opts) then
+        ApplyNumericDurationFormatter(button, formatter)
         return true, false
     end
-    if pcall(button.SetDurationText, button, fontString, {}) then
-        return true, false
+    if formatter and formatter ~= opts.textFormatter then
+        opts.textFormatter = formatter
+        if pcall(button.SetDurationText, button, fontString, opts) then
+            ApplyNumericDurationFormatter(button, formatter)
+            return true, false
+        end
     end
     return false, false
 end
@@ -3002,19 +3104,19 @@ function Cell.GetUnitFramesForLGF(unit, frames, priorities)
     local normal, spotlights, quickAssist = F.GetUnitButtonByUnit(unit, spotlightPriorityEnabled, quickAssistPriorityEnabled)
 
     if normal then
-        frames[normal.widgets.highLevelFrame] = "CellNormalUnitFrame"
+        frames[F.BD(normal).widgets.highLevelFrame] = "CellNormalUnitFrame"
     end
 
     if spotlights then
         -- for _, spotlight in pairs(spotlights) do
-        --     if not strfind(spotlight.unit, "target$") and spotlight.widgets and spotlight.widgets.highLevelFrame then
-        --         frames[spotlight.widgets.highLevelFrame] = "CellSpotlightUnitFrame"
+        --     if not strfind(spotlight.unit, "target$") and F.BD(spotlight).widgets and F.BD(spotlight).widgets.highLevelFrame then
+        --         frames[F.BD(spotlight).widgets.highLevelFrame] = "CellSpotlightUnitFrame"
         --         break
         --     end
         -- end
         --! just use the first (can be "XXtarget", whatever)
         if spotlights[1] then
-            frames[spotlights[1].widgets.highLevelFrame] = "CellSpotlightUnitFrame"
+            frames[F.BD(spotlights[1]).widgets.highLevelFrame] = "CellSpotlightUnitFrame"
         end
     end
 
@@ -3411,7 +3513,7 @@ function F.IsSecretAuraUnitTrustworthy(unit, button)
         end
     end
 
-    if button and button.states and button.states.inRange == false then
+    if button and F.BD(button).states and F.BD(button).states.inRange == false then
         return false
     end
 
@@ -3512,6 +3614,33 @@ if Cell.isMists then
 end
 
 -------------------------------------------------
+-- unit button data (SecureGroupHeader child frames)
+-------------------------------------------------
+if not Cell.buttonData then
+    Cell.buttonData = setmetatable({}, { __mode = "k" })
+end
+
+if not F.GetButtonData then
+    function F.GetButtonData(button)
+        if not button then
+            return {}
+        end
+        local d = Cell.buttonData[button]
+        if not d then
+            d = {}
+            Cell.buttonData[button] = d
+        end
+        return d
+    end
+end
+
+if not F.BD then
+    function F.BD(button)
+        return F.GetButtonData(button)
+    end
+end
+
+-------------------------------------------------
 -- secrets
 -------------------------------------------------
 function F.HasAnySecretValues(...)
@@ -3535,8 +3664,7 @@ function F.IsAuraRestricted()
 end
 
 function F.IsLiveAuraScanBlocked()
-    local build = select(4, GetBuildInfo())
-    return Cell.isRetail and build and build >= 120100
+    return Cell.isMidnight
 end
 
 function F.InitEngineAuraButtonOnce(button)
@@ -3547,7 +3675,81 @@ function F.InitEngineAuraButtonOnce(button)
     return true
 end
 
-local AURA_PARK_CAP = 2
+function F.RestyleEngineAuraButtonFonts(button, cfg, styleFont)
+    if not (button and cfg) then return end
+    local host = button._cellAuraTextHost or button
+    local function isForbidden(obj)
+        if not obj then return true end
+        local ok, forbidden = pcall(function()
+            return obj.IsForbidden and obj:IsForbidden()
+        end)
+        return (not ok) or forbidden
+    end
+    local function apply(fs, fontCfg, defaultAnchor, defaultX, defaultY)
+        if not fs or isForbidden(fs) then return end
+        local anchor = (type(fontCfg) == "table" and fontCfg[5]) or defaultAnchor
+        local ox = (type(fontCfg) == "table" and fontCfg[6]) or defaultX
+        local oy = (type(fontCfg) == "table" and fontCfg[7]) or defaultY
+        if not pcall(fs.ClearAllPoints, fs) then return end
+        pcall(fs.SetPoint, fs, anchor, host, anchor, ox, oy)
+        if styleFont then
+            pcall(styleFont, fs, fontCfg, 11)
+        end
+        if type(fontCfg) == "table" and type(fontCfg[8]) == "table" then
+            local c = fontCfg[8]
+            pcall(fs.SetTextColor, fs, c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
+        end
+    end
+    apply(button._cellStackFS, cfg.font and cfg.font[1], "TOPRIGHT", 2, 1)
+    apply(button._cellDurationFS, cfg.font and cfg.font[2], "BOTTOMRIGHT", 2, -1)
+    if button._cellStackFS and not isForbidden(button._cellStackFS) then
+        pcall(button._cellStackFS.SetShown, button._cellStackFS, cfg.showStack ~= false)
+    end
+    if button._cellDurationFS and cfg.showDuration and not isForbidden(button._cellDurationFS) then
+        F.BindAuraDurationText(button, button._cellDurationFS, F.GetAuraDurationFormatter and F.GetAuraDurationFormatter(), cfg.auras)
+    end
+end
+
+function F.RestyleAuraContainerFonts(container, cfg, styleFont)
+    if not container then return end
+    local function isForbidden(obj)
+        if not obj then return true end
+        local ok, forbidden = pcall(function()
+            return obj.IsForbidden and obj:IsForbidden()
+        end)
+        return (not ok) or forbidden
+    end
+    local function walk(frame, depth)
+        if not frame or depth > 4 or isForbidden(frame) then return end
+        if frame._cellStackFS or frame._cellDurationFS then
+            F.RestyleEngineAuraButtonFonts(frame, cfg, styleFont)
+        end
+        if not frame.GetNumChildren or not frame.GetChildren then return end
+        local okCount, n = pcall(frame.GetNumChildren, frame)
+        if not okCount or type(n) ~= "number" or n <= 0 or n > 40 then return end
+        local ok, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10,
+            a11, a12, a13, a14, a15, a16, a17, a18, a19, a20,
+            a21, a22, a23, a24, a25, a26, a27, a28, a29, a30,
+            a31, a32, a33, a34, a35, a36, a37, a38, a39, a40 = pcall(frame.GetChildren, frame)
+        if not ok then return end
+        local kids = { a1, a2, a3, a4, a5, a6, a7, a8, a9, a10,
+            a11, a12, a13, a14, a15, a16, a17, a18, a19, a20,
+            a21, a22, a23, a24, a25, a26, a27, a28, a29, a30,
+            a31, a32, a33, a34, a35, a36, a37, a38, a39, a40 }
+        local limit = math.min(n, #kids)
+        for i = 1, limit do
+            walk(kids[i], depth + 1)
+        end
+    end
+    walk(container, 0)
+end
+
+-- No eviction cap here on purpose: WoW frames created via CreateFrame can never
+-- actually be destroyed/freed during a session, so evicting an entry would only
+-- drop Cell's own reference and permanently orphan an otherwise-reusable hidden
+-- frame -- a real memory leak over a long session. Parked containers are hidden/
+-- quiesced and cost effectively nothing while idle, so there's no upside to
+-- evicting -- only ever grow the park map, never shrink it.
 
 function F.StampAuraFont(font)
     if type(font) ~= "table" then
@@ -3615,19 +3817,7 @@ function F.ParkAuraContainer(parkMap, key, container)
     if type(parkMap) ~= "table" or type(key) ~= "string" or key == "" then
         return
     end
-    if not parkMap[key] then
-        local n = 0
-        local dropKey
-        for k in pairs(parkMap) do
-            n = n + 1
-            if not dropKey then
-                dropKey = k
-            end
-        end
-        if n >= AURA_PARK_CAP and dropKey then
-            parkMap[dropKey] = nil
-        end
-    end
+    -- No eviction here on purpose -- see the note above local removed AURA_PARK_CAP.
     parkMap[key] = container
 end
 
@@ -3683,6 +3873,47 @@ end
 function F.GuardAuraContainerEvents(container)
 end
 
+local function IsAuraEngineContainer(frame)
+    return frame and (frame.UpdateAllAuras or frame.AddAuraGroup or frame.HasAuraGroup)
+end
+
+function F.IsAuraEngineContainer(frame)
+    return IsAuraEngineContainer(frame)
+end
+
+-- Midnight: SecureGroupHeaderTemplate can birth an AuraContainer per child (secure-side).
+function F.ApplyMidnightGroupHeaderAttributes(header)
+    if Cell.isMidnight and header and header.SetAttribute then
+        header:SetAttribute("auraContainerTemplate", "CustomAuraContainerTemplate")
+    end
+end
+
+function F.IsHeaderAuraContainer(unitButton, container)
+    return Cell.isMidnight and unitButton and container and unitButton.AuraContainer == container
+end
+
+-- Adopt the header-born AuraContainer (one owner per button; e.g. combat debuffs).
+function F.AdoptHeaderAuraContainer(unitButton, parent, ownerKey)
+    if not (Cell.isMidnight and unitButton and ownerKey) then
+        return nil
+    end
+    local container = unitButton.AuraContainer
+    if not IsAuraEngineContainer(container) then
+        return nil
+    end
+    local bd = F.GetButtonData(unitButton)
+    if bd._headerAuraOwner and bd._headerAuraOwner ~= ownerKey then
+        return nil
+    end
+    bd._headerAuraOwner = ownerKey
+    parent = parent or unitButton
+    pcall(function()
+        container:SetAlpha(1)
+        container:SetParent(parent)
+    end)
+    return container
+end
+
 local function StripUnitAuraTree(frame)
     if not frame then return end
     if frame.UnregisterEvent then
@@ -3691,12 +3922,16 @@ local function StripUnitAuraTree(frame)
     if frame.GetChildren then
         local children = { frame:GetChildren() }
         for i = 1, #children do
-            StripUnitAuraTree(children[i])
+            local child = children[i]
+            if child and not (child.IsForbidden and child:IsForbidden()) and not IsAuraEngineContainer(child) then
+                StripUnitAuraTree(child)
+            end
         end
     end
 end
 
 function F.StripCellUnitAura()
+    if not Cell.isMidnight then return end
     if F.IterateAllUnitButtons then
         F.IterateAllUnitButtons(function(b)
             StripUnitAuraTree(b)
@@ -3704,6 +3939,23 @@ function F.StripCellUnitAura()
     end
     if CellParent then
         StripUnitAuraTree(CellParent)
+    end
+    if Cell.frames then
+        if Cell.frames.mainFrame then
+            StripUnitAuraTree(Cell.frames.mainFrame)
+        end
+        if Cell.frames.buffTrackerFrame then
+            StripUnitAuraTree(Cell.frames.buffTrackerFrame)
+        end
+    end
+    if _G.CellQuickCastFrame then
+        StripUnitAuraTree(_G.CellQuickCastFrame)
+    end
+    if _G.CellQuickAssistFrame then
+        StripUnitAuraTree(_G.CellQuickAssistFrame)
+    end
+    if _G.CellStatusIconCleuFrame then
+        pcall(_G.CellStatusIconCleuFrame.UnregisterEvent, _G.CellStatusIconCleuFrame, "UNIT_AURA")
     end
 end
 

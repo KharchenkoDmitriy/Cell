@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local F = Cell.funcs
 local B = Cell.bFuncs
 local P = Cell.pixelPerfectFuncs
@@ -8,6 +8,7 @@ Cell.frames.partyFrame = partyFrame
 partyFrame:SetAllPoints(Cell.frames.mainFrame)
 
 local header = CreateFrame("Frame", "CellPartyFrameHeader", partyFrame, "SecureGroupHeaderTemplate")
+F.ApplyMidnightGroupHeaderAttributes(header)
 header:SetAttribute("template", "CellUnitButtonTemplate")
 
 function header:UpdateButtonUnit(bName, unit)
@@ -22,7 +23,7 @@ function header:UpdateButtonUnit(bName, unit)
         petUnit = string.gsub(unit, "party", "partypet")
     end
     Cell.unitButtons.party.units[unit] = _G[bName]
-    Cell.unitButtons.party.units[petUnit] = _G[bName].petButton
+    Cell.unitButtons.party.units[petUnit] = F.BD(_G[bName]).petButton
 end
 
 -- header:SetAttribute("initialConfigFunction", [[
@@ -79,7 +80,7 @@ for i, playerButton in ipairs(header) do
     --! button for pet/vehicle only, toggleForVehicle MUST be false
     petButton:SetAttribute("toggleForVehicle", false)
 
-    playerButton.petButton = petButton
+    F.BD(playerButton).petButton = petButton
     SecureHandlerSetFrameRef(playerButton, "petButton", petButton)
 
     -- for IterateAllUnitButtons
@@ -177,20 +178,20 @@ local function PartyFrame_UpdateLayout(layout, which)
         for j = 1, 5 do
             header[j]:ClearAllPoints()
             -- update petButton's point
-            header[j].petButton:ClearAllPoints()
+            F.BD(header[j]).petButton:ClearAllPoints()
             if orientation == "vertical" then
                 -- Pet on LEFT or RIGHT side of owner
                 if petSide == "right" then
-                    header[j].petButton:SetPoint(v.."LEFT", header[j], v.."RIGHT", P.Scale(petSpacingX), 0)
+                    F.BD(header[j]).petButton:SetPoint(v.."LEFT", header[j], v.."RIGHT", P.Scale(petSpacingX), 0)
                 else
-                    header[j].petButton:SetPoint(v.."RIGHT", header[j], v.."LEFT", P.Scale(-petSpacingX), 0)
+                    F.BD(header[j]).petButton:SetPoint(v.."RIGHT", header[j], v.."LEFT", P.Scale(-petSpacingX), 0)
                 end
             else
                 -- Pet on TOP or BOTTOM of owner
                 if petSide == "bottom" then
-                    header[j].petButton:SetPoint("TOP"..h, header[j], "BOTTOM"..h, 0, P.Scale(-petSpacingY))
+                    F.BD(header[j]).petButton:SetPoint("TOP"..h, header[j], "BOTTOM"..h, 0, P.Scale(-petSpacingY))
                 else
-                    header[j].petButton:SetPoint("BOTTOM"..h, header[j], "TOP"..h, 0, P.Scale(petSpacingY))
+                    F.BD(header[j]).petButton:SetPoint("BOTTOM"..h, header[j], "TOP"..h, 0, P.Scale(petSpacingY))
                 end
             end
         end
@@ -199,7 +200,7 @@ local function PartyFrame_UpdateLayout(layout, which)
 
     if not which or strfind(which, "size$") or strfind(which, "power$") or which == "barOrientation" or which == "powerFilter" then
         for i, playerButton in ipairs(header) do
-            local petButton = playerButton.petButton
+            local petButton = F.BD(playerButton).petButton
 
             if not which or strfind(which, "size$") then
                 local width, height = unpack(layout["main"]["size"])
@@ -235,12 +236,12 @@ local function PartyFrame_UpdateLayout(layout, which)
         header:SetAttribute("partyDetached", layout["pet"]["partyDetached"])
         if layout["pet"]["partyEnabled"] and not layout["pet"]["partyDetached"] then
             for i, playerButton in ipairs(header) do
-                RegisterUnitWatch(playerButton.petButton)
+                RegisterUnitWatch(F.BD(playerButton).petButton)
             end
         else
             for i, playerButton in ipairs(header) do
-                UnregisterUnitWatch(playerButton.petButton)
-                playerButton.petButton:Hide()
+                UnregisterUnitWatch(F.BD(playerButton).petButton)
+                F.BD(playerButton).petButton:Hide()
             end
         end
     end

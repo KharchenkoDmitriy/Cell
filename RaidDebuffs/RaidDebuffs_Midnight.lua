@@ -913,7 +913,8 @@ local debuffs = {
             1258901, -- Water Jet
             1273091, -- Waterfog Shield
             1277386, -- Wavecaller's Might
-            1260837, -- Abyssal Rain
+            1260837, -- Abyssal Rain (channel)
+            1260843, -- Abyssal Rain (player DoT)
             1294867, -- Unending Tides
             1313393, -- Chilling Frost
             1313450, -- Frost Burst

@@ -1,9 +1,9 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local F = Cell.funcs
 local I = Cell.iFuncs
 
 local GROUP_KEY = "healers"
-local INIT_VERSION = 36
+local INIT_VERSION = 38
 local BUILD = select(4, GetBuildInfo())
 local SUPPORTED = Cell.isRetail and BUILD >= 120100
 
@@ -15,7 +15,6 @@ local HARD_EXCLUDE_SPELLS = {
 local stateByButton = setmetatable({}, { __mode = "k" })
 local cachedConfig
 local featureReady
-local durationFormatter
 local buildQueue = {}
 local buildQueued = setmetatable({}, { __mode = "k" })
 local buildTicker
@@ -155,7 +154,7 @@ local function BuildFilter(castBy)
 end
 
 local function ResolveUnit(unitButton)
-    local unit = unitButton.states and (unitButton.states.displayedUnit or unitButton.states.unit)
+    local unit = F.BD(unitButton).states and (F.BD(unitButton).states.displayedUnit or F.BD(unitButton).states.unit)
     if type(unit) == "string" and unit ~= "" then
         return unit
     end
@@ -199,23 +198,7 @@ local function StyleFont(fs, fontCfg, defaultSize)
 end
 
 local function GetCellDurationFormatter()
-    if durationFormatter then return durationFormatter end
-    if C_StringUtil and C_StringUtil.CreateNumericRuleFormatter and Enum and Enum.NumericRuleFormatRounding then
-        local Up = Enum.NumericRuleFormatRounding.Up
-        local Down = Enum.NumericRuleFormatRounding.Down
-        local formatter = C_StringUtil.CreateNumericRuleFormatter()
-        local ok = pcall(formatter.SetBreakpoints, formatter, {
-            { threshold = 0,     format = "%d",  step = 1, rounding = Up },
-            { threshold = 60,    format = "%dm", step = 1, rounding = Down, components = { { div = 60 } } },
-            { threshold = 3600,  format = "%dh", step = 1, rounding = Down, components = { { div = 3600 } } },
-            { threshold = 86400, format = "%dd", step = 1, rounding = Down, components = { { div = 86400 } } },
-        })
-        if ok then
-            durationFormatter = formatter
-            return durationFormatter
-        end
-    end
-    return nil
+    return F.GetAuraDurationFormatter and F.GetAuraDurationFormatter() or nil
 end
 
 local function ResolveAnimationStyle(cfg)
@@ -244,13 +227,20 @@ local function AttachInvisibleCooldown(button)
 end
 
 local function InitAuraButton(button)
-    if not F.InitEngineAuraButtonOnce(button) then
-        return
-    end
     local cfg = cachedConfig
     local size = (cfg and cfg.size and cfg.size[1]) or 13
     pcall(button.SetSize, button, size, size)
     F.SetupEngineAuraButtonMouse(button, not (cfg and cfg.showTooltip), cfg)
+    if not F.InitEngineAuraButtonOnce(button) then
+        if button._cellStackFS then
+            button._cellStackFS:SetShown(not cfg or cfg.showStack ~= false)
+        end
+        if button._cellDurationFS and cfg and cfg.showDuration then
+            F.BindAuraDurationText(button, button._cellDurationFS, GetCellDurationFormatter(), cfg.auras)
+        end
+        F.RestyleEngineAuraButtonFonts(button, cfg, StyleFont)
+        return
+    end
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints(button)
@@ -302,40 +292,40 @@ local function InitAuraButton(button)
     textHost:SetAllPoints(button)
     textHost:EnableMouse(false)
     textHost:SetFrameLevel(((animFrame and animFrame.GetFrameLevel and animFrame:GetFrameLevel()) or 1) + 4)
+    button._cellAuraTextHost = textHost
 
-    if not cfg or cfg.showStack ~= false then
-        local stack = textHost:CreateFontString(nil, "OVERLAY")
-        stack:SetPoint("TOPRIGHT", 2, 1)
-        stack:SetJustifyH("RIGHT")
-        StyleFont(stack, cfg and cfg.font and cfg.font[1], 11)
-        pcall(button.SetApplicationCount, button, stack, {})
-    end
+    local stack = textHost:CreateFontString(nil, "OVERLAY")
+    stack:SetJustifyH("RIGHT")
+    button._cellStackFS = stack
+    pcall(button.SetApplicationCount, button, stack, {})
+    stack:SetShown(not cfg or cfg.showStack ~= false)
 
-    if cfg and cfg.showDuration == true then
+    if cfg and cfg.showDuration then
         local duration = textHost:CreateFontString(nil, "OVERLAY")
-        duration:SetPoint("BOTTOMRIGHT", 2, -1)
         duration:SetJustifyH("RIGHT")
-        StyleFont(duration, cfg.font and cfg.font[2], 11)
+        button._cellDurationFS = duration
         F.BindAuraDurationText(button, duration, GetCellDurationFormatter(), cfg.auras)
     end
+
+    F.RestyleEngineAuraButtonFonts(button, cfg, StyleFont)
 end
 
 local function ResolveContainerParent(unitButton)
-    if unitButton.widgets and unitButton.widgets.indicatorFrame then
-        return unitButton.widgets.indicatorFrame
+    if F.BD(unitButton).widgets and F.BD(unitButton).widgets.indicatorFrame then
+        return F.BD(unitButton).widgets.indicatorFrame
     end
     return unitButton
 end
 
 local function HideLegacy(unitButton, indicatorName)
-    local ind = unitButton.indicators and indicatorName and unitButton.indicators[indicatorName]
+    local ind = F.BD(unitButton).indicators and indicatorName and F.BD(unitButton).indicators[indicatorName]
     if not ind then return end
     ind:Hide(true)
     if ind.SetAlpha then ind:SetAlpha(0) end
 end
 
 local function ShowLegacy(unitButton, indicatorName)
-    local ind = unitButton.indicators and indicatorName and unitButton.indicators[indicatorName]
+    local ind = F.BD(unitButton).indicators and indicatorName and F.BD(unitButton).indicators[indicatorName]
     if not ind then return end
     if ind.SetAlpha then ind:SetAlpha(1) end
 end
@@ -379,8 +369,8 @@ local function AnchorContainer(container, unitButton, cfg)
     local x, y = pos[4] or 0, pos[5] or 0
 
     local relativeTo = unitButton
-    if relative == "healthBar" and unitButton.widgets and unitButton.widgets.healthBar then
-        relativeTo = unitButton.widgets.healthBar
+    if relative == "healthBar" and F.BD(unitButton).widgets and F.BD(unitButton).widgets.healthBar then
+        relativeTo = F.BD(unitButton).widgets.healthBar
     end
 
     container:ClearAllPoints()
@@ -455,6 +445,7 @@ end
 local function ApplyHealersTuning(container, cfg)
     if not (container and cfg) then return end
     F.ApplyAuraGroupTuning(container, GROUP_KEY, BuildFilter(cfg.castBy), HealersGroupOpts(cfg))
+    F.RestyleAuraContainerFonts(container, cfg, StyleFont)
 end
 
 local function CreateHealersContainer(unitButton, cfg, existing)
@@ -516,7 +507,7 @@ end
 local function DriveContainer(unitButton, cfg, enable)
     local st = stateByButton[unitButton]
     if not (st and st.container and cfg) then return end
-    if Cell.vars.editModeOpen then
+    if Cell.funcs.IsEditModeOpen and Cell.funcs.IsEditModeOpen() then
         return
     end
     local unit = ResolveUnit(unitButton)
@@ -601,7 +592,7 @@ local function PumpBuildQueue()
     local b = table.remove(buildQueue, 1)
     while b do
         buildQueued[b] = nil
-        if b._indicatorsReady then
+        if F.BD(b)._indicatorsReady then
             break
         end
         b = table.remove(buildQueue, 1)
@@ -629,8 +620,10 @@ EnqueueBuild = function(unitButton)
 end
 
 local function SyncButton(unitButton, allowCreate)
-    if not unitButton or not unitButton._indicatorsReady then return end
-    local cfg = ResolveHealersConfig()
+    if not unitButton or not F.BD(unitButton)._indicatorsReady then return end
+    -- Cache-aware like PumpBuildQueue above -- this runs once per button on
+    -- every roster reshuffle, and the config only changes when the layout does.
+    local cfg = cachedConfig or ResolveHealersConfig()
     cachedConfig = cfg
     if not cfg then
         local st = stateByButton[unitButton]
@@ -691,7 +684,24 @@ end
 
 if SUPPORTED then
     Cell.RegisterCallback("UpdateIndicators", "HealersAuraDisplay_UpdateIndicators", function(layout, indicatorName, setting)
-        if indicatorName and indicatorName ~= "" and indicatorName ~= "healers" then
+        local healersName
+        local layoutTable = Cell.vars.currentLayoutTable
+        if layoutTable and layoutTable.indicators then
+            for _, t in ipairs(layoutTable.indicators) do
+                if t.name == "Healers" then
+                    healersName = t.indicatorName
+                    break
+                end
+            end
+        end
+        -- "auras", "checkbutton" (covers "keep in Healers"), "create", "remove"
+        -- and "enabled" can all change what OTHER buff indicators contribute to
+        -- BuildExcludeSpellMap, so those always need a refresh regardless of
+        -- which indicator changed -- only the purely cosmetic settings below
+        -- are safe to skip when the change wasn't on the Healers indicator itself.
+        local alwaysRefresh = setting == "auras" or setting == "checkbutton"
+            or setting == "create" or setting == "remove" or setting == "enabled"
+        if not alwaysRefresh and indicatorName and indicatorName ~= "" and indicatorName ~= "healers" and indicatorName ~= healersName then
             return
         end
         if not layout or not indicatorName or setting == "create" or setting == "remove"

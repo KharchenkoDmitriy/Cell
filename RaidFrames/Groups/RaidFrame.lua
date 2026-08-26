@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 ---@class CellFuncs
 local F = Cell.funcs
 local B = Cell.bFuncs
@@ -108,6 +108,7 @@ do
     combinedHeader = CreateFrame("Frame", headerName, raidFrame, "SecureGroupHeaderTemplate")
     Cell.unitButtons.raid[headerName] = combinedHeader
 
+    F.ApplyMidnightGroupHeaderAttributes(combinedHeader)
     combinedHeader:SetAttribute("template", "CellUnitButtonTemplate")
     combinedHeader:SetAttribute("columnAnchorPoint", "LEFT")
     combinedHeader:SetAttribute("point", "TOP")
@@ -138,6 +139,7 @@ local function CreateGroupHeader(group)
     separatedHeaders[group] = header
     Cell.unitButtons.raid[headerName] = header
 
+    F.ApplyMidnightGroupHeaderAttributes(header)
     -- header:SetAttribute("initialConfigFunction", [[
     --     RegisterUnitWatch(self)
 
@@ -321,10 +323,10 @@ local function UpdateHeader(header, layout, which)
     -- REVIEW: fix name width
     if which == "header" or which == "groupFilter" then
         for j, b in ipairs(header) do
-            b.widgets.healthBar:GetScript("OnSizeChanged")(b.widgets.healthBar)
+            F.BD(b).widgets.healthBar:GetScript("OnSizeChanged")(F.BD(b).widgets.healthBar)
         end
         for k, arenaPet in ipairs(arenaPetButtons) do
-            arenaPet.widgets.healthBar:GetScript("OnSizeChanged")(arenaPet.widgets.healthBar)
+            F.BD(arenaPet).widgets.healthBar:GetScript("OnSizeChanged")(F.BD(arenaPet).widgets.healthBar)
         end
     end
 end

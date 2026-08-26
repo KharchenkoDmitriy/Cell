@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 ---@type CellFuncs
 local F = Cell.funcs
@@ -278,8 +278,11 @@ local function Shared_CreateCooldown_Clock(frame)
     -- disable omnicc
     cooldown.noCooldownCount = true
     -- prevent some dirty addons from adding cooldown text
-    cooldown.ShowCooldown = cooldown.SetCooldown
+    cooldown._SetCooldown = cooldown.SetCooldown
     cooldown.SetCooldown = nil
+    cooldown.ShowCooldown = function(self, start, duration)
+        self:_SetCooldown(start, duration)
+    end
 end
 
 -------------------------------------------------
@@ -492,7 +495,10 @@ end
 local function BorderIcon_CreateClockCooldown(frame)
     local cooldown = CreateFrame("Cooldown", nil, frame)
     frame.cooldown = cooldown
-    cooldown:SetAllPoints(frame)
+    cooldown:SetAllPoints(frame.iconFrame)
+    cooldown:SetFrameLevel(frame.iconFrame:GetFrameLevel() + 1)
+    cooldown:SetReverse(true)
+    cooldown:SetDrawEdge(false)
     if Cell.isRetail then
         cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
     end
@@ -505,7 +511,7 @@ local function BorderIcon_CreateClockCooldown(frame)
     cooldown._SetCooldown = cooldown.SetCooldown
     cooldown.SetCooldown = nil
 
-    frame._countdownTextParent = frame.iconFrame
+    frame._countdownTextParent = cooldown
 end
 
 local function BorderIcon_CreateVerticalCountdown(frame)
@@ -648,8 +654,8 @@ local function BorderIcon_SetCooldownStyle(frame, style)
 
     if style == "CLOCK" then
         BorderIcon_CreateClockCooldown(frame)
-        frame.stack:SetParent(frame.iconFrame)
-        frame.duration:SetParent(frame.iconFrame)
+        frame.stack:SetParent(frame.cooldown)
+        frame.duration:SetParent(frame.cooldown)
     else
         BorderIcon_CreateVerticalCooldown(frame)
         frame.stack:SetParent(frame.cooldown)
@@ -768,6 +774,19 @@ end
 -------------------------------------------------
 -- CreateAura_BorderIcon
 -------------------------------------------------
+local function BorderIcon_ShowAnimation(frame, show)
+    frame.showAnimation = show
+    if not frame.cooldown then return end
+    if show then
+        frame.cooldown:Show()
+    else
+        frame.cooldown:Hide()
+        if frame._countdownCooldown then
+            frame._countdownCooldown:Hide()
+        end
+    end
+end
+
 local function BorderIcon_SetCooldown(frame, start, duration, debuffType, texture, count, refreshing, useElapsedTime)
     local r, g, b
     if debuffType then
@@ -800,7 +819,30 @@ local function BorderIcon_SetCooldown(frame, start, duration, debuffType, textur
         frame._threshold = nil
         frame._elapsedTime = nil
 
-        if frame.style == "VERTICAL" then
+        if frame.showAnimation == false then
+            frame.border:Show()
+            frame.border:SetColorTexture(r, g, b)
+            frame.cooldown:Hide()
+            if frame._countdownCooldown then
+                frame._countdownCooldown:Hide()
+            end
+            if not frame.showDuration then
+                frame.duration:Hide()
+            else
+                if frame.showDuration == true then
+                    frame._threshold = duration
+                elseif frame.showDuration >= 1 then
+                    frame._threshold = frame.showDuration
+                else
+                    frame._threshold = frame.showDuration * duration
+                end
+                frame.duration:Show()
+                frame._start = start
+                frame._duration = duration
+                frame._elapsed = 0.1
+                frame:SetScript("OnUpdate", useElapsedTime and Icon_OnUpdate_ElapsedTime or Icon_OnUpdate)
+            end
+        elseif frame.style == "VERTICAL" then
             frame.border:Show()
             frame.border:SetColorTexture(r, g, b)
             frame.cooldown:ShowCooldown(start, duration)
@@ -973,10 +1015,11 @@ function I.CreateAura_BorderIcon(name, parent, borderSize)
     frame.SetCooldownFromAura = BorderIcon_SetCooldownFromAura
     frame.ShowDuration = BorderIcon_ShowDuration
     frame.SetCooldownStyle = BorderIcon_SetCooldownStyle
-    frame.ShowAnimation = function() end
+    frame.ShowAnimation = BorderIcon_ShowAnimation
     frame.ShowStack = BorderIcon_ShowStack
     frame.SetupGlow = function() end
     frame.UpdatePixelPerfect = BorderIcon_UpdatePixelPerfect
+    frame.showAnimation = true
 
     BorderIcon_SetCooldownStyle(frame, CELL_COOLDOWN_STYLE)
 
@@ -999,7 +1042,12 @@ local function BarIcon_SetCooldown(frame, start, duration, debuffType, texture, 
         frame._elapsed = nil
     else
         if frame.showAnimation then
-            frame.cooldown:ShowCooldown(start, duration, nil, texture, debuffType)
+            if frame.style == "CLOCK" then
+                frame.cooldown:Show()
+                frame.cooldown:ShowCooldown(start, duration)
+            else
+                frame.cooldown:ShowCooldown(start, duration, nil, texture, debuffType)
+            end
             frame.duration:SetParent(frame.cooldown)
             frame.stack:SetParent(frame.cooldown)
         else
@@ -1059,6 +1107,13 @@ local function BarIcon_SetCooldownStyle(frame, style)
     frame:UpdatePixelPerfect()
 end
 
+-- BarIcon has no separate iconFrame wrapper, so inset frame.icon directly.
+local function BarIcon_SetBorder(frame, thickness)
+    P.ClearPoints(frame.icon)
+    P.Point(frame.icon, "TOPLEFT", frame, "TOPLEFT", thickness, -thickness)
+    P.Point(frame.icon, "BOTTOMRIGHT", frame, "BOTTOMRIGHT", -thickness, thickness)
+end
+
 local function BarIcon_UpdatePixelPerfect(frame)
     P.Resize(frame)
     P.Repoint(frame)
@@ -1109,6 +1164,7 @@ function I.CreateAura_BarIcon(name, parent)
     frame.ShowAnimation = BarIcon_ShowAnimation
     frame.SetCooldownStyle = BarIcon_SetCooldownStyle
     frame.SetupGlow = Shared_SetupGlow
+    frame.SetBorder = BarIcon_SetBorder
     frame.UpdatePixelPerfect = BarIcon_UpdatePixelPerfect
 
     Shared_SetCooldownStyle(frame, CELL_COOLDOWN_STYLE)
@@ -2009,7 +2065,7 @@ local function Color_SetCooldown(color, start, duration, debuffType)
             color:SetScript("OnUpdate", Color_OnUpdate)
         end
     elseif color.type == "class-color" then
-        color.solidTex:SetVertexColor(F.GetClassColor(color.parent.states.class))
+        color.solidTex:SetVertexColor(F.GetClassColor(F.BD(color.parent).states.class))
     elseif color.type == "debuff-type" and debuffType then
         color.solidTex:SetVertexColor(CellDB["debuffTypeColor"][debuffType]["r"], CellDB["debuffTypeColor"][debuffType]["g"], CellDB["debuffTypeColor"][debuffType]["b"], 1)
     end
@@ -2025,13 +2081,13 @@ local function Color_SetAnchor(color, anchorTo)
     color:ClearAllPoints()
     if anchorTo == "healthbar-current" then
         -- current hp texture
-        color:SetAllPoints(color.parent.widgets.healthBar:GetStatusBarTexture())
+        color:SetAllPoints(F.BD(color.parent).widgets.healthBar:GetStatusBarTexture())
     elseif anchorTo == "healthbar-loss" then
         -- lost texture
-        color:SetAllPoints(color.parent.widgets.healthBarLoss)
+        color:SetAllPoints(F.BD(color.parent).widgets.healthBarLoss)
     elseif anchorTo == "healthbar-entire" then
         -- entire hp bar
-        color:SetAllPoints(color.parent.widgets.healthBar)
+        color:SetAllPoints(F.BD(color.parent).widgets.healthBar)
     else -- unitbutton
         P.Point(color, "TOPLEFT", color.parent, "TOPLEFT", CELL_BORDER_SIZE, -CELL_BORDER_SIZE)
         P.Point(color, "BOTTOMRIGHT", color.parent, "BOTTOMRIGHT", -CELL_BORDER_SIZE, CELL_BORDER_SIZE)
@@ -2424,7 +2480,7 @@ local function Overlay_SetFrameLevel(overlay, frameLevel)
 end
 
 function I.CreateAura_Overlay(name, parent)
-    local overlay = CreateFrame("StatusBar", name, parent.widgets.healthBar)
+    local overlay = CreateFrame("StatusBar", name, F.BD(parent).widgets.healthBar)
     overlay:SetStatusBarTexture(Cell.vars.whiteTexture)
     overlay:Hide()
     overlay.indicatorType = "overlay"

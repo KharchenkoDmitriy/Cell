@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local L = Cell.L
 ---@type CellFuncs
 local F = Cell.funcs
@@ -24,7 +24,7 @@ local orientation, speed
 -- unit, castGUID, spellID
 
 local function Display(b, ...)
-    b.indicators.actions:Display(...)
+    F.BD(b).indicators.actions:Display(...)
 end
 
 local eventFrame = CreateFrame("Frame")
@@ -654,7 +654,7 @@ local function Actions_Display(self, animationType, color)
 end
 
 function I.CreateActions(parent, isPreview)
-    local actions = CreateFrame("Frame", parent:GetName() .. "ActionsParent", isPreview and parent or parent.widgets.indicatorFrame)
+    local actions = CreateFrame("Frame", parent:GetName() .. "ActionsParent", isPreview and parent or F.BD(parent).widgets.indicatorFrame)
 
     if isPreview then
         parent.actions = actions
@@ -663,8 +663,8 @@ function I.CreateActions(parent, isPreview)
         actions:SetPoint("BOTTOMRIGHT", -1, 1)
         actions.orientation = previewOrientation
     else
-        parent.indicators.actions = actions
-        actions:SetAllPoints(parent.widgets.healthBar)
+        F.BD(parent).indicators.actions = actions
+        actions:SetAllPoints(F.BD(parent).widgets.healthBar)
     end
 
     actions.speed = 1
@@ -673,7 +673,7 @@ function I.CreateActions(parent, isPreview)
 end
 
 function I.UpdateActionsOrientation(button, barOrientation)
-    button.indicators.actions.orientation = barOrientation
+    F.BD(button).indicators.actions.orientation = barOrientation
 
     if previewOrientation ~= barOrientation then
         previewOrientation = barOrientation

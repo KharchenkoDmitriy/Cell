@@ -1,4 +1,4 @@
-local _, Cell = ...
+﻿local _, Cell = ...
 local F = Cell.funcs
 local A = Cell.animations
 
@@ -128,7 +128,7 @@ pool = CreateObjectPool(creationFunc, resetterFunc)
 
 local function Display(b)
     local f = pool:Acquire()
-    f:SetParent(b.widgets.indicatorFrame)
+    f:SetParent(F.BD(b).widgets.indicatorFrame)
     -- f:SetFrameLevel(b:GetFrameLevel()+200)
     f:SetPoint("CENTER", b, "BOTTOMLEFT")
 
@@ -192,9 +192,9 @@ end)
 
 local function DisplayMVP(b)
     local f = mvpPool:Acquire()
-    f:SetParent(b.widgets.indicatorFrame)
+    f:SetParent(F.BD(b).widgets.indicatorFrame)
     f:SetPoint("CENTER")
-    f.mask:SetAllPoints(b.widgets.indicatorFrame)
+    f.mask:SetAllPoints(F.BD(b).widgets.indicatorFrame)
 
     f:FadeIn()
 end
@@ -251,9 +251,9 @@ end)
 
 local function DisplayGOAT(b)
     local f = goatPool:Acquire()
-    f:SetParent(b.widgets.indicatorFrame)
+    f:SetParent(F.BD(b).widgets.indicatorFrame)
     f:SetPoint("BOTTOMRIGHT")
-    f.mask:SetAllPoints(b.widgets.indicatorFrame)
+    f.mask:SetAllPoints(F.BD(b).widgets.indicatorFrame)
 
     f:FadeIn()
 end

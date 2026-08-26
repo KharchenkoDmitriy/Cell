@@ -862,9 +862,10 @@ local function RegisterDrag(frame)
             end
 
             local f = F.GetMouseFocus()
-            if f and f.states and f.states.displayedUnit and F.UnitInGroup(f.states.displayedUnit) then
-                quickCastTable["units"][frame.index] = f.states.displayedUnit
-                frame:SetUnit(f.states.displayedUnit, outerBuff, innerBuff)
+            local bd = f and F.BD(f)
+            if bd and bd.states and bd.states.displayedUnit and F.UnitInGroup(bd.states.displayedUnit) then
+                quickCastTable["units"][frame.index] = bd.states.displayedUnit
+                frame:SetUnit(bd.states.displayedUnit, outerBuff, innerBuff)
             end
         end
     end)
@@ -965,6 +966,9 @@ Cell.RegisterCallback("TranslitNames", "QuickCast_TranslitNames", function()
 end)
 
 local function QuickCast_OnEvent(self, event, unit, arg1, arg2)
+    if event == "UNIT_AURA" and Cell.isMidnight then
+        return
+    end
     if unit and self.unit == unit then
         if event == "UNIT_AURA" then
             if F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked() then

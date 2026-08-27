@@ -12,10 +12,44 @@ generalTab:Hide()
 -------------------------------------------------
 -- visibility
 -------------------------------------------------
-local hideBlizzardPartyCB, hideBlizzardRaidCB, hideRaidManagerCB, showMinimapButtonCB
+local hideBlizzardPartyCB, hideBlizzardRaidCB, hideRaidManagerCB, showMinimapButtonCB, localeDD
+
+local LOCALE_NAMES = {
+    ["auto"] = L["Client Language"],
+    ["enUS"] = "English",
+    ["deDE"] = "Deutsch",
+    ["frFR"] = "Français",
+    ["esES"] = "Español (España)",
+    ["esMX"] = "Español (México)",
+    ["ptBR"] = "Português (Brasil)",
+    ["itIT"] = "Italiano",
+    ["ruRU"] = "Русский",
+    ["koKR"] = "한국어",
+    ["zhCN"] = "简体中文",
+    ["zhTW"] = "繁體中文",
+}
+
+-- Chinese/Korean/Russian glyphs render as tofu boxes on clients whose active
+-- font doesn't include them (any non-CJK/non-Cyrillic client). Readable for
+-- German/English clients specifically; every other client (including actual
+-- zhCN/zhTW/koKR/ruRU ones) keeps the native name above -- those players
+-- still see their own language correctly, since their client's font does
+-- include these glyphs.
+local clientLocale = GetLocale and GetLocale() or "enUS"
+if clientLocale == "deDE" then
+    LOCALE_NAMES["zhCN"] = "Chinesisch (Vereinfacht)"
+    LOCALE_NAMES["zhTW"] = "Chinesisch (Traditionell)"
+    LOCALE_NAMES["koKR"] = "Koreanisch"
+    LOCALE_NAMES["ruRU"] = "Russisch"
+elseif clientLocale == "enUS" then
+    LOCALE_NAMES["zhCN"] = "Chinese (Simplified)"
+    LOCALE_NAMES["zhTW"] = "Chinese (Traditional)"
+    LOCALE_NAMES["koKR"] = "Korean"
+    LOCALE_NAMES["ruRU"] = "Russian"
+end
 
 local function CreateVisibilityPane()
-    local visibilityPane = Cell.CreateTitledPane(generalTab, L["Visibility"], 205, 105)
+    local visibilityPane = Cell.CreateTitledPane(generalTab, L["Visibility"], 205, 140)
     visibilityPane:SetPoint("TOPLEFT", generalTab, "TOPLEFT", 5, -5)
 
     -- showSoloCB = Cell.CreateCheckButton(visibilityPane, L["Show Solo"], function(checked, self)
@@ -73,6 +107,38 @@ local function CreateVisibilityPane()
         end
     end)
     showMinimapButtonCB:SetPoint("TOPLEFT", hideRaidManagerCB, "BOTTOMLEFT", 0, -7)
+
+    localeDD = Cell.CreateDropdown(visibilityPane, 137)
+    localeDD:SetPoint("TOPLEFT", showMinimapButtonCB, "BOTTOMLEFT", 0, -25)
+    local localeItems = { {
+        ["text"] = LOCALE_NAMES["auto"],
+        ["value"] = "auto",
+        ["onClick"] = function()
+            CellDB["general"]["localeOverride"] = "auto"
+            local popup = Cell.CreateConfirmPopup(generalTab, 200, L["A UI reload is required.\nDo it now?"], function()
+                ReloadUI()
+            end, nil, true)
+            popup:SetPoint("TOPLEFT", generalTab, 117, -77)
+        end,
+    } }
+    for _, code in ipairs(Cell.supportedLocales or {}) do
+        tinsert(localeItems, {
+            ["text"] = LOCALE_NAMES[code] or code,
+            ["value"] = code,
+            ["onClick"] = function()
+                CellDB["general"]["localeOverride"] = code
+                local popup = Cell.CreateConfirmPopup(generalTab, 200, L["A UI reload is required.\nDo it now?"], function()
+                    ReloadUI()
+                end, nil, true)
+                popup:SetPoint("TOPLEFT", generalTab, 117, -77)
+            end,
+        })
+    end
+    localeDD:SetItems(localeItems)
+
+    local localeText = visibilityPane:CreateFontString(nil, "OVERLAY", "CELL_FONT_WIDGET")
+    localeText:SetText(L["Language"])
+    localeText:SetPoint("BOTTOMLEFT", localeDD, "TOPLEFT", 0, 1)
 end
 
 -------------------------------------------------
@@ -200,7 +266,7 @@ local lockCB, fadeOutCB, menuPositionDD
 
 local function CreatePositionPane()
     local positionPane = Cell.CreateTitledPane(generalTab, L["Position"], 205, 120)
-    positionPane:SetPoint("TOPLEFT", generalTab, 5, -120)
+    positionPane:SetPoint("TOPLEFT", generalTab, 5, -155)
 
     lockCB = Cell.CreateCheckButton(positionPane, L["Lock Cell Frames"], function(checked, self)
         CellDB["general"]["locked"] = checked
@@ -246,7 +312,7 @@ end
 local nicknameEB, syncCB
 local function CreateNicknamePane()
     local nicknamePane = Cell.CreateTitledPane(generalTab, L["Nickname"], 205, 130)
-    nicknamePane:SetPoint("TOPLEFT", generalTab, 5, -300)
+    nicknamePane:SetPoint("TOPLEFT", generalTab, 5, -315)
 
     -- my nickname
     nicknameEB = Cell.CreateEditBox(nicknamePane, 195, 20)
@@ -437,7 +503,7 @@ end
 
 local function CreateLibGetFramePane()
     local miscPane = Cell.CreateTitledPane(generalTab, "LibGetFrame", 422, 80)
-    miscPane:SetPoint("TOPLEFT", generalTab, 5, -450)
+    miscPane:SetPoint("TOPLEFT", generalTab, 5, -465)
 
     framePriorityWidget = CreateFramePriorityWidget(miscPane)
     framePriorityWidget:SetPoint("TOPLEFT", 5, -45)
@@ -529,6 +595,7 @@ local function ShowTab(tab)
             CellDB["general"]["showMinimapButton"] = true
         end
         showMinimapButtonCB:SetChecked(CellDB["general"]["showMinimapButton"])
+        localeDD:SetSelectedValue(CellDB["general"]["localeOverride"] or "auto")
 
         -- position
         lockCB:SetChecked(CellDB["general"]["locked"])

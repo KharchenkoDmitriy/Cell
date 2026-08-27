@@ -6,6 +6,9 @@ local supported = {
     "enUS", "zhCN", "zhTW", "koKR", "ptBR", "deDE", "ruRU", "frFR", "esES", "itIT", "esMX",
 }
 
+local _, Cell = ...
+Cell.supportedLocales = supported
+
 local function IsSupported(locale)
     for _, code in ipairs(supported) do
         if code == locale then return true end

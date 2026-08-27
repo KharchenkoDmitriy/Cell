@@ -22,7 +22,7 @@ Cell.isCata = WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC
 Cell.isMists = WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC
 Cell.isTWW = LE_EXPANSION_LEVEL_CURRENT == LE_EXPANSION_WAR_WITHIN
 
-local CELL_VERSION_FALLBACK = "r277.9.8"
+local CELL_VERSION_FALLBACK = "r277.9.8.1"
 
 function F.InitAddonVersion()
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
@@ -3930,29 +3930,104 @@ local function StripUnitAuraTree(frame)
     end
 end
 
+-- Caches the flat list of frames a root needs UnregisterEvent called on,
+-- built once and reused on the hot roster-update path -- a roster event
+-- only ever swaps which unit a button displays, never its child widgets.
+-- The background ticker below rebuilds these on its own slow schedule so a
+-- lazily-created widget still gets picked up eventually.
+local stripCache = setmetatable({}, { __mode = "k" })
+
+local function BuildStripList(root, list)
+    if not root then return end
+    if root.UnregisterEvent then
+        list[#list + 1] = root
+    end
+    if root.GetChildren then
+        local children = { root:GetChildren() }
+        for i = 1, #children do
+            local child = children[i]
+            if child and not (child.IsForbidden and child:IsForbidden()) and not IsAuraEngineContainer(child) then
+                BuildStripList(child, list)
+            end
+        end
+    end
+end
+
+local function StripUnitAuraTreeCached(root)
+    if not root then return end
+    local entry = stripCache[root]
+    if not entry then
+        entry = { list = {} }
+        BuildStripList(root, entry.list)
+        stripCache[root] = entry
+    end
+    local list = entry.list
+    for i = 1, #list do
+        pcall(list[i].UnregisterEvent, list[i], "UNIT_AURA")
+    end
+end
+
+-- Background refresh of the caches above, decoupled from GROUP_ROSTER_UPDATE
+-- so roster churn never triggers a tree walk.
+local REFRESH_INTERVAL = 30
+local refreshQueue, refreshIdx = {}, 1
+
+local function RefreshStripCachesStep()
+    local budget = 2
+    while budget > 0 and refreshIdx <= #refreshQueue do
+        local root = refreshQueue[refreshIdx]
+        if root then
+            local list = {}
+            BuildStripList(root, list)
+            stripCache[root] = { list = list }
+        end
+        refreshIdx = refreshIdx + 1
+        budget = budget - 1
+    end
+    if refreshIdx <= #refreshQueue then
+        C_Timer.After(0, RefreshStripCachesStep)
+    end
+end
+
+-- CellParent and Cell.frames.mainFrame used to be in this list too, but
+-- each has ~27,700 descendant frames (every settings panel/dropdown Cell
+-- has ever created) that can never realistically carry a UNIT_AURA
+-- registration -- walking them was by far the dominant cost here.
+C_Timer.NewTicker(REFRESH_INTERVAL, function()
+    if not Cell.isMidnight then return end
+    wipe(refreshQueue)
+    if F.IterateAllUnitButtons then
+        F.IterateAllUnitButtons(function(b) refreshQueue[#refreshQueue + 1] = b end)
+    end
+    if Cell.frames and Cell.frames.buffTrackerFrame then
+        refreshQueue[#refreshQueue + 1] = Cell.frames.buffTrackerFrame
+    end
+    if _G.CellQuickCastFrame then refreshQueue[#refreshQueue + 1] = _G.CellQuickCastFrame end
+    if _G.CellQuickAssistFrame then refreshQueue[#refreshQueue + 1] = _G.CellQuickAssistFrame end
+    refreshIdx = 1
+    RefreshStripCachesStep()
+end)
+
 function F.StripCellUnitAura()
     if not Cell.isMidnight then return end
+    -- Only currently-shown buttons: F.IterateAllUnitButtons without its
+    -- "current group only" flag also walks pet/NPC/arena/spotlight buttons
+    -- (~90 total), most of which sit hidden most of the time.
     if F.IterateAllUnitButtons then
         F.IterateAllUnitButtons(function(b)
-            StripUnitAuraTree(b)
+            if b:IsShown() then
+                StripUnitAuraTreeCached(b)
+            end
         end)
     end
-    if CellParent then
-        StripUnitAuraTree(CellParent)
-    end
-    if Cell.frames then
-        if Cell.frames.mainFrame then
-            StripUnitAuraTree(Cell.frames.mainFrame)
-        end
-        if Cell.frames.buffTrackerFrame then
-            StripUnitAuraTree(Cell.frames.buffTrackerFrame)
-        end
+    if Cell.frames and Cell.frames.buffTrackerFrame then
+        StripUnitAuraTreeCached(Cell.frames.buffTrackerFrame)
     end
     if _G.CellQuickCastFrame then
-        StripUnitAuraTree(_G.CellQuickCastFrame)
+        StripUnitAuraTreeCached(_G.CellQuickCastFrame)
     end
     if _G.CellQuickAssistFrame then
-        StripUnitAuraTree(_G.CellQuickAssistFrame)
+        StripUnitAuraTreeCached(_G.CellQuickAssistFrame)
     end
     if _G.CellStatusIconCleuFrame then
         pcall(_G.CellStatusIconCleuFrame.UnregisterEvent, _G.CellStatusIconCleuFrame, "UNIT_AURA")

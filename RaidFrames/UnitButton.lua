@@ -768,7 +768,6 @@ local function Process(b)
                 I.SyncCombatAuraDisplays(b)
             end
         end
-
         CellLoadingBar.current = (CellLoadingBar.current or 0) + 1
         CellLoadingBar:SetValue(CellLoadingBar.current)
         BD(b)._status = nil
@@ -781,9 +780,22 @@ local function Process(b)
     end
 end
 
+-- Time-budgeted instead of a fixed item count per tick, since HandleIndicators()
+-- cost varies a lot per layout -- a fixed count either wastes frame time or
+-- blows the frame budget.
 updater:SetScript("OnUpdate", function()
-    Process(next(queue))
-    Process(next(queue))
+    local deadline = debugprofilestop() + 3
+    while true do
+        local b = next(queue)
+        if not b then
+            Process(nil)
+            return
+        end
+        Process(b)
+        if debugprofilestop() > deadline then
+            return
+        end
+    end
 end)
 
 hooksecurefunc(updater, "Show", function()
@@ -853,7 +865,16 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             ResetIndicators()
             F.Debug("  -> NO FULL UPDATE: only reset custom indicator tables")
             F.IterateAllUnitButtons(AddToUpdateQueue, true, nil, true)
-            F.IterateSharedUnitButtons(AddToInitQueue)
+            -- Shared (NPC/spotlight) buttons only need the full init once
+            -- (this is also where their first-ever init happens); after
+            -- that, just the light update path like the buttons above.
+            F.IterateSharedUnitButtons(function(b)
+                if F.GetButtonData(b)._indicatorsReady then
+                    AddToUpdateQueue(b)
+                else
+                    AddToInitQueue(b)
+                end
+            end)
             updater:Show()
             return
         end
@@ -5032,6 +5053,7 @@ local function UnitButton_OnHide(self)
     end
 
     BD(self).__displayedGuid = nil
+    BD(self).__auraDisplayGuid = nil
     BD(self)._updateRequired = nil
 
     F.RemoveElementsExceptKeys(BD(self).states, "unit", "displayedUnit")
@@ -5056,6 +5078,33 @@ end
 local function UnitButton_OnLeave(self)
     BD(self).widgets.mouseoverHighlight:Hide()
     GameTooltip:Hide()
+end
+
+-- Catches the one case OnAttributeChanged can't: a raid slot's own token
+-- (e.g. "raid5") stays assigned to the same button, but the actual player
+-- behind it changed (Blizzard doesn't re-fire "unit" for that). Runs once
+-- per GROUP_ROSTER_UPDATE. Separate __auraDisplayGuid field so it doesn't
+-- race with OnTick's own (unrelated) __unitGuid bookkeeping.
+function F.ResyncAuraDisplaysForRosterChange()
+    if not F.IterateAllUnitButtons then return end
+    F.IterateAllUnitButtons(function(self)
+        if not (self:IsShown() and BD(self).states.unit) then return end
+        local unit = BD(self).states.unit
+        local guid = UnitGUID(unit)
+        if not F.IsValueNonSecret(guid) or not guid then return end
+        if guid ~= BD(self).__auraDisplayGuid then
+            BD(self).__auraDisplayGuid = guid
+            if I.UpdateHealersAuraDisplayUnit then
+                pcall(I.UpdateHealersAuraDisplayUnit, self)
+            end
+            if I.UpdateCustomAuraDisplays then
+                pcall(I.UpdateCustomAuraDisplays, self)
+            end
+            if I.UpdateCombatAuraDisplays then
+                pcall(I.UpdateCombatAuraDisplays, self)
+            end
+        end
+    end, true)
 end
 
 local UNKNOWN, UNKNOWNOBJECT = _G.UNKNOWN, _G.UNKNOWNOBJECT

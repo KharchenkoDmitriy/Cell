@@ -1830,7 +1830,7 @@ local function CreateSettingsPane()
 end
 
 local indicatorSettings
-local DEBUFFS_TOOLTIP1 = L["This will make these icons not click-through-able"].."|"..L["Tooltips need to be enabled in General tab"]
+local DEBUFFS_TOOLTIP1 = L["This will make these icons not click-through-able"].."|"..L["Tooltips need to be enabled in General tab"].."|"..L["debuffTooltipMouseoverTip"]
 local DEBUFFS_TOOLTIP2 = L["This will make these icons not click-through-able"]
 local DEBUFFS_TOOLTIP3 = "Shows a colored border around debuffs indicating their dispel type (Magic/Curse/Disease/Poison/Bleed)."
 local DISPELS_FRAME_BORDER_TOOLTIP = "Shows a colored border around the whole unit frame indicating the dispel type, instead of only highlighting the health bar."

@@ -1375,12 +1375,39 @@ function I.UpdateCustomAuraDisplays(unitButton)
     SyncButton(unitButton, true)
 end
 
+-- Syncing every button in one pass can involve a font/position restyle on
+-- every aura icon on every frame, which is expensive enough on a full raid
+-- with several custom indicators to trip WoW's "script ran too long" limit.
+-- Spread it over a few buttons per frame instead.
+local function ChunkedSyncAllButtons()
+    local queue = {}
+    local queued = {}
+    F.IterateAllUnitButtons(function(b)
+        if b and not queued[b] then
+            queued[b] = true
+            queue[#queue + 1] = b
+        end
+    end, true)
+    if #queue == 0 then return end
+    local idx = 1
+    local function step()
+        local budget = 4
+        while budget > 0 and idx <= #queue do
+            SyncButton(queue[idx], true)
+            idx = idx + 1
+            budget = budget - 1
+        end
+        if idx <= #queue then
+            C_Timer.After(0, step)
+        end
+    end
+    step()
+end
+
 function I.RefreshAllCustomAuraDisplays()
     if not SUPPORTED then return end
     cachedConfigs = nil
-    F.IterateAllUnitButtons(function(b)
-        SyncButton(b, true)
-    end, true)
+    ChunkedSyncAllButtons()
 end
 
 local function RebuildAllCustomAuraDisplays()
@@ -1440,8 +1467,6 @@ if SUPPORTED then
             C_Timer.After(0.5, I.RefreshAllCustomAuraDisplays)
             return
         end
-        F.IterateAllUnitButtons(function(b)
-            SyncButton(b, true)
-        end, true)
+        ChunkedSyncAllButtons()
     end)
 end

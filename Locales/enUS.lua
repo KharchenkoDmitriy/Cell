@@ -30,6 +30,9 @@ select(2, ...).L = setmetatable({
     ["raidStyleSwitchChatMsg"] = "Traditional party frames cause known Blizzard errors (taint). Cell has automatically switched to raid-style party frames to avoid this. A UI reload is required for the change to take effect.",
     ["raidStyleSwitchPopupText"] = "Traditional party frames cause known Blizzard errors.\n\nCell has automatically switched to raid-style party frames to prevent this.\n\nA UI reload is required for the change to take effect.\n ",
     ["nonPlayerAurasTip"] = "Hides lust aftereffects such as Exhaustion, Sated, Forbearance and Temporal Displacement, and Fel Armor. Encounter debuffs stay visible.",
+    ["debuffTooltipMouseoverTip"] = "Hovering an icon here will block your own @mouseover macros/spells over that spot. Leave this unchecked to avoid that entirely.",
+    ["Language"] = "Language",
+    ["Client Language"] = "Client Language",
     ["Color by Health"] = "Color by Health",
     ["colorByHealthTip"] = "Blend this segment's color from red (low health) to yellow to its normal color as health rises.",
     ["2 Decimals"] = "2 Decimals",
@@ -151,6 +154,13 @@ select(2, ...).L = setmetatable({
     ["BACKUP_TIPS2"] = "Note for Classic players: Backups do not include Click-Castings and Layout Auto Switch of other characters",
     ["CHANGELOGS"] = [[
 
+
+        <h1>r277.9.8.1 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Fixed a group member's buffs/spell-cast icons sometimes staying stuck on a different member's frame after a role change or roster shuffle swapped who occupies a raid slot without the slot's own unit token changing.</p>
+        <p>* Noticeably reduced CPU spikes and stutters caused by people frequently joining/leaving a large group, especially outdoors and in cities.</p>
+        <p>* New: a Language dropdown on the General tab lets you display Cell in a different language than your game client, without changing your client's own language.</p>
+        <br/>
 
         <h1>r277.9.8 - NeRgY</h1>
         <h2>Retail</h2>

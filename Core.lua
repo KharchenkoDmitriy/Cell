@@ -837,6 +837,9 @@ local function DoGroupRosterUpdate(skipFallbackUpdate)
     if Cell.isMidnight and F.StripCellUnitAura then
         C_Timer.After(0, F.StripCellUnitAura)
     end
+    if F.ResyncAuraDisplaysForRosterChange then
+        C_Timer.After(0, F.ResyncAuraDisplaysForRosterChange)
+    end
 end
 
 -- Coalesce bursts of GROUP_ROSTER_UPDATE (WoW commonly fires it multiple times
@@ -1025,6 +1028,9 @@ function eventFrame:PLAYER_LOGIN()
         F.StripCellUnitAura()
         C_Timer.After(0, F.StripCellUnitAura)
         C_Timer.After(1, F.StripCellUnitAura)
+    end
+    if F.ResyncAuraDisplaysForRosterChange then
+        F.ResyncAuraDisplaysForRosterChange()
     end
     -- update raid debuff list
     Cell.Fire("UpdateRaidDebuffs")

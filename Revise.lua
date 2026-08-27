@@ -3731,6 +3731,12 @@ function F.Revise()
                     if t["indicatorName"] == "debuffs" and type(t["showDispelBorder"]) ~= "boolean" then
                         t["showDispelBorder"] = true
                     end
+                    -- The Blacklist Shortcut checkbox was removed from Retail's
+                    -- settings UI, but a profile that had it checked before that
+                    -- keeps applying it with no way to turn it off. Force it off.
+                    if t["indicatorName"] == "debuffs" and Cell.isRetail and t["enableBlacklistShortcut"] == true then
+                        t["enableBlacklistShortcut"] = false
+                    end
                     if t["indicatorName"] == "raidDebuffs" and type(t["showStack"]) ~= "boolean" then
                         t["showStack"] = true
                     end

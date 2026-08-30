@@ -50,11 +50,17 @@ local cachedLayouts
 local needsCombatCatchup = false
 
 local function NormalizeDispelHighlightType(ht)
+    if ht == "none" then
+        return "none"
+    end
     if ht == "edge-top" then
         return "edge-top"
     end
     if ht == "edge-bottom" or ht == "gradient-sharp" then
         return "edge-bottom"
+    end
+    if ht == "entire-solid" then
+        return "entire-solid"
     end
     return "entire"
 end
@@ -209,6 +215,7 @@ end
 
 local PERSONAL_DEBUFF_IDS = {
     57723, 57724, 80354, 95809, 160455, 264689, 390435, 428628, 25771, 387847, 386124,
+    113942, -- Demonic Gateway (90s "can't use another gateway" debuff)
 }
 
 local function BuildPersonalDebuffExcludeMap()
@@ -642,7 +649,7 @@ local function MakeInitDispelAuraButton(cfg, token, unitButton)
         local r, g, b = I.GetDebuffTypeColor(token)
         r, g, b = r or 1, g or 1, b or 1
         local isEdge = mode == "edge-top" or mode == "edge-bottom"
-        local alpha = isEdge and 1 or DISPEL_FULL_ALPHA
+        local alpha = (isEdge or mode == "entire-solid") and 1 or DISPEL_FULL_ALPHA
         local asset = WHITE_TEXTURE
         if mode == "edge-top" then
             asset = EDGE_FADE_TOP
@@ -657,7 +664,7 @@ local function MakeInitDispelAuraButton(cfg, token, unitButton)
         end
         F.SetupEngineAuraButtonMouse(button, true)
 
-        if health then
+        if health and mode ~= "none" then
             local overlay = button:CreateTexture(nil, "ARTWORK", nil, 3)
             overlay:ClearAllPoints()
             overlay:SetAllPoints(health)

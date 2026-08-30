@@ -983,9 +983,7 @@ function buffTrackerFrame:PLAYER_REGEN_ENABLED()
 end
 
 function buffTrackerFrame:PLAYER_REGEN_DISABLED()
-    RepointButtons()
-    ResizeButtons()
-    IterateAllUnits()
+    -- entering combat doesn't invalidate anything here
 end
 
 buffTrackerFrame:SetScript("OnEvent", function(self, event, ...)

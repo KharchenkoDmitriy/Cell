@@ -664,12 +664,36 @@ function I.UpdateHealersAuraDisplayUnit(unitButton)
     SyncButton(unitButton, true)
 end
 
+-- spreads SyncButton across multiple frames instead of one synchronous pass
+local function ChunkedSyncAllButtons()
+    local queue = {}
+    local queued = {}
+    F.IterateAllUnitButtons(function(b)
+        if b and not queued[b] then
+            queued[b] = true
+            queue[#queue + 1] = b
+        end
+    end, true)
+    if #queue == 0 then return end
+    local idx = 1
+    local function step()
+        local budget = 4
+        while budget > 0 and idx <= #queue do
+            SyncButton(queue[idx], true)
+            idx = idx + 1
+            budget = budget - 1
+        end
+        if idx <= #queue then
+            C_Timer.After(0, step)
+        end
+    end
+    step()
+end
+
 function I.RefreshAllHealersAuraDisplays()
     if not SUPPORTED then return end
     cachedConfig = ResolveHealersConfig()
-    F.IterateAllUnitButtons(function(b)
-        SyncButton(b, true)
-    end, true)
+    ChunkedSyncAllButtons()
 end
 
 local function RebuildAllHealersAuraDisplays()
@@ -735,8 +759,10 @@ if SUPPORTED then
             C_Timer.After(0.5, I.RefreshAllHealersAuraDisplays)
             return
         end
-        F.IterateAllUnitButtons(function(b)
-            SyncButton(b, true)
-        end, true)
+        -- entering combat doesn't make anything stale -- only leaving does
+        if event == "PLAYER_REGEN_DISABLED" then
+            return
+        end
+        ChunkedSyncAllButtons()
     end)
 end

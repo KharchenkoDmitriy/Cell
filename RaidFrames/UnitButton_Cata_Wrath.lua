@@ -353,8 +353,8 @@ local function HandleIndicators(b)
         if type(t["showTooltip"]) == "boolean" then
             indicator:ShowTooltip(t["showTooltip"])
         end
-        -- blacklist shortcut
-        if type(t["enableBlacklistShortcut"]) == "boolean" then
+        -- blacklist shortcut (only Debuffs has this method)
+        if type(t["enableBlacklistShortcut"]) == "boolean" and indicator.EnableBlacklistShortcut then
             indicator:EnableBlacklistShortcut(t["enableBlacklistShortcut"])
         end
         -- speed

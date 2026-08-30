@@ -794,10 +794,10 @@ local function Dispels_SetDispels(self, dispelTypes)
                     end
                     self.highlight:SetTexCoord(0, 1, 0, 1)
                     self.highlight:SetVertexColor(r, g, b, 1)
-                else -- entire (full health bar)
+                else -- entire / entire-solid (full health bar)
                     self.highlight:SetTexture(Cell.vars.whiteTexture)
                     self.highlight:SetTexCoord(0, 1, 0, 1)
-                    self.highlight:SetVertexColor(r, g, b, 0.5)
+                    self.highlight:SetVertexColor(r, g, b, self.highlightType == "entire-solid" and 1 or 0.5)
                 end
                 self.highlight:Show()
             end
@@ -894,7 +894,7 @@ end
 local function Dispels_UpdateHighlight(self, highlightType)
     if highlightType == "gradient-sharp" then
         highlightType = "edge-bottom"
-    elseif highlightType ~= "edge-top" and highlightType ~= "edge-bottom" and highlightType ~= "none" then
+    elseif highlightType ~= "edge-top" and highlightType ~= "edge-bottom" and highlightType ~= "none" and highlightType ~= "entire-solid" then
         highlightType = "entire"
     end
     self.highlightType = highlightType
@@ -1065,6 +1065,24 @@ function I.GetDebuffOrder(spellName, spellId, count)
 end
 
 function I.GetDebuffGlow(spellName, spellId, count)
+    -- Retail (Midnight): unchanged, always "None".
+    if Cell.isMidnight then
+        return "None", nil
+    end
+    if not F.IsValueNonSecret(spellId) or not F.IsValueNonSecret(spellName) then return "None", nil end
+    local t = currentAreaDebuffs[spellId] or currentAreaDebuffs[spellName]
+    if not t or not t["glowType"] or t["glowType"] == "None" then return "None", nil end
+
+    local show
+    if type(t["glowCondition"]) == "table" and t["glowCondition"][1] == "Stack" then
+        show = CheckCondition(t["glowCondition"][2], t["glowCondition"][3], count)
+    else
+        show = true
+    end
+
+    if show then
+        return t["glowType"], t["glowOptions"]
+    end
     return "None", nil
 end
 
@@ -1082,10 +1100,20 @@ end
 
 local function RaidDebuffs_ShowGlow(self, glowType, glowOptions, noHiding)
     if not LCG then return end
-    LCG.ButtonGlow_Stop(self.parent)
-    LCG.PixelGlow_Stop(self.parent)
-    LCG.AutoCastGlow_Stop(self.parent)
-    LCG.ProcGlow_Stop(self.parent)
+    local target = self.parent
+    if not noHiding then
+        if glowType ~= "Normal" then LCG.ButtonGlow_Stop(target) end
+        if glowType ~= "Pixel" then LCG.PixelGlow_Stop(target) end
+        if glowType ~= "Shine" then LCG.AutoCastGlow_Stop(target) end
+        LCG.ProcGlow_Stop(target)
+    end
+    if glowType == "Normal" then
+        LCG.ButtonGlow_Start(target, glowOptions and glowOptions[1])
+    elseif glowType == "Pixel" and glowOptions then
+        LCG.PixelGlow_Start(target, glowOptions[1], glowOptions[2], glowOptions[3], glowOptions[4], glowOptions[5])
+    elseif glowType == "Shine" and glowOptions then
+        LCG.AutoCastGlow_Start(target, glowOptions[1], glowOptions[2], glowOptions[3], glowOptions[4])
+    end
 end
 
 local hiders = LCG and {

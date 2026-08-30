@@ -155,6 +155,21 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.8.2 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Fixed out-of-range fading not working in combat for Hunter, Rogue and Warrior. Death Knight is partially fixed (only when the target is dead); Demon Hunter still has no fix since the class has no suitable spell for it.</p>
+        <p>* Fixed a Lua error ("attempt to perform arithmetic on field 'healthFadeThreshold'") that could happen when opening the Appearance settings on an older profile.</p>
+        <p>* Fixed a Lua error ("attempt to call a nil value") that could happen on the Dispels indicator for profiles carrying a leftover setting from an older version.</p>
+        <p>* Fixed Dispels' "Highlight Type: None" not actually turning off the full-frame color overlay during real combat.</p>
+        <p>* Added a new "Solid - Health Bar (100%)" highlight type for Dispels, alongside the existing 50% opacity one (now labeled "Solid - Health Bar (50%)").</p>
+        <p>* Fixed Dispels sometimes briefly showing a debuff/highlight on the wrong raid member</p>
+        <p>* Further improved out-of-range fading during real combat, on top of the fix above.</p>
+        <p>* Fixed the Overshield Texture.</p>
+        <h2>Classic / TBC</h2>
+        <p>* Fixed the resurrection icon sometimes not appearing on a target that's already being resurrected, especially when two people resurrect the same person close together.</p>
+        <p>* Fixed Raid Debuffs' "Glow Type" (per-spell glow) never actually applying, and old glows sometimes getting stuck on until a UI reload.</p>
+        <br/>
+
         <h1>r277.9.8.1 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Fixed a group member's buffs/spell-cast icons sometimes staying stuck on a different member's frame after a role change or roster shuffle swapped who occupies a raid slot without the slot's own unit token changing.</p>

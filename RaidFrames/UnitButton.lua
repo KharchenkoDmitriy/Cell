@@ -653,8 +653,8 @@ local function HandleIndicators(b)
         if type(t["showTooltip"]) == "boolean" and indicator.ShowTooltip then
             indicator:ShowTooltip(t["showTooltip"])
         end
-        -- blacklist shortcut
-        if type(t["enableBlacklistShortcut"]) == "boolean" then
+        -- blacklist shortcut (only Debuffs has this method)
+        if type(t["enableBlacklistShortcut"]) == "boolean" and indicator.EnableBlacklistShortcut then
             indicator:EnableBlacklistShortcut(t["enableBlacklistShortcut"])
         end
         -- speed
@@ -823,6 +823,44 @@ local function AddToUpdateQueue(b)
     BD(b)._indicatorsReady = nil
     BD(b)._status = WAITING_FOR_UPDATE
     queue[b] = true
+end
+
+-------------------------------------------------
+-- combat-enter aura resync queue
+-------------------------------------------------
+-- Spreads the per-button aura resync on PLAYER_REGEN_DISABLED across frames
+-- instead of every button updating synchronously in the same tick.
+local combatAuraQueue, combatAuraQueued = {}, setmetatable({}, { __mode = "k" })
+local combatAuraPending = false
+
+-- global: called from a later top-level block in this file
+function ProcessCombatAuraQueue()
+    combatAuraPending = false
+    -- fixed count, not a time budget -- a time budget let more work pile
+    -- into one tick than this did
+    local budget = 4
+    while budget > 0 and #combatAuraQueue > 0 do
+        local b = tremove(combatAuraQueue)
+        combatAuraQueued[b] = nil
+        if b:IsShown() then
+            UnitButton_UpdateAuras(b)
+        end
+        budget = budget - 1
+    end
+    if #combatAuraQueue > 0 then
+        combatAuraPending = true
+        C_Timer.After(0, ProcessCombatAuraQueue)
+    end
+end
+
+function EnqueueCombatAuraUpdate(b)
+    if combatAuraQueued[b] then return end
+    combatAuraQueued[b] = true
+    combatAuraQueue[#combatAuraQueue + 1] = b
+    if not combatAuraPending then
+        combatAuraPending = true
+        C_Timer.After(0, ProcessCombatAuraQueue)
+    end
 end
 
 -------------------------------------------------
@@ -2052,7 +2090,7 @@ local function UnitButton_UpdateDebuffs(self, isFullUpdate)
                 elseif ht ~= "none" then
                     dispels.highlight:SetTexture(Cell.vars.whiteTexture)
                     dispels.highlight:SetTexCoord(0, 1, 0, 1)
-                    dispels.highlight:SetVertexColor(cr, cg, cb, 0.5)
+                    dispels.highlight:SetVertexColor(cr, cg, cb, ht == "entire-solid" and 1 or 0.5)
                     dispels.highlight:Show()
                 end
 
@@ -3462,7 +3500,7 @@ end
 
 UnitButton_UpdateShieldAbsorbs = function(self, skipStateUpdates)
         if Cell.isMidnight and BD(self).widgets.healthCalculator then
-            if not shieldEnabled then
+            if not shieldEnabled and not overshieldEnabled then
                 BD(self).widgets.shieldBar:Hide()
                 BD(self).widgets.shieldBarR:Hide()
                 BD(self).widgets.overShieldGlow:Hide()
@@ -3482,7 +3520,9 @@ UnitButton_UpdateShieldAbsorbs = function(self, skipStateUpdates)
         local calc = BD(self).widgets.healPredictionCalculator
         if calc and UnitGetDetailedHealPrediction then
             if calc.SetDamageAbsorbClampMode then
-                calc:SetDamageAbsorbClampMode(Enum.UnitDamageAbsorbClampMode.MaximumHealth)
+                -- MissingHealth: clamped once the shield would overflow the
+                -- health bar, not once it exceeds the unit's entire max health
+                calc:SetDamageAbsorbClampMode(Enum.UnitDamageAbsorbClampMode.MissingHealth)
             end
             if UnitExists(unit) then
                 UnitGetDetailedHealPrediction(unit, nil, calc)
@@ -3492,42 +3532,44 @@ UnitButton_UpdateShieldAbsorbs = function(self, skipStateUpdates)
             end
         end
 
+        local function ApplyOverShieldGlow(glow)
+            if overshieldEnabled and isClamped ~= nil then
+                if glow.SetAlphaFromBoolean then
+                    glow:Show()
+                    glow:SetAlphaFromBoolean(isClamped, 1, 0)
+                elseif F.IsValueNonSecret(isClamped) and isClamped then
+                    glow:Show()
+                else
+                    glow:Hide()
+                end
+            else
+                glow:Hide()
+            end
+        end
+
+        if not shieldEnabled then
+            -- Shield display itself is off -- Overshield alone just marks
+            -- the health bar's edge.
+            BD(self).widgets.shieldBar:Hide()
+            BD(self).widgets.shieldBarR:Hide()
+            BD(self).widgets.overShieldGlowR:Hide()
+            BD(self).indicators.shieldBar:Hide()
+            ApplyOverShieldGlow(BD(self).widgets.overShieldGlow)
+            return
+        end
+
         if overshieldReverseFillEnabled then
             BD(self).widgets.shieldBar:Hide()
             BD(self).widgets.shieldBarR:SetMinMaxValues(0, healthMax)
             BD(self).widgets.shieldBarR:SetValue(absorbs)
             BD(self).widgets.shieldBarR:Show()
-            if overshieldEnabled and isClamped ~= nil then
-                local glow = BD(self).widgets.overShieldGlowR
-                if glow.SetAlphaFromBoolean then
-                    glow:Show()
-                    glow:SetAlphaFromBoolean(isClamped, 1, 0)
-                elseif F.IsValueNonSecret(isClamped) and isClamped then
-                    glow:Show()
-                else
-                    glow:Hide()
-                end
-            else
-                BD(self).widgets.overShieldGlowR:Hide()
-            end
+            ApplyOverShieldGlow(BD(self).widgets.overShieldGlowR)
             BD(self).widgets.overShieldGlow:Hide()
         else
             BD(self).widgets.shieldBar:SetMinMaxValues(0, healthMax)
             BD(self).widgets.shieldBar:SetValue(absorbs)
             BD(self).widgets.shieldBar:Show()
-            if overshieldEnabled and isClamped ~= nil then
-                local glow = BD(self).widgets.overShieldGlow
-                if glow.SetAlphaFromBoolean then
-                    glow:Show()
-                    glow:SetAlphaFromBoolean(isClamped, 1, 0)
-                elseif F.IsValueNonSecret(isClamped) and isClamped then
-                    glow:Show()
-                else
-                    glow:Hide()
-                end
-            else
-                BD(self).widgets.overShieldGlow:Hide()
-            end
+            ApplyOverShieldGlow(BD(self).widgets.overShieldGlow)
             BD(self).widgets.shieldBarR:Hide()
             BD(self).widgets.overShieldGlowR:Hide()
         end
@@ -3848,9 +3890,23 @@ end
 
 -- UNIT_IN_RANGE_UPDATE: unit, inRange
 local IsInRange = F.IsInRange
-local function UnitButton_UpdateInRange(self, ir)
+function UnitButton_UpdateInRange(self, ir)
     local unit = BD(self).states.displayedUnit
     if not unit then return end
+
+    -- Midnight: UnitInRange can return a secret boolean in restricted content.
+    -- Hand it straight to SetAlphaFromBoolean instead of resolving it first.
+    if Cell.isMidnight and issecretvalue and self.SetAlphaFromBoolean
+        and Cell.loaded and F.UnitInGroup(unit)
+        and not F.IsKnownTrue(UnitIsUnit("player", unit)) then
+        local rawInRange, rawChecked = UnitInRange(unit)
+        if issecretvalue(rawInRange) or issecretvalue(rawChecked) then
+            self:SetAlphaFromBoolean(rawInRange, 1, CellDB["appearance"]["outOfRangeAlpha"])
+            BD(self).states.inRange = true -- readable fallback for other consumers
+            BD(self).states.wasInRange = nil -- forces the normal path to resync once values are readable again
+            return
+        end
+    end
 
     local inRange = IsInRange(unit)
     -- so frames don't grey out incorrectly
@@ -4821,8 +4877,10 @@ UnitButton_OnEvent = function(self, event, unit, arg, arg2, ...)
 
         elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_REGEN_DISABLED" then
             UnitButton_UpdateLeader(self, event)
+            -- resync range-fade alpha right at the combat boundary
+            UnitButton_UpdateInRange(self)
             if event == "PLAYER_REGEN_DISABLED" then
-                UnitButton_UpdateAuras(self)
+                EnqueueCombatAuraUpdate(self)
             end
             if event == "PLAYER_REGEN_ENABLED" then
                 UnitButton_UpdateHealth(self)
@@ -4938,6 +4996,10 @@ local function UnitButton_OnAttributeChanged(self, name, value)
                 BD(self)._recentSecretHelpfulCastAt = nil
                 BD(self)._recentSecretHelpfulCastSpellId = nil
                 wipe(BD(self).states)
+
+                -- a different player took over this slot -- clear the old
+                -- occupant's aura/dispel state before the next repaint
+                ResetAuraTables(self)
 
                 if BD(self).widgets and BD(self).widgets.healthCalculator then
                     pcall(BD(self).widgets.healthCalculator.ResetPredictedValues, BD(self).widgets.healthCalculator)
@@ -6131,8 +6193,16 @@ function CellUnitButton_OnLoad(button)
     shieldBarR:Hide()
     shieldBar.shieldBarR = shieldBarR
 
-    -- over-shield glow
-    local overShieldGlow = midLevelFrame:CreateTexture(name.."OverShieldGlow", "ARTWORK", nil, -4)
+    -- over-shield glow -- hosted a level above shieldBar so it doesn't get
+    -- drawn over on Midnight, where shieldBar is its own StatusBar frame
+    local overShieldFrame = midLevelFrame
+    if Cell.isMidnight then
+        overShieldFrame = CreateFrame("Frame", name.."OverShieldFrame", midLevelFrame)
+        overShieldFrame:SetFrameLevel(shieldBar:GetFrameLevel()+1)
+        overShieldFrame:SetAllPoints(midLevelFrame)
+    end
+
+    local overShieldGlow = overShieldFrame:CreateTexture(name.."OverShieldGlow", "ARTWORK", nil, -4)
     BD(button).widgets.overShieldGlow = overShieldGlow
     overShieldGlow:SetTexture("Interface\\AddOns\\Cell\\Media\\overshield")
     -- overShieldGlow:SetBlendMode("ADD")
@@ -6140,7 +6210,7 @@ function CellUnitButton_OnLoad(button)
     shieldBar.overShieldGlow = overShieldGlow
 
     -- over-shield glow reversed
-    local overShieldGlowR = midLevelFrame:CreateTexture(name.."OverShieldGlowR", "ARTWORK", nil, -4)
+    local overShieldGlowR = overShieldFrame:CreateTexture(name.."OverShieldGlowR", "ARTWORK", nil, -4)
     BD(button).widgets.overShieldGlowR = overShieldGlowR
     overShieldGlowR:SetTexture("Interface\\AddOns\\Cell\\Media\\overshield_reversed")
     -- overShieldGlowR:SetBlendMode("ADD")

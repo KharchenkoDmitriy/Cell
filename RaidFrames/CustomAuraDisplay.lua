@@ -1375,10 +1375,8 @@ function I.UpdateCustomAuraDisplays(unitButton)
     SyncButton(unitButton, true)
 end
 
--- Syncing every button in one pass can involve a font/position restyle on
--- every aura icon on every frame, which is expensive enough on a full raid
--- with several custom indicators to trip WoW's "script ran too long" limit.
--- Spread it over a few buttons per frame instead.
+-- spreads the restyle over a few buttons per frame to avoid tripping
+-- WoW's "script ran too long" limit on a full raid
 local function ChunkedSyncAllButtons()
     local queue = {}
     local queued = {}
@@ -1465,6 +1463,10 @@ if SUPPORTED then
     boot:SetScript("OnEvent", function(_, event)
         if event == "PLAYER_ENTERING_WORLD" then
             C_Timer.After(0.5, I.RefreshAllCustomAuraDisplays)
+            return
+        end
+        -- entering combat doesn't make anything stale -- only leaving does
+        if event == "PLAYER_REGEN_DISABLED" then
             return
         end
         ChunkedSyncAllButtons()

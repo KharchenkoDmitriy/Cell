@@ -6305,10 +6305,17 @@ local function CreateSetting_HighlightType(parent)
                 end,
             },
             {
-                ["text"] = L["Solid"].." - "..L["Health Bar"],
+                ["text"] = L["Solid"].." - "..L["Health Bar"].." (50%)",
                 ["value"] = "entire",
                 ["onClick"] = function()
                     widget.func("entire")
+                end,
+            },
+            {
+                ["text"] = L["Solid"].." - "..L["Health Bar"].." (100%)",
+                ["value"] = "entire-solid",
+                ["onClick"] = function()
+                    widget.func("entire-solid")
                 end,
             },
             {
@@ -6382,7 +6389,7 @@ local function CreateSetting_HighlightType(parent)
         function widget:SetDBValue(highlightType)
             if highlightType == "gradient-sharp" then
                 highlightType = "edge-bottom"
-            elseif highlightType ~= "edge-top" and highlightType ~= "edge-bottom" and highlightType ~= "none" then
+            elseif highlightType ~= "edge-top" and highlightType ~= "edge-bottom" and highlightType ~= "none" and highlightType ~= "entire-solid" then
                 highlightType = "entire"
             end
             widget.highlightType:SetSelectedValue(highlightType)

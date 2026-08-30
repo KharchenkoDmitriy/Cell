@@ -22,7 +22,7 @@ Cell.isCata = WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC
 Cell.isMists = WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC
 Cell.isTWW = LE_EXPANSION_LEVEL_CURRENT == LE_EXPANSION_WAR_WITHIN
 
-local CELL_VERSION_FALLBACK = "r277.9.8.1"
+local CELL_VERSION_FALLBACK = "r277.9.8.2"
 
 function F.InitAddonVersion()
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
@@ -3183,24 +3183,27 @@ end
 local playerClass = UnitClassBase("player")
 
 local friendSpells = {
-    -- ["DEATHKNIGHT"] = 47541,
-    -- ["DEMONHUNTER"] = ,
+    -- DEATHKNIGHT: no living-friendly-target spell exists in the kit at all
+    -- (everything is self/enemy-facing) -- see deadSpells below instead.
+    -- DEMONHUNTER: same problem, and no dead-target spell either -- no
+    -- working fallback possible for this class with the current kit.
     ["DRUID"] = (Cell.isWrath or Cell.isTBC or Cell.isVanilla) and 5185 or 8936, -- 治疗之触 / 愈合
     -- FIXME: [361469 活化烈焰] 会被英雄天赋 [431443 时序烈焰] 替代，但它而且有问题
     -- IsSpellInRange 始终返回 nil
     ["EVOKER"] = 355913, -- 翡翠之花
-    -- ["HUNTER"] = 136,
+    ["HUNTER"] = 53271, -- Master's Call -- baseline, targets a friendly unit
     ["MAGE"] = 1459, -- 奥术智慧 / 奥术光辉
     ["MONK"] = 116670, -- 活血术
     ["PALADIN"] = Cell.isRetail and 19750 or 635, -- 圣光闪现 / 圣光术
     ["PRIEST"] = (Cell.isWrath or Cell.isTBC or Cell.isVanilla) and 2050 or 2061, -- 次级治疗术 / 快速治疗
-    -- ["ROGUE"] = Cell.isWrath and 57934,
+    ["ROGUE"] = 57934, -- Tricks of the Trade -- talent, but the best available
     ["SHAMAN"] = Cell.isRetail and 8004 or 331, -- 治疗之涌 / 治疗波
     ["WARLOCK"] = 5697, -- 无尽呼吸
-    -- ["WARRIOR"] = 3411, -- 援护
+    ["WARRIOR"] = 3411, -- Intervene -- talent, but the best available
 }
 
 local deadSpells = {
+    ["DEATHKNIGHT"] = 61999, -- Raise Ally -- baseline, dead-target only
     ["EVOKER"] = 361227, -- resurrection range, need separately for evoker
 }
 

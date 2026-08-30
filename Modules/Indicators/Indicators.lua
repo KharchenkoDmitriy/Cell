@@ -487,10 +487,10 @@ local function InitIndicator(indicatorName)
                         end
                         self.highlight:SetTexCoord(0, 1, 0, 1)
                         self.highlight:SetVertexColor(r, g, b, 1)
-                    else
+                    else -- entire / entire-solid (full health bar)
                         self.highlight:SetTexture(Cell.vars.whiteTexture)
                         self.highlight:SetTexCoord(0, 1, 0, 1)
-                        self.highlight:SetVertexColor(r, g, b, 0.5)
+                        self.highlight:SetVertexColor(r, g, b, self.highlightType == "entire-solid" and 1 or 0.5)
                     end
                     if indicator.isVisible then self.highlight:Show() end
                 end
@@ -2637,9 +2637,10 @@ LoadIndicatorList = function()
     listFrame.scrollFrame:Reset()
     currentLayoutIssueReport = F.GetCompatibilityLayoutIssues and F.GetCompatibilityLayoutIssues(currentLayout)
 
-    -- Find the index of "debuffs" so we can insert Aura Blacklist right above it
+    -- Find the index of "debuffs" so we can insert Aura Blacklist right above it.
+    -- Hidden where F.IsLiveAuraScanBlocked() is true (Retail).
     local debuffsIndex
-    if Cell.isRetail then
+    if not (F.IsLiveAuraScanBlocked and F.IsLiveAuraScanBlocked()) then
         for idx, t in pairs(currentLayoutTable["indicators"]) do
             if t["indicatorName"] == "debuffs" then
                 debuffsIndex = idx
@@ -2733,7 +2734,7 @@ LoadIndicatorList = function()
         n = i
 
         -- Insert Aura Blacklist button right before the Debuffs indicator
-        if Cell.isRetail and debuffsIndex and i == debuffsIndex then
+        if debuffsIndex and i == debuffsIndex then
             local blacklistId = "__auraBlacklist"
             if not listButtons[blacklistId] then
                 listButtons[blacklistId] = Cell.CreateButton(listFrame.scrollFrame.content, " ", "transparent-accent", {20, 20})
@@ -2764,7 +2765,7 @@ LoadIndicatorList = function()
 
         b:SetParent(listFrame.scrollFrame.content)
         b:SetPoint("RIGHT")
-        if Cell.isRetail and debuffsIndex and i == debuffsIndex then
+        if debuffsIndex and i == debuffsIndex then
             -- Debuffs anchors below the Aura Blacklist button
             b:SetPoint("TOPLEFT", listButtons["__auraBlacklist"], "BOTTOMLEFT", 0, P.Scale(1))
         elseif i == 1 then
@@ -2785,7 +2786,8 @@ LoadIndicatorList = function()
 
     UpdateListCompatibilityText()
     Cell.Fire("UpdateCompatibilityReport")
-    if Cell.isRetail then
+    if debuffsIndex then
+        -- +1 row for the Aura Blacklist button inserted above
         listFrame.scrollFrame:SetContentHeight(P.Scale(20), (n or 0) + 1, -P.Scale(1))
     else
         listFrame.scrollFrame:SetContentHeight(P.Scale(20), (n or 0), -P.Scale(1))
@@ -2901,9 +2903,12 @@ local function ShowTab(tab)
         currentLayout = Cell.vars.currentLayout
         currentLayoutTable = Cell.vars.currentLayoutTable
         LoadSyncDropdown()
+
+        -- always re-apply, even if the layout hasn't changed -- otherwise a
+        -- tab switch away and back leaves the preview health bar uncolored
+        UpdatePreviewButton()
         if noUpdateIndicators then return end
 
-        UpdatePreviewButton()
         UpdateIndicators(true)
 
         layoutDropdown:SetSelected(currentLayout == "default" and _G.DEFAULT or currentLayout)

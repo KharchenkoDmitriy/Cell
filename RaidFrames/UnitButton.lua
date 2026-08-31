@@ -3888,6 +3888,16 @@ local function UnitButton_UpdateCombatIcon(self)
     end
 end
 
+-- self:GetAlpha() can come back secret/tainted here, which crashes
+-- A.FrameFadeIn/Out's raw arithmetic -- fall back to a sane alpha instead.
+local function SafeCurrentAlpha(self, fallback)
+    local a = self:GetAlpha()
+    if F.IsValueNonSecret(a) then
+        return a
+    end
+    return fallback
+end
+
 -- UNIT_IN_RANGE_UPDATE: unit, inRange
 local IsInRange = F.IsInRange
 function UnitButton_UpdateInRange(self, ir)
@@ -3926,18 +3936,18 @@ function UnitButton_UpdateInRange(self, ir)
                                 self:SetAlpha(targetAlpha)
                             end
                         else
-                            A.FrameFadeIn(self, 0.25, self:GetAlpha(), 1)
+                            A.FrameFadeIn(self, 0.25, SafeCurrentAlpha(self, CellDB["appearance"]["outOfRangeAlpha"]), 1)
                         end
                     elseif not BD(self).states.healthPercent or BD(self).states.healthPercent < CELL_FADE_OUT_HEALTH_PERCENT then
-                        A.FrameFadeIn(self, 0.25, self:GetAlpha(), 1)
+                        A.FrameFadeIn(self, 0.25, SafeCurrentAlpha(self, CellDB["appearance"]["outOfRangeAlpha"]), 1)
                     else
-                        A.FrameFadeOut(self, 0.25, self:GetAlpha(), CellDB["appearance"]["outOfRangeAlpha"])
+                        A.FrameFadeOut(self, 0.25, SafeCurrentAlpha(self, 1), CellDB["appearance"]["outOfRangeAlpha"])
                     end
                 else
-                    A.FrameFadeIn(self, 0.25, self:GetAlpha(), 1)
+                    A.FrameFadeIn(self, 0.25, SafeCurrentAlpha(self, CellDB["appearance"]["outOfRangeAlpha"]), 1)
                 end
             else
-                A.FrameFadeOut(self, 0.25, self:GetAlpha(), CellDB["appearance"]["outOfRangeAlpha"])
+                A.FrameFadeOut(self, 0.25, SafeCurrentAlpha(self, 1), CellDB["appearance"]["outOfRangeAlpha"])
             end
         end
         BD(self).states.wasInRange = inRange

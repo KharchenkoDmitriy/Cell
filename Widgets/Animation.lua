@@ -70,7 +70,31 @@ local function FrameFade(frame, info)
     end
 end
 
+-- A secret startAlpha/endAlpha can't be used in the arithmetic below -- snap
+-- straight to the target instead of animating.
+local function IsSafeAlpha(v)
+    return not (issecretvalue and issecretvalue(v))
+end
+
+local function SnapToAlpha(frame, endAlpha)
+    if frame.fade then
+        frame.fade.fadeTimer = nil
+    end
+    if FADEFRAMES[frame] then
+        FADEFRAMES[frame] = nil
+    end
+    frame:SetAlpha(endAlpha)
+    if not frame:IsProtected() then
+        frame:Show()
+    end
+end
+
 function A.FrameFadeIn(frame, timeToFade, startAlpha, endAlpha)
+    if not (IsSafeAlpha(startAlpha) and IsSafeAlpha(endAlpha)) then
+        SnapToAlpha(frame, endAlpha)
+        return
+    end
+
     if frame.fade then
         frame.fade.fadeTimer = nil
     else
@@ -87,6 +111,11 @@ function A.FrameFadeIn(frame, timeToFade, startAlpha, endAlpha)
 end
 
 function A.FrameFadeOut(frame, timeToFade, startAlpha, endAlpha)
+    if not (IsSafeAlpha(startAlpha) and IsSafeAlpha(endAlpha)) then
+        SnapToAlpha(frame, endAlpha)
+        return
+    end
+
     if frame.fade then
         frame.fade.fadeTimer = nil
     else

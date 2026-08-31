@@ -21,12 +21,30 @@ Cell.unitButtons.solo["pet"] = petButton
 
 local function SoloFrame_UpdateLayout(layout, which)
     -- visibility
-    if Cell.vars.groupType ~= "solo" or Cell.vars.isHidden then
-        UnregisterAttributeDriver(soloFrame, "state-visibility")
-        soloFrame:Hide()
-        return
+    if Cell.isRetail then
+        if Cell.vars.groupType ~= "solo" or Cell.vars.isHidden then
+            UnregisterAttributeDriver(soloFrame, "state-visibility")
+            soloFrame:Hide()
+            return
+        else
+            RegisterAttributeDriver(soloFrame, "state-visibility", "[@raid1,exists] hide;[@party1,exists] hide;[group] hide;show")
+        end
     else
-        RegisterAttributeDriver(soloFrame, "state-visibility", "[@raid1,exists] hide;[@party1,exists] hide;[group] hide;show")
+        -- Classic-only: the driver reacts natively to the real group state, so it stays registered
+        -- whatever the currently active group type is - combat can never leave it stuck unregistered
+        -- (see F.IsGroupTypeHidden). Keeps Retail on the exact old register/unregister behavior above.
+        if F.IsGroupTypeHidden(Cell.vars.soloLayoutGroupType) then
+            -- Configured to hide: register an unconditional "hide" instead of unregistering, so that a
+            -- group change happening in combat still resolves to hidden rather than to whatever the
+            -- driver last said.
+            RegisterAttributeDriver(soloFrame, "state-visibility", "hide")
+            soloFrame:Hide()
+            return
+        else
+            RegisterAttributeDriver(soloFrame, "state-visibility", "[@raid1,exists] hide;[@party1,exists] hide;[group] hide;show")
+        end
+
+        if Cell.vars.groupType ~= "solo" then return end
     end
 
     -- update

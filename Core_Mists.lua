@@ -112,16 +112,21 @@ Cell.MIN_INDICATORS_VERSION = 246
 Cell.MIN_DEBUFFS_VERSION = 246
 
 function F.Debug(arg, ...)
-    if debugMode then
-        if type(arg) == "string" or type(arg) == "number" then
-            print(arg, ...)
-        elseif type(arg) == "table" then
-            DevTools_Dump(arg)
-        elseif type(arg) == "function" then
-            arg(...)
-        elseif arg == nil then
-            return true
+    if not (CellDB and CellDB["general"] and CellDB["general"]["debugMode"]) then return end
+    if type(arg) == "string" or type(arg) == "number" then
+        if F.DebugLog then
+            local parts = {tostring(arg)}
+            for i = 1, select("#", ...) do
+                parts[#parts + 1] = tostring(select(i, ...))
+            end
+            F.DebugLog(table.concat(parts, " "))
         end
+    elseif type(arg) == "table" then
+        DevTools_Dump(arg)
+    elseif type(arg) == "function" then
+        arg(...)
+    elseif arg == nil then
+        return true
     end
 end
 
@@ -184,6 +189,29 @@ function F.UpdateLayout(layoutGroupType)
     end
 end
 
+--! solo/party/raid frame groups keep their "state-visibility" driver registered at all times (see
+--! SoloFrame_UpdateLayout/PartyFrame_UpdateLayout/RaidFrame_UpdateLayout), so that switching between them is
+--! handled natively by the secure driver conditional instead of by a fresh RegisterAttributeDriver call.
+--! F.UpdateLayout above never runs in combat (it defers itself to PLAYER_REGEN_ENABLED), so a group change
+--! made in combat - e.g. accepting a party invite - would otherwise leave every frame group's driver in the
+--! state it had for the previous group type, and nothing visible until combat ends.
+--!
+--! That means each frame group has to know in advance which layoutAutoSwitch entry decides whether it must
+--! stay hidden, including for a group type the player is not currently in. SetLayoutGroupTypes records that
+--! mapping for the current zone - inside a pvp instance every frame group uses the battleground/arena entry,
+--! everywhere else solo/party get their own and raid gets the outdoor/raidType variant - and
+--! F.IsGroupTypeHidden looks it up in the last resolved layoutAutoSwitch table (refreshed by F.UpdateLayout,
+--! always out of combat). Classic-only (Cell.isRetail branches around this in the Group frame files).
+local function SetLayoutGroupTypes(solo, party, raid)
+    Cell.vars.soloLayoutGroupType = solo
+    Cell.vars.partyLayoutGroupType = party
+    Cell.vars.raidLayoutGroupType = raid
+end
+
+function F.IsGroupTypeHidden(layoutGroupType)
+    return layoutGroupType and Cell.vars.layoutAutoSwitch and Cell.vars.layoutAutoSwitch[layoutGroupType] == "hide"
+end
+
 local bgMaxPlayers = {
     [2197] = 40, -- ç§‘å°”æ‹‰å…‹çš„å¤ä»‡
 }
@@ -194,34 +222,33 @@ local function PreUpdateLayout()
     if not (Cell.vars.playerSpecID and Cell.vars.playerSpecRole) then return end
 
     if instanceType == "pvp" then
-        local name, _, _, _, _, _, _, id = GetInstanceInfo()
-        if bgMaxPlayers[id] then
-            if bgMaxPlayers[id] <= 15 then
-                Cell.vars.inBattleground = 15
-                F.UpdateLayout("battleground15", true)
-            else
-                Cell.vars.inBattleground = 40
-                F.UpdateLayout("battleground40", true)
-            end
+        local _, _, _, _, _, _, _, id = GetInstanceInfo()
+        local bgLayoutGroupType
+        if bgMaxPlayers[id] and bgMaxPlayers[id] > 15 then
+            Cell.vars.inBattleground = 40
+            bgLayoutGroupType = "battleground40"
         else
             Cell.vars.inBattleground = 15
-            F.UpdateLayout("battleground15", true)
+            bgLayoutGroupType = "battleground15"
         end
+        SetLayoutGroupTypes(bgLayoutGroupType, bgLayoutGroupType, bgLayoutGroupType)
+        F.UpdateLayout(bgLayoutGroupType, true)
     elseif instanceType == "arena" then
         Cell.vars.inBattleground = 5 -- treat as bg 5
+        SetLayoutGroupTypes("arena", "arena", "arena")
         F.UpdateLayout("arena", true)
     else
         Cell.vars.inBattleground = false
+
+        local raidLayoutGroupType = Cell.vars.raidType or "raid_outdoor"
+        SetLayoutGroupTypes("solo", "party", raidLayoutGroupType)
+
         if Cell.vars.groupType == "solo" then
             F.UpdateLayout("solo", true)
         elseif Cell.vars.groupType == "party" then
             F.UpdateLayout("party", true)
         else -- raid
-            if Cell.vars.raidType then
-                F.UpdateLayout(Cell.vars.raidType, true)
-            else
-                F.UpdateLayout("raid_outdoor", true)
-            end
+            F.UpdateLayout(raidLayoutGroupType, true)
         end
     end
 end
@@ -306,9 +333,15 @@ function eventFrame:ADDON_LOADED(arg1)
                 ["useCleuHealthUpdater"] = false,
                 ["translit"] = false,
                 ["localeOverride"] = "auto",
+                ["debugMode"] = false,
+                ["debugCategories"] = {["layout"] = true, ["comm"] = true, ["errors"] = true, ["other"] = true},
             }
         end
         if CellDB["general"]["localeOverride"] == nil then CellDB["general"]["localeOverride"] = "auto" end
+        if CellDB["general"]["debugMode"] == nil then CellDB["general"]["debugMode"] = false end
+        if type(CellDB["general"]["debugCategories"]) ~= "table" then
+            CellDB["general"]["debugCategories"] = {["layout"] = true, ["comm"] = true, ["errors"] = true, ["other"] = true}
+        end
         Cell.vars.alwaysUpdateAuras = CellDB["general"]["alwaysUpdateAuras"]
 
         -- nicknames ------------------------------------------------------------------------------

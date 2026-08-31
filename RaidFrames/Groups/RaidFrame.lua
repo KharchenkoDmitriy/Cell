@@ -343,12 +343,30 @@ end
 
 local function RaidFrame_UpdateLayout(layout, which)
     -- visibility
-    if Cell.vars.groupType ~= "raid" or Cell.vars.isHidden then
-        UnregisterAttributeDriver(raidFrame, "state-visibility")
-        raidFrame:Hide()
-        return
+    if Cell.isRetail then
+        if Cell.vars.groupType ~= "raid" or Cell.vars.isHidden then
+            UnregisterAttributeDriver(raidFrame, "state-visibility")
+            raidFrame:Hide()
+            return
+        else
+            RegisterAttributeDriver(raidFrame, "state-visibility", "show")
+        end
     else
-        RegisterAttributeDriver(raidFrame, "state-visibility", "show")
+        -- Classic-only: the driver reacts natively to the real group state, so it stays registered
+        -- whatever the currently active group type is - combat can never leave it stuck unregistered
+        -- (see F.IsGroupTypeHidden). Keeps Retail on the exact old register/unregister behavior above.
+        if F.IsGroupTypeHidden(Cell.vars.raidLayoutGroupType) then
+            -- Configured to hide: register an unconditional "hide" instead of unregistering, so that a
+            -- group change happening in combat still resolves to hidden rather than to whatever the
+            -- driver last said.
+            RegisterAttributeDriver(raidFrame, "state-visibility", "hide")
+            raidFrame:Hide()
+            return
+        else
+            RegisterAttributeDriver(raidFrame, "state-visibility", "[@raid1,exists] show;hide")
+        end
+
+        if Cell.vars.groupType ~= "raid" then return end
     end
 
     -- update

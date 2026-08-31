@@ -594,6 +594,7 @@ function frame:PLAYER_SPECIALIZATION_CHANGED(unit)
         Query(unit)
     else
         local guid = UnitGUID(unit)
+        if not CanIndexCache(guid) then return end
         if cache[guid] then
             cache[guid].inspected = nil
         end

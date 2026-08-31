@@ -22,7 +22,7 @@ Cell.isCata = WOW_PROJECT_ID == WOW_PROJECT_CATACLYSM_CLASSIC
 Cell.isMists = WOW_PROJECT_ID == WOW_PROJECT_MISTS_CLASSIC
 Cell.isTWW = LE_EXPANSION_LEVEL_CURRENT == LE_EXPANSION_WAR_WITHIN
 
-local CELL_VERSION_FALLBACK = "r277.9.8.2"
+local CELL_VERSION_FALLBACK = "r277.9.8.3"
 
 function F.InitAddonVersion()
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
@@ -3183,10 +3183,8 @@ end
 local playerClass = UnitClassBase("player")
 
 local friendSpells = {
-    -- DEATHKNIGHT: no living-friendly-target spell exists in the kit at all
-    -- (everything is self/enemy-facing) -- see deadSpells below instead.
-    -- DEMONHUNTER: same problem, and no dead-target spell either -- no
-    -- working fallback possible for this class with the current kit.
+    -- DEATHKNIGHT: no living-friendly-target spell in the kit -- see deadSpells.
+    -- DEMONHUNTER: same, and no dead-target spell either.
     ["DRUID"] = (Cell.isWrath or Cell.isTBC or Cell.isVanilla) and 5185 or 8936, -- 治疗之触 / 愈合
     -- FIXME: [361469 活化烈焰] 会被英雄天赋 [431443 时序烈焰] 替代，但它而且有问题
     -- IsSpellInRange 始终返回 nil
@@ -3384,16 +3382,19 @@ local function GetNonSecretRangeResult(value, fallback)
 end
 
 function F.IsInRange(unit, check)
+    -- Must run before the UnitIsVisible check below -- that can come back
+    -- secret for the player's own unit, which would report self as out of range.
+    local isPlayerUnit = GetNonSecretBoolean(UnitIsUnit("player", unit), false)
+    if isPlayerUnit then
+        return true
+    end
+
     local visible = GetNonSecretBoolean(UnitIsVisible(unit), false)
     if not visible then
         return false
     end
 
-    local isPlayerUnit = GetNonSecretBoolean(UnitIsUnit("player", unit), false)
-    if isPlayerUnit then
-        return true
-
-    elseif not check and F.UnitInGroup(unit) then
+    if not check and F.UnitInGroup(unit) then
         -- NOTE: UnitInRange only works with group players/pets
         --! but not available for PLAYER PET when SOLO
         local inRange, checked = UnitInRange(unit)

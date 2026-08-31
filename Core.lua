@@ -121,16 +121,21 @@ Cell.MIN_QUICKASSIST_VERSION = 275
 
 
 function F.Debug(arg, ...)
-    if debugMode then
-        if type(arg) == "string" or type(arg) == "number" then
-            print(arg, ...)
-        elseif type(arg) == "table" then
-            DevTools_Dump(arg)
-        elseif type(arg) == "function" then
-            arg(...)
-        elseif arg == nil then
-            return true
+    if not (CellDB and CellDB["general"] and CellDB["general"]["debugMode"]) then return end
+    if type(arg) == "string" or type(arg) == "number" then
+        if F.DebugLog then
+            local parts = {tostring(arg)}
+            for i = 1, select("#", ...) do
+                parts[#parts + 1] = tostring(select(i, ...))
+            end
+            F.DebugLog(table.concat(parts, " "))
         end
+    elseif type(arg) == "table" then
+        DevTools_Dump(arg)
+    elseif type(arg) == "function" then
+        arg(...)
+    elseif arg == nil then
+        return true
     end
 end
 
@@ -343,10 +348,16 @@ function eventFrame:ADDON_LOADED(arg1)
                 ["useCleuHealthUpdater"] = false,
                 ["translit"] = false,
                 ["localeOverride"] = "auto",
+                ["debugMode"] = false,
+                ["debugCategories"] = {["layout"] = true, ["comm"] = true, ["errors"] = true, ["other"] = true},
             }
         end
         if CellDB["general"]["localeOverride"] == nil then CellDB["general"]["localeOverride"] = "auto" end
         if CellDB["general"]["suppressLuaErrors"] == nil then CellDB["general"]["suppressLuaErrors"] = true end
+        if CellDB["general"]["debugMode"] == nil then CellDB["general"]["debugMode"] = false end
+        if type(CellDB["general"]["debugCategories"]) ~= "table" then
+            CellDB["general"]["debugCategories"] = {["layout"] = true, ["comm"] = true, ["errors"] = true, ["other"] = true}
+        end
         Cell.vars.alwaysUpdateAuras = CellDB["general"]["alwaysUpdateAuras"]
 
         -- nicknames ------------------------------------------------------------------------------

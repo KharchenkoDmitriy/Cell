@@ -89,16 +89,16 @@ local function CheckSelf()
 
     -- update preview buttons
     if CellLayoutsPreviewButton then
-        CellLayoutsPreviewButton.indicators.nameText:UpdateName()
+        F.BD(CellLayoutsPreviewButton).indicators.nameText:UpdateName()
     end
     if CellIndicatorsPreviewButton then
         F.BD(CellIndicatorsPreviewButton).indicators.nameText:UpdateName()
     end
     if CellRaidDebuffsPreviewButton then
-        CellRaidDebuffsPreviewButton.indicators.nameText:UpdateName()
+        F.BD(CellRaidDebuffsPreviewButton).indicators.nameText:UpdateName()
     end
     if CellGlowsPreviewButton then
-        CellGlowsPreviewButton.indicators.nameText:UpdateName()
+        F.BD(CellGlowsPreviewButton).indicators.nameText:UpdateName()
     end
 end
 

@@ -155,6 +155,18 @@ select(2, ...).L = setmetatable({
     ["CHANGELOGS"] = [[
 
 
+        <h1>r277.9.8.3 - NeRgY</h1>
+        <h2>Retail</h2>
+        <p>* Fixed a Lua error ("attempted to index a table that cannot be indexed with secret keys") that could happen in an Arena match.</p>
+        <p>* Fixed your own health bar sometimes getting stuck showing as out of range for an entire Mythic+ key.</p>
+        <p>* Fixed a Lua error ("attempt to perform arithmetic on ... a secret number value") that could spam constantly and break out-of-range fading.</p>
+        <p>* Added a Debug Console (General settings -> Misc) with a log window and rough categories, instead of spamming the chat frame.</p>
+        <h2>Classic / TBC</h2>
+        <p>* Fixed unit frames sometimes staying invisible after your group type changed while in combat (e.g. accepting a party invite mid-fight).</p>
+        <p>* Fixed the "Show dispel-type border" (Debuffs) and "Show frame border" (Dispels) toggles breaking other, unrelated settings.</p>
+        <p>* Added a Debug Console (General settings -> Misc) with a log window and rough categories, instead of spamming the chat frame.</p>
+        <br/>
+
         <h1>r277.9.8.2 - NeRgY</h1>
         <h2>Retail</h2>
         <p>* Fixed out-of-range fading not working in combat for Hunter, Rogue and Warrior. Death Knight is partially fixed (only when the target is dead); Demon Hunter still has no fix since the class has no suitable spell for it.</p>

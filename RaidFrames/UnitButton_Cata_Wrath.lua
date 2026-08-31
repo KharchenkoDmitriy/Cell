@@ -689,8 +689,25 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             end, true)
         elseif setting == "thickness" then
             F.IterateAllUnitButtons(function(b)
-                local indicator = BD(b).indicators[indicatorName]
-                indicator:SetThickness(value)
+                local ind = BD(b).indicators[indicatorName]
+                --! not every button carries every indicator (a pet button has no debuffs, for one)
+                if not ind then return end
+                if indicatorName == "debuffs" then
+                    if ind.configs then ind.configs.thickness = value end
+                    if ind.SetBorder then
+                        --! keep the border off while the dispel-type border is disabled, so dragging
+                        --! the slider in the combined widget cannot switch it back on
+                        local on = not (ind.configs and ind.configs.showDispelBorder == false)
+                        ind:SetBorder(on and value or 0)
+                    end
+                elseif indicatorName == "dispels" then
+                    if ind.configs then ind.configs.thickness = value end
+                    if ind.SetFrameBorderThickness then
+                        ind:SetFrameBorderThickness(value)
+                    end
+                else
+                    ind:SetThickness(value)
+                end
             end, true)
         elseif setting == "height" then
             F.IterateAllUnitButtons(function(b)
@@ -946,6 +963,33 @@ local function UpdateIndicators(layout, indicatorName, setting, value, value2)
             elseif value == "smooth" then
                 F.IterateAllUnitButtons(function(b)
                     BD(b).indicators[indicatorName]:EnableSmooth(value2)
+                end, true)
+            elseif value == "showDispelBorder" then
+                --! debuffs: the dispel-type border is drawn by the icons themselves, "off" == 0 thickness.
+                --! Without this branch the toggle fell through to the indicatorBooleans catch-all at the end,
+                --! clobbering indicatorBooleans["debuffs"] (the dispellableByMe filter) instead.
+                F.IterateAllUnitButtons(function(b)
+                    local ind = BD(b).indicators[indicatorName]
+                    if not ind then return end
+                    if ind.configs then ind.configs.showDispelBorder = value2 end
+                    if ind.SetBorder then
+                        local thickness = (ind.configs and ind.configs.thickness) or 3
+                        ind:SetBorder(value2 and thickness or 0)
+                    end
+                end, true)
+            elseif value == "showDispelFrameBorder" then
+                --! dispels: the frame border strips are colored and shown by SetDispels, so turning the
+                --! toggle back on only takes effect on the next aura update - force one. (Turning it off
+                --! hides them right away, in SetFrameBorderEnabled.)
+                F.IterateAllUnitButtons(function(b)
+                    local ind = BD(b).indicators[indicatorName]
+                    if ind then
+                        if ind.configs then ind.configs.showDispelFrameBorder = value2 end
+                        if ind.SetFrameBorderEnabled then
+                            ind:SetFrameBorderEnabled(value2)
+                        end
+                    end
+                    UnitButton_UpdateAuras(b)
                 end, true)
             elseif value == "showAllSpells" then
                 I.ShowAllTargetedSpells(value2)

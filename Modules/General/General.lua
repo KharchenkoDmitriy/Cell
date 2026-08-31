@@ -386,7 +386,7 @@ end
 local alwaysUpdateAurasCB, translitCB, suppressLuaErrorsCB
 
 local function CreateMiscPane()
-    local miscPane = Cell.CreateTitledPane(generalTab, L["Misc"], 205, 140)
+    local miscPane = Cell.CreateTitledPane(generalTab, L["Misc"], 205, 160)
     miscPane:SetPoint("TOPLEFT", generalTab, 222, -300)
 
     alwaysUpdateAurasCB = Cell.CreateCheckButton(miscPane, L["Always Update Auras"], function(checked, self)
@@ -409,6 +409,14 @@ local function CreateMiscPane()
         end
     end)
     suppressLuaErrorsCB:SetPoint("TOPLEFT", translitCB, "BOTTOMLEFT", 0, -9)
+
+    local debugConsoleBtn = Cell.CreateButton(miscPane, L["Debug Console"], "accent-hover", {150, 17})
+    debugConsoleBtn:SetPoint("TOPLEFT", suppressLuaErrorsCB, "BOTTOMLEFT", 0, -12)
+    debugConsoleBtn:SetScript("OnClick", function()
+        if F.ToggleDebugConsole then
+            F.ToggleDebugConsole()
+        end
+    end)
 end
 
 -------------------------------------------------
